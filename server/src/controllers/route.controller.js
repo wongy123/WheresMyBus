@@ -43,8 +43,19 @@ export async function getRouteUpcoming(req, res, next) {
     const routeId = String(req.params.routeId);
     const direction = normaliseDirection(req.query.direction);
     const datetime = req.query.datetime || new Date().toISOString();
-    const limit = Math.min(100, Math.max(1, toInt(req.query.limit, 50)));
-    const duration = req.query.limit ? null : Math.min(1440, Math.max(1, toInt(req.query.duration, 0))); // minutes, only if no limit
+
+    const hasLimit = Object.prototype.hasOwnProperty.call(req.query, 'limit');
+    const hasDuration = Object.prototype.hasOwnProperty.call(req.query, 'duration');
+
+    // If limit is provided, it wins. If only duration is provided, use a generous cap.
+    const limit = hasLimit
+      ? Math.min(1000, Math.max(1, toInt(req.query.limit, 50)))
+      : (hasDuration ? 1000 : 50);
+
+    // Allow duration up to 24h (1440 minutes). If limit is present, ignore duration.
+    const duration = hasLimit
+      ? null
+      : (hasDuration ? Math.min(1440, Math.max(1, toInt(req.query.duration, 0))) : 0);
 
     const targetDate = liveUtils.ymdFromIsoInAest(datetime);
     const useLive = (targetDate === liveUtils.brisbaneTodayYmd());

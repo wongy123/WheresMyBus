@@ -107,9 +107,9 @@ export function mergeRouteUpcoming({ scheduleTrips, serviceDate, snapshot, useLi
   let anyLiveUsed = false;
 
   for (const t of scheduleTrips) {
-    // t.start_time is seconds (from SQL); fallback to parse if it's a string
+    const svcDate = t.service_date || serviceDate;         // prefer per-row date
     const plannedSec   = (typeof t.start_time === 'number') ? t.start_time : parseHmsToSec(t.start_time);
-    const plannedEpoch = plannedEpochFrom(serviceDate, plannedSec);
+    const plannedEpoch = plannedEpochFrom(svcDate, plannedSec);
 
     let expectedEpoch = null;
     let status = 'SCHEDULE';
@@ -146,17 +146,16 @@ export function mergeRouteUpcoming({ scheduleTrips, serviceDate, snapshot, useLi
       routeId: t.route_id,
       direction: Number(t.direction_id),
       headsign: t.trip_headsign,
-      plannedDeparture: toAestIso(plannedEpoch),                 // <-- ISO now
+      plannedDeparture: toAestIso(plannedEpoch),
       expectedDeparture: expectedEpoch ? toAestIso(expectedEpoch) : null,
       delaySec,
       status: expectedEpoch ? status : 'NO_DATA',
       vehicle: vehicle || null,
       source: expectedEpoch ? 'live' : 'schedule',
-      _sortEpoch: expectedEpoch ?? plannedEpoch                  // internal for sorting only
+      _sortEpoch: expectedEpoch ?? plannedEpoch
     });
   }
 
-  // Sort by epoch, then tripId; strip helper after sort
   items.sort((a, b) => (a._sortEpoch - b._sortEpoch) || a.tripId.localeCompare(b.tripId));
   for (const it of items) delete it._sortEpoch;
 
