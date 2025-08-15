@@ -1,7 +1,7 @@
 import { pool } from '../models/db.js';
 import { decodeFeeds, mergeRouteUpcoming, _internals as liveUtils } from './live.service.js';
 
-const DEFAULT_LOOKAHEAD_SEC = 3 * 60 * 60; // 3h
+const DEFAULT_LOOKAHEAD_SEC = 24 * 60 * 60;  // 24h
 
 /**
  * Convert YYYY-MM-DD -> YYYYMMDD (GTFS calendar dates)
