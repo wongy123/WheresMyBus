@@ -67,32 +67,51 @@ async function activeServiceIdsForDate(yyyyMmDdCompact, dowCol) {
   const allowed = new Set(['monday','tuesday','wednesday','thursday','friday','saturday','sunday']);
   if (!allowed.has(dowCol)) throw new Error('Invalid day-of-week column');
 
-  const sql = `
-    WITH base AS (
-      -- Any service whose calendar says it runs on this weekday
-      -- (ignore start_date/end_date entirely),
-      -- EXCEPT if explicitly removed for this date.
-      SELECT c.service_id
-      FROM gtfs.calendar c
-      WHERE c.${dowCol}::int = 1
-        AND NOT EXISTS (
-          SELECT 1 FROM gtfs.calendar_dates cd
-          WHERE cd.service_id = c.service_id
-            AND cd.date::int = $1::int
-            AND cd.exception_type::int = 2  -- removed
-        )
-      UNION
-      -- Plus any services explicitly added for this date
-      SELECT cd.service_id
-      FROM gtfs.calendar_dates cd
-      WHERE cd.date::int = $1::int
-        AND cd.exception_type::int = 1    -- added
-    )
-    SELECT service_id FROM base;
+  // 1) Base candidates: in date range, correct weekday, and NOT removed on that date
+  const baseSql = `
+    SELECT
+      c.service_id,
+      EXISTS (
+        SELECT 1 FROM gtfs.calendar_dates cd
+        WHERE cd.service_id = c.service_id
+      ) AS has_cd
+    FROM gtfs.calendar c
+    WHERE c.start_date::int <= $1::int
+      AND c.end_date::int   >= $1::int
+      AND c.${dowCol}::int   = 1
+      AND NOT EXISTS (
+        SELECT 1 FROM gtfs.calendar_dates cd
+        WHERE cd.service_id = c.service_id
+          AND cd.date::int = $1::int
+          AND cd.exception_type::int = 2  -- removed for this date
+      );
   `;
-  const { rows } = await pool.query(sql, [yyyyMmDdCompact]);
-  return rows.map(r => r.service_id);
+
+  // 2) Explicit additions for that date
+  const addedSql = `
+    SELECT cd.service_id
+    FROM gtfs.calendar_dates cd
+    WHERE cd.date::int = $1::int
+      AND cd.exception_type::int = 1;     -- added for this date
+  `;
+
+  const [baseRes, addRes] = await Promise.all([
+    pool.query(baseSql, [yyyyMmDdCompact]),
+    pool.query(addedSql, [yyyyMmDdCompact]),
+  ]);
+
+  const base = baseRes.rows;                       // [{ service_id, has_cd: true/false }]
+  const added = addRes.rows.map(r => r.service_id);
+
+  // 3) Tie-breaker: if any base service_ids have NO calendar_dates at all, use only those
+  const baseNoCd = base.filter(r => r.has_cd === false).map(r => r.service_id);
+  const selectedBase = baseNoCd.length ? baseNoCd : base.map(r => r.service_id);
+
+  // 4) Unique union: selected base + explicit adds
+  const uniq = Array.from(new Set([...selectedBase, ...added]));
+  return uniq;
 }
+
 
 
 /**
