@@ -1,4 +1,5 @@
 import { pool } from '../models/db.js';
+import { decodeFeeds, mergeRouteUpcoming, _internals as liveUtils } from './live.service.js';
 
 /**
  * Convert YYYY-MM-DD -> YYYYMMDD (GTFS calendar dates)
@@ -15,6 +16,62 @@ function gtfsDowColumn(yyyyMmDd) {
   const [y, m, d] = String(yyyyMmDd).split('-').map(Number);
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Sun..6=Sat
   return ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][dow];
+}
+
+function secondsFromAestIso(iso) {
+  // seconds since local midnight on that AEST day
+  const ymd = new Date(iso);
+  const dateYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Brisbane' }).format(ymd); // YYYY-MM-DD
+  const timeParts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Australia/Brisbane',
+    hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).format(ymd).split(':').map(Number);
+  return { serviceDate: dateYmd, sec: timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2] };
+}
+
+async function fetchRouteUpcomingSchedule({ routeId, serviceIds, direction, startSec, endSec, limit }) {
+  const params = [];
+  let i = 1;
+
+  params.push(serviceIds); const pService = `$${i++}`;
+  params.push(routeId);    const pRoute   = `$${i++}`;
+  params.push(direction);  const pDir     = `$${i++}`;
+  params.push(startSec);   const pStart   = `$${i++}`;
+  params.push(endSec);     const pEnd     = `$${i++}`;
+  params.push(limit);      const pLimit   = `$${i++}`;
+
+  // Convert HH:MM:SS -> seconds for comparisons and MIN()
+  const dep_sec = `
+    (split_part(st.departure_time, ':', 1)::int * 3600 +
+     split_part(st.departure_time, ':', 2)::int * 60  +
+     split_part(st.departure_time, ':', 3)::int)
+  `;
+
+  const sql = `
+    WITH first_dep AS (
+      SELECT
+        t.trip_id,
+        t.route_id,
+        t.direction_id,
+        t.trip_headsign,
+        MIN(${dep_sec}) AS start_time   -- seconds since local midnight
+      FROM gtfs.trips t
+      JOIN gtfs.stop_times st ON st.trip_id = t.trip_id
+      WHERE t.service_id = ANY (${pService}::text[])
+        AND t.route_id   = ${pRoute}
+        AND (${pDir}::int IS NULL OR t.direction_id::int = ${pDir}::int)
+        AND st.departure_time ~ '^\\d{1,2}:\\d{2}:\\d{2}$'
+      GROUP BY t.trip_id, t.route_id, t.direction_id, t.trip_headsign
+    )
+    SELECT *
+    FROM first_dep
+    WHERE start_time >= ${pStart}::int
+      AND (${pEnd}::int IS NULL OR start_time <= ${pEnd}::int)
+    ORDER BY start_time ASC, trip_id
+    LIMIT ${pLimit};
+  `;
+  const { rows } = await pool.query(sql, params);
+  return rows;
 }
 
 
@@ -67,7 +124,6 @@ async function activeServiceIdsForDate(yyyyMmDdCompact, dowCol) {
   const allowed = new Set(['monday','tuesday','wednesday','thursday','friday','saturday','sunday']);
   if (!allowed.has(dowCol)) throw new Error('Invalid day-of-week column');
 
-  // 1) Base candidates: in date range, correct weekday, and NOT removed on that date
   const baseSql = `
     SELECT
       c.service_id,
@@ -83,36 +139,25 @@ async function activeServiceIdsForDate(yyyyMmDdCompact, dowCol) {
         SELECT 1 FROM gtfs.calendar_dates cd
         WHERE cd.service_id = c.service_id
           AND cd.date::int = $1::int
-          AND cd.exception_type::int = 2  -- removed for this date
+          AND cd.exception_type::int = 2
       );
   `;
-
-  // 2) Explicit additions for that date
   const addedSql = `
     SELECT cd.service_id
     FROM gtfs.calendar_dates cd
     WHERE cd.date::int = $1::int
-      AND cd.exception_type::int = 1;     -- added for this date
+      AND cd.exception_type::int = 1;
   `;
-
   const [baseRes, addRes] = await Promise.all([
     pool.query(baseSql, [yyyyMmDdCompact]),
     pool.query(addedSql, [yyyyMmDdCompact]),
   ]);
-
-  const base = baseRes.rows;                       // [{ service_id, has_cd: true/false }]
+  const base = baseRes.rows;
   const added = addRes.rows.map(r => r.service_id);
-
-  // 3) Tie-breaker: if any base service_ids have NO calendar_dates at all, use only those
   const baseNoCd = base.filter(r => r.has_cd === false).map(r => r.service_id);
   const selectedBase = baseNoCd.length ? baseNoCd : base.map(r => r.service_id);
-
-  // 4) Unique union: selected base + explicit adds
-  const uniq = Array.from(new Set([...selectedBase, ...added]));
-  return uniq;
+  return Array.from(new Set([...selectedBase, ...added]));
 }
-
-
 
 /**
  * Fetch a page of trips for the route/date/direction with their first/last times.
@@ -209,5 +254,35 @@ export async function getRouteOverview({ routeId, serviceDate, direction, page, 
     page,
     limit,
     hasNextPage
+  };
+}
+
+export async function getRouteUpcoming({ routeId, direction, datetime, limit, duration, useLive }) {
+  // Resolve serviceDate + active services
+  const { serviceDate, sec: startSec } = secondsFromAestIso(datetime);
+  const dateCompact = serviceDate.replaceAll('-', '');
+  const dowCol = gtfsDowColumn(serviceDate);
+  const serviceIds = await activeServiceIdsForDate(dateCompact, dowCol);
+
+  // Optional end of window if duration provided
+  const endSec = duration ? (startSec + (duration * 60)) : null;
+
+  // Pull the scheduled window (trip starts for the route)
+  const scheduleTrips = await fetchRouteUpcomingSchedule({
+    routeId, serviceIds, direction, startSec, endSec, limit
+  });
+
+  // Fetch+decode live (per request) only if today
+  const snapshot = useLive ? await decodeFeeds().catch(() => null) : null;
+
+  const merged = mergeRouteUpcoming({
+    scheduleTrips, serviceDate, snapshot, useLive
+  });
+
+  return {
+    lastUpdated: merged.lastUpdated,
+    mode: merged.mode,
+    query: { routeId, direction, datetime, limit, duration, serviceDate },
+    data: merged.data
   };
 }

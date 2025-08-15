@@ -1,4 +1,5 @@
 import * as routeService from '../services/route.service.js';
+import { _internals as liveUtils } from '../services/live.service.js';
 
 const toInt = (v, def) => {
   const n = Number(v);
@@ -29,6 +30,27 @@ export async function getRoute(req, res, next) {
 
     const result = await routeService.getRouteOverview({
       routeId, serviceDate, direction, page, limit,
+    });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getRouteUpcoming(req, res, next) {
+  try {
+    const routeId = String(req.params.routeId);
+    const direction = normaliseDirection(req.query.direction);
+    const datetime = req.query.datetime || new Date().toISOString();
+    const limit = Math.min(100, Math.max(1, toInt(req.query.limit, 50)));
+    const duration = req.query.limit ? null : Math.min(1440, Math.max(1, toInt(req.query.duration, 0))); // minutes, only if no limit
+
+    const targetDate = liveUtils.ymdFromIsoInAest(datetime);
+    const useLive = (targetDate === liveUtils.brisbaneTodayYmd());
+
+    const result = await routeService.getRouteUpcoming({
+      routeId, direction, datetime, limit, duration, useLive
     });
 
     res.json(result);
