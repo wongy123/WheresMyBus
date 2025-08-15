@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    container_name: wheresmybus-db
+    restart: always
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wheresmybus
+      # PGDATA: /var/lib/postgresql/data/pgdata  # optional
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - ./data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - ./gtfs:/gtfs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wheresmybus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    container_name: wheresmybus-adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy

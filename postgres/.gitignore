@@ -1,0 +1,13 @@
+# Ignore database storage (bind mount)
+data/
+
+# Ignore downloaded GTFS dataset
+gtfs/
+
+# Ignore GTFS zip file if it ever exists
+SEQ_GTFS.zip
+
+# Ignore any temp or backup files
+*.tmp
+*.bak
+*~
