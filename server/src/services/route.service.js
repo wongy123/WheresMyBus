@@ -287,7 +287,7 @@ export async function getRouteOverview({ routeId, serviceDate, direction, page, 
 }
 
 export async function getRouteUpcoming({ routeId, direction, datetime, limit, duration, useLive }) {
-  // 1) Work out the primary day (D) and start second
+  // 1) Base day and window
   const { serviceDate: D, sec: startSec } = secondsFromAestIso(datetime);
   const horizonSec = duration ? Math.min(24 * 60 * 60, duration * 60) : DEFAULT_LOOKAHEAD_SEC;
   const endSecD = startSec + horizonSec;
@@ -296,13 +296,33 @@ export async function getRouteUpcoming({ routeId, direction, datetime, limit, du
   const dowD = gtfsDowColumn(D);
   const svcIdsD = await activeServiceIdsForDate(D.replaceAll('-', ''), dowD);
 
-  // 3) Pull D slice
+  // --- NEW: D-1 slice for after-midnight trips on the previous service_date ---
+  const Dm1 = addDaysYmd(D, -1);
+  const dowDm1 = gtfsDowColumn(Dm1);
+  const svcIdsDm1 = await activeServiceIdsForDate(Dm1.replaceAll('-', ''), dowDm1);
+
+  // map real-time window [D+startSec, D+endSecD] onto D-1’s clock:
+  // [86400 + startSec, 86400 + min(endSecD, 86400)]
+  const prevStart = 86400 + startSec;
+  const prevEnd   = 86400 + Math.min(endSecD, 86400);
+
+  let slicePrev = [];
+  if (svcIdsDm1.length && prevStart <= prevEnd) {
+    slicePrev = await fetchRouteUpcomingSchedule({
+      serviceDate: Dm1,
+      routeId, serviceIds: svcIdsDm1, direction,
+      startSec: prevStart, endSec: prevEnd, limit
+    });
+  }
+  // --- END NEW ---
+
+  // 3) D slice
   const sliceD = await fetchRouteUpcomingSchedule({
     serviceDate: D, routeId, serviceIds: svcIdsD, direction,
     startSec, endSec: endSecD, limit
   });
 
-  // 4) If we cross midnight, also pull D+1 slice [0, remainder]
+  // 4) D+1 slice if we cross midnight
   let sliceNext = [];
   if (endSecD > 86400) {
     const D1 = addDaysYmd(D, 1);
@@ -316,46 +336,45 @@ export async function getRouteUpcoming({ routeId, direction, datetime, limit, du
     });
   }
 
-  // 5) Merge & dedupe by (trip_id, service_date), then sort by absolute epoch and cap to limit
+  // 5) Merge & dedupe by (trip_id, service_date)
   const seen = new Set();
   const merged = [];
-  for (const row of [...sliceD, ...sliceNext]) {
+  for (const row of [...slicePrev, ...sliceD, ...sliceNext]) {
     const key = `${row.trip_id}__${row.service_date}`;
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(row);
   }
 
-  // 6) Live per request if today; schedule otherwise
+  // 6) Live overlay (today-only)
   const snapshot = useLive ? await decodeFeeds().catch(() => null) : null;
 
-  // 7) Merge with live (function now uses per-row service_date)
+  // 7) Merge with live (already supports per-row service_date)
   const result = mergeRouteUpcoming({
-    scheduleTrips: merged,       // each row has { trip_id, route_id, direction_id, trip_headsign, start_time (sec), service_date }
-    serviceDate: D,              // fallback only
+    scheduleTrips: merged,
+    serviceDate: D,
     snapshot,
     useLive
   });
 
+  // Enrich vehicle currentStopName (unchanged from your code)
   const ids = Array.from(new Set(
-  result.data
-		.map(it => it?.vehicle?.currentStopId)
-		.filter(Boolean)
-		));
-		if (ids.length) {
-		const { rows } = await pool.query(
-				'SELECT stop_id, stop_name FROM gtfs.stops WHERE stop_id = ANY($1::text[])',
-				[ids]
-		);
-		const nameMap = new Map(rows.map(r => [r.stop_id, r.stop_name]));
-		for (const it of result.data) {
-				if (it?.vehicle?.currentStopId) {
-				it.vehicle.currentStopName = nameMap.get(it.vehicle.currentStopId) || null;
-			}
-		}
-	}
+    result.data.map(it => it?.vehicle?.currentStopId).filter(Boolean)
+  ));
+  if (ids.length) {
+    const { rows } = await pool.query(
+      'SELECT stop_id, stop_name FROM gtfs.stops WHERE stop_id = ANY($1::text[])',
+      [ids]
+    );
+    const nameMap = new Map(rows.map(r => [r.stop_id, r.stop_name]));
+    for (const it of result.data) {
+      if (it?.vehicle?.currentStopId) {
+        it.vehicle.currentStopName = nameMap.get(it.vehicle.currentStopId) || null;
+      }
+    }
+  }
 
-  // 8) Clip to limit after merge/sort (merge may drop canceled)
+  // 8) Clip to limit after merge/sort
   result.data = result.data.slice(0, limit);
 
   return {
