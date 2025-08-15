@@ -38,6 +38,19 @@ function ymdFromIsoInAest(iso) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: AEST_TZ }).format(d); // YYYY-MM-DD
 }
 
+function normalizeVehicleStatus(val) {
+  const codeFromName = { INCOMING_AT: 0, STOPPED_AT: 1, IN_TRANSIT_TO: 2 };
+  const code = (typeof val === 'number') ? val : codeFromName[val] ?? null;
+  const name = (code === 0) ? 'INCOMING_AT' : (code === 1) ? 'STOPPED_AT' :
+               (code === 2) ? 'IN_TRANSIT_TO' : null;
+  const label = (name === 'INCOMING_AT') ? 'approaching'
+              : (name === 'STOPPED_AT') ? 'at_stop'
+              : (name === 'IN_TRANSIT_TO') ? 'in_transit'
+              : null;
+  return { code, name, label };
+}
+
+
 // --- fetch & decode both feeds (per request) ---
 export async function decodeFeeds() {
   const tuUrl = process.env.GTFS_RT_TRIP_UPDATES_URL;
@@ -81,18 +94,21 @@ export async function decodeFeeds() {
     for (const ent of vpFeed.entity || []) {
       const v = ent.vehicle;
       const tripId = v?.trip?.tripId || v?.trip?.trip_id;
+      const vs = normalizeVehicleStatus(v?.currentStatus ?? v?.current_status);
       if (!tripId) continue; // only index when tied to a trip
       vehiclesByTripId.set(tripId, {
-        tripId,
-        id: v?.vehicle?.id || v?.vehicle?.label || null,
-        lat: v?.position?.latitude ?? null,
-        lon: v?.position?.longitude ?? null,
-        currentStatus: v?.currentStatus ?? v?.current_status ?? null,
-        currentStopId: v?.stopId || v?.stop_id || null,
-        occupancyStatus: v?.occupancyStatus ?? v?.occupancy_status ?? null,
-        occupancyPercentage: typeof v?.occupancyPercentage === 'number' ? v.occupancyPercentage : null,
-        timestamp: Number(v?.timestamp || 0) || null,
-      });
+				tripId,
+				id: v?.vehicle?.id || v?.vehicle?.label || null,
+				lat: v?.position?.latitude ?? null,
+				lon: v?.position?.longitude ?? null,
+				currentStatusCode: vs.code,
+				currentStatus: vs.name,          // e.g., "STOPPED_AT"
+				currentStatusLabel: vs.label,    // e.g., "at_stop"
+				currentStopId: v?.stopId || v?.stop_id || null,
+				occupancyStatus: v?.occupancyStatus ?? v?.occupancy_status ?? null,
+				occupancyPercentage: typeof v?.occupancyPercentage === 'number' ? v.occupancyPercentage : null,
+				timestamp: Number(v?.timestamp || 0) || null,
+			});
     }
 
     return { headerTimestamp: headerTs, tripUpdatesByTripId, vehiclesByTripId };

@@ -49,32 +49,56 @@ async function fetchRouteUpcomingSchedule({ serviceDate, routeId, serviceIds, di
   params.push(serviceDate);const pSvcDate = `$${i++}`;
 
   const depSec = `
-    (split_part(st.departure_time, ':', 1)::int * 3600 +
-     split_part(st.departure_time, ':', 2)::int * 60  +
-     split_part(st.departure_time, ':', 3)::int)
+    CASE WHEN st.departure_time ~ '^\\d{1,2}:\\d{2}:\\d{2}$'
+         THEN split_part(st.departure_time, ':', 1)::int * 3600
+            + split_part(st.departure_time, ':', 2)::int * 60
+            + split_part(st.departure_time, ':', 3)::int
+         ELSE NULL END
   `;
+  const arrSec = `
+    CASE WHEN st.arrival_time ~ '^\\d{1,2}:\\d{2}:\\d{2}$'
+         THEN split_part(st.arrival_time, ':', 1)::int * 3600
+            + split_part(st.arrival_time, ':', 2)::int * 60
+            + split_part(st.arrival_time, ':', 3)::int
+         ELSE NULL END
+  `;
+  const evtSec = `COALESCE(${depSec}, ${arrSec})`;
 
   const sql = `
-    WITH first_dep AS (
+    WITH st_enriched AS (
       SELECT
         t.trip_id,
         t.route_id,
         t.direction_id,
         t.trip_headsign,
-        MIN(${depSec}) AS start_time
+        ${evtSec} AS evt_sec
       FROM gtfs.trips t
       JOIN gtfs.stop_times st ON st.trip_id = t.trip_id
       WHERE t.service_id = ANY (${pService}::text[])
         AND t.route_id   = ${pRoute}
         AND (${pDir}::int IS NULL OR t.direction_id::int = ${pDir}::int)
-        AND st.departure_time ~ '^\\d{1,2}:\\d{2}:\\d{2}$'
-      GROUP BY t.trip_id, t.route_id, t.direction_id, t.trip_headsign
+    ),
+    next_evt AS (
+      SELECT
+        trip_id,
+        MIN(evt_sec) FILTER (WHERE evt_sec IS NOT NULL
+                             AND evt_sec >= ${pStart}::int
+                             AND (${pEnd}::int IS NULL OR evt_sec <= ${pEnd}::int)
+                            ) AS next_time
+      FROM st_enriched
+      GROUP BY trip_id
     )
-    SELECT *, ${pSvcDate}::text AS service_date
-    FROM first_dep
-    WHERE start_time >= ${pStart}::int
-      AND (${pEnd}::int IS NULL OR start_time <= ${pEnd}::int)
-    ORDER BY start_time ASC, trip_id
+    SELECT
+      t.trip_id,
+      t.route_id,
+      t.direction_id,
+      t.trip_headsign,
+      ne.next_time        AS start_time,     -- seconds since local midnight AEST
+      ${pSvcDate}::text   AS service_date
+    FROM next_evt ne
+    JOIN gtfs.trips t ON t.trip_id = ne.trip_id
+    WHERE ne.next_time IS NOT NULL
+    ORDER BY ne.next_time ASC, t.trip_id
     LIMIT ${pLimit};
   `;
   const { rows } = await pool.query(sql, params);
@@ -312,6 +336,24 @@ export async function getRouteUpcoming({ routeId, direction, datetime, limit, du
     snapshot,
     useLive
   });
+
+  const ids = Array.from(new Set(
+  result.data
+		.map(it => it?.vehicle?.currentStopId)
+		.filter(Boolean)
+		));
+		if (ids.length) {
+		const { rows } = await pool.query(
+				'SELECT stop_id, stop_name FROM gtfs.stops WHERE stop_id = ANY($1::text[])',
+				[ids]
+		);
+		const nameMap = new Map(rows.map(r => [r.stop_id, r.stop_name]));
+		for (const it of result.data) {
+				if (it?.vehicle?.currentStopId) {
+				it.vehicle.currentStopName = nameMap.get(it.vehicle.currentStopId) || null;
+			}
+		}
+	}
 
   // 8) Clip to limit after merge/sort (merge may drop canceled)
   result.data = result.data.slice(0, limit);
