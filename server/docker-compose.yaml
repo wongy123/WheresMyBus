@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: wheresmybus-api
+    restart: always
+    env_file: .env
+    environment:
+      # Override localhost from .env so it reaches the DB container
+      PGHOST: wheresmybus-db
+    ports:
+      - "3000:3000"
+    networks:
+      - wmb-net
+
+networks:
+  wmb-net:
+    external: true

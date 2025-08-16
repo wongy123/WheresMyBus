@@ -43,6 +43,15 @@ if ! docker ps >/dev/null 2>&1; then
   fi
 fi
 
+# --- Ensure shared network exists ---
+NETWORK_NAME="wmb-net"
+if ! ${DOCKER_CMD} network ls --format '{{.Name}}' | grep -q "^${NETWORK_NAME}$"; then
+  echo "==> Creating shared network: ${NETWORK_NAME}"
+  ${DOCKER_CMD} network create "${NETWORK_NAME}"
+else
+  echo "==> Shared network ${NETWORK_NAME} already exists"
+fi
+
 echo "==> Downloading GTFS dataset"
 rm -f "${GTFS_ZIP}"
 curl -fL "${GTFS_URL}" -o "${GTFS_ZIP}"
