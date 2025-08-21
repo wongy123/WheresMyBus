@@ -1,4 +1,4 @@
-import { closeDb, openDb, getRoutes } from 'gtfs';
+import { closeDb, openDb, getRoutes, getStops } from 'gtfs';
 import { readFile } from 'fs/promises';
 import path from 'node:path';
 
@@ -14,7 +14,7 @@ export async function getAllRoutes (configPath = defaultConfigPath) {
 
     const routes = getRoutes(
         {},
-        ['route_id', 'route_short_name', 'route_long_name', 'route_type', 'route_url', 'route_color', 'route_text_color'],
+        ['route_id', 'route_short_name', 'route_long_name', 'route_type', 'route_color', 'route_text_color'],
         [['route_short_name', 'ASC']]
     );
 
@@ -23,7 +23,7 @@ export async function getAllRoutes (configPath = defaultConfigPath) {
     return routes;
 };
 
-export async function getOneRoute(routeShortName, configPath = defaultConfigPath) {
+export async function getOneRoute(routeId, configPath = defaultConfigPath) {
         const config = JSON.parse(
         await readFile(path.join(import.meta.dirname, configPath))
     );
@@ -32,11 +32,42 @@ export async function getOneRoute(routeShortName, configPath = defaultConfigPath
 
     const route = getRoutes(
         {
-            route_short_name: routeShortName
+            route_id: routeId
         }
     );
 
     await closeDb(db);
 
     return route[0];
+};
+
+export async function getAllStops(configPath = defaultConfigPath) {
+    const config = JSON.parse(
+      await readFile(path.join(import.meta.dirname, configPath))
+    );
+    const db = openDb(config);
+    const stops = getStops(
+      {},
+      ['stop_id', 'stop_name', 'location_type']
+    );
+
+    closeDb(db);
+
+    return stops;
+};
+
+export async function getOneStop(stopId, configPath = defaultConfigPath) {
+  const config = JSON.parse(
+      await readFile(path.join(import.meta.dirname, configPath))
+    );
+    const db = openDb(config);
+    const stop = getStops(
+      {
+        stop_id: stopId
+      }
+    );
+
+    closeDb(db);
+
+    return stop[0];
 };
