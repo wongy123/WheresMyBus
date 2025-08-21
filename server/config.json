@@ -1,0 +1,11 @@
+{
+  "agencies": [
+    {
+      "url": "https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip",
+      "realtimeAlerts": "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts",
+      "realtimeTripUpdates": "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates",
+      "realtimeVehiclePositions": "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions"
+    }
+  ],
+  "sqlitePath": "./sqlite/translink.db"
+}
