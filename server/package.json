@@ -1,0 +1,19 @@
+{
+  "name": "wheresmybus-api",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "import": "node src/services/gtfsImport.js"
+  },
+  "author": "Angus Wong",
+  "license": "MIT",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "gtfs": "^4.17.7"
+  }
+}
