@@ -1,4 +1,4 @@
-import { getAllRoutes, getOneRoute, getAllStops, getOneStop, getAllStopTimeUpdates, getUpcomingByRoute, getUpcomingByStop } from './src/services/gtfsQueries.js';
+import { getAllRoutes, getOneRoute, getAllStops, getOneStop, getAllStopTimeUpdates, getUpcomingByRoute, getUpcomingByStop } from './src/services/gtfsQueries.service.js';
 
 // Example usage of getAllRoutes
 getAllRoutes("15").then(routes => {
