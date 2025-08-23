@@ -13,8 +13,12 @@
   "license": "MIT",
   "description": "",
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
-    "gtfs": "^4.17.7"
+    "gtfs": "^4.17.7",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "pg": "^8.16.3"
   }
 }
