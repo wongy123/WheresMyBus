@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 
 // GTFS helpers
 import { openDb, closeDb } from 'gtfs';
-import { fetchGtfsRealtime } from './src/services/gtfsRealtime.js';
+import { fetchGtfsRealtime } from './src/services/gtfsRealtime.service.js';
 
 // Routers (make sure ./src/routes/index.js exports a default Express router)
 import indexRouter from './src/routes/index.js';
