@@ -1,73 +1,104 @@
-import { closeDb, openDb, getRoutes, getStops } from 'gtfs';
+import { closeDb, openDb, getRoutes, getStops, getStopTimeUpdates } from 'gtfs';
 import { readFile } from 'fs/promises';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { fetchGtfsRealtime } from './gtfsRealtime.js';
 
-const defaultConfigPath = "../../config.json";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-export async function getAllRoutes (configPath = defaultConfigPath) {
+const defaultConfigPath = '../../config.json';
 
-    const config = JSON.parse(
-        await readFile(path.join(import.meta.dirname, configPath))
-    );
+async function loadConfig(configPath = defaultConfigPath) {
+  const full = path.join(__dirname, configPath);
+  return JSON.parse(await readFile(full, 'utf8'));
+}
 
-    const db = openDb(config);
+export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
 
-    const routes = getRoutes(
-        {},
-        ['route_id', 'route_short_name', 'route_long_name', 'route_type', 'route_color', 'route_text_color'],
-        [['route_short_name', 'ASC']]
-    );
+  let sql = `
+    SELECT route_id, route_short_name, route_long_name, route_type, route_color, route_text_color
+    FROM routes
+  `;
 
-    await closeDb(db);
+  let params = {};
+  if (searchTerm) {
+    sql += `
+      WHERE route_short_name LIKE $term OR route_long_name LIKE $term
+    `;
+    params.term = `%${searchTerm}%`;
+  }
 
-    return routes;
-};
+  sql += `
+    ORDER BY route_short_name ASC
+  `;
 
-export async function getOneRoute(routeId, configPath = defaultConfigPath) {
-        const config = JSON.parse(
-        await readFile(path.join(import.meta.dirname, configPath))
-    );
+  const routes = db.prepare(sql).all(params);
 
-    const db = openDb(config);
+  await closeDb(db);
+  return routes;
+}
 
-    const route = getRoutes(
-        {
-            route_id: routeId
-        }
-    );
+export async function getOneRoute(identifier, configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
 
-    await closeDb(db);
+  const sql = `
+    SELECT route_id, route_short_name, route_long_name, route_type, route_color, route_text_color
+    FROM routes
+    WHERE route_id = $id OR route_short_name = $id
+    LIMIT 1
+  `;
 
-    return route[0];
-};
+  const route = db.prepare(sql).get({ id: identifier });
 
-export async function getAllStops(configPath = defaultConfigPath) {
-    const config = JSON.parse(
-      await readFile(path.join(import.meta.dirname, configPath))
-    );
-    const db = openDb(config);
-    const stops = getStops(
-      {},
-      ['stop_id', 'stop_name', 'location_type']
-    );
+  await closeDb(db);
+  return route || null;
+}
 
-    closeDb(db);
+export async function getAllStops(searchTerm = '', configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
 
-    return stops;
-};
+  let sql = `
+    SELECT stop_id, stop_name, location_type
+    FROM stops
+  `;
+
+  let params = {};
+  if (searchTerm) {
+    sql += ` WHERE stop_name LIKE $term `;
+    params.term = `%${searchTerm}%`;
+  }
+
+  sql += ` ORDER BY stop_name ASC `;
+
+  const stops = db.prepare(sql).all(params);
+
+  await closeDb(db);
+  return stops;
+}
 
 export async function getOneStop(stopId, configPath = defaultConfigPath) {
-  const config = JSON.parse(
-      await readFile(path.join(import.meta.dirname, configPath))
-    );
-    const db = openDb(config);
-    const stop = getStops(
-      {
-        stop_id: stopId
-      }
-    );
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
 
-    closeDb(db);
+  const stop = getStops({ stop_id: stopId });
 
-    return stop[0];
-};
+  await closeDb(db);
+  return stop[0];
+}
+
+export async function getAllStopTimeUpdates(configPath = defaultConfigPath) {
+  await fetchGtfsRealtime(); // Ensure real-time data is updated
+
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  const stopTimeUpdates = getStopTimeUpdates();
+
+  await closeDb(db);
+  return stopTimeUpdates;
+}
