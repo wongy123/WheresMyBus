@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "import": "node src/services/gtfsImport.js"
+    "import": "node src/services/gtfsImport.js",
+    "fetchrealtime": "node src/services/gtfsRealtime.js"
   },
   "author": "Angus Wong",
   "license": "MIT",

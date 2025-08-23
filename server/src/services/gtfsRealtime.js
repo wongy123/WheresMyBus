@@ -11,3 +11,15 @@ export async function fetchGtfsRealtime() {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   await updateGtfsRealtime(config);
 }
+
+function main() {
+  fetchGtfsRealtime()
+    .then(() => {
+      console.log('GTFS Realtime data updated successfully.');
+    })
+    .catch(err => {
+      console.error('Error updating GTFS Realtime data:', err);
+    });
+}
+
+main();
