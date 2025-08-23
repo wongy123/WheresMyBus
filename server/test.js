@@ -47,8 +47,8 @@ getUpcomingByRoute("130-4158").then(upcoming => {
     console.error('Error fetching upcoming by route:', err);
 });
 
-getUpcomingByStop("19051").then(upcoming => {
-    console.log(upcoming);
-}).catch(err => {
-    console.error('Error fetching upcoming by stop:', err);
-});
+// getUpcomingByStop("19051").then(upcoming => {
+//     console.log(upcoming);
+// }).catch(err => {
+//     console.error('Error fetching upcoming by stop:', err);
+// });
