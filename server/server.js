@@ -2,7 +2,8 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
+import { initSchema, pool } from './src/models/db.js';
 
 // GTFS helpers
 import { openDb, closeDb } from 'gtfs';
@@ -12,6 +13,7 @@ import { fetchGtfsRealtime } from './src/services/gtfsRealtime.service.js';
 import indexRouter from './src/routes/index.js';
 
 dotenv.config();
+await initSchema();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +21,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const RT_UPDATE_INTERVAL_MS = Number(process.env.RT_UPDATE_INTERVAL_MS ?? 10000); // default 10s
+const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 
 const CONFIG_PATH = path.join(__dirname, './config.json');
 
@@ -70,11 +73,30 @@ function stopRealtimeLoop() {
 // ---- Express setup ----
 app.use(express.json());
 
+// make sure uploads/ exists (and a stops/ subdir for your current use)
+await mkdir(path.join(UPLOADS_DIR, 'stops'), { recursive: true });
+// serve static files (so /static/stops/.. works)
+app.use('/static', express.static(UPLOADS_DIR));
+
 app.get('/', (_req, res) => {
   res.send('Welcome to the WheresMyBus server!');
 });
 
 app.use('/api', indexRouter);
+
+// Error → JSON (includes multer file type/size errors)
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  if (err?.message === 'unsupported_file_type') {
+    return res.status(400).json({ error: 'unsupported_file_type' });
+  }
+  // Multer size limit
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'file_too_large' });
+  }
+  return res.status(500).json({ error: 'server_error' });
+});
+
 
 // ---- Start server & bootstrap background tasks ----
 const server = app.listen(PORT, async () => {
@@ -100,8 +122,12 @@ async function shutdown() {
     await new Promise(r => setTimeout(r, 100));
   }
 
-  server.close(() => {
+  server.close(async () => {
     console.log('HTTP server closed.');
+    try {
+      await pool.end();
+      console.log('Postgres pool closed.');
+    } catch {}
     process.exit(0);
   });
 
