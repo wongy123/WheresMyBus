@@ -1,8 +1,7 @@
-import { closeDb, openDb, getRoutes, getStops, getStopTimeUpdates } from 'gtfs';
+import { closeDb, openDb, getStops, getStopTimeUpdates } from 'gtfs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { fetchGtfsRealtime } from './gtfsRealtime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,8 +91,6 @@ export async function getOneStop(stopId, configPath = defaultConfigPath) {
 }
 
 export async function getAllStopTimeUpdates(configPath = defaultConfigPath) {
-  await fetchGtfsRealtime(); // Ensure real-time data is updated
-
   const config = await loadConfig(configPath);
   const db = openDb(config);
 
@@ -101,4 +98,136 @@ export async function getAllStopTimeUpdates(configPath = defaultConfigPath) {
 
   await closeDb(db);
   return stopTimeUpdates;
+}
+
+export async function getUpcomingByRoute(
+  routeId,
+  direction = 0,
+  startTime = Math.floor(Date.now() / 1000), // epoch seconds
+  duration = 7200,                           // 2 hours in seconds
+  configPath = defaultConfigPath
+) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  // Convert startTime (epoch seconds) to seconds since local midnight
+  const date = new Date(startTime * 1000);
+  const midnight = new Date(date);
+  midnight.setHours(0, 0, 0, 0);
+  const secNow = Math.floor((date - midnight) / 1000);
+  const secEnd = secNow + duration;
+
+  const sql = `
+    SELECT
+        se.route_id,
+        se.route_short_name,
+        se.route_color,
+        se.route_text_color,
+        se.service_id,
+        se.trip_id,
+        se.trip_headsign,
+        se.direction_id,
+        se.stop_id,
+        se.stop_code,
+        se.stop_name,
+        se.stop_sequence,
+        se.arrival_time AS scheduled_arrival_time,
+        se.departure_time AS scheduled_departure_time,
+        se.estimated_arrival_time,
+        se.estimated_departure_time,
+        se.arrival_delay,
+        se.departure_delay,
+        se.real_time_data,
+        se.event_sec
+    FROM stop_events_today se
+    JOIN (
+        SELECT trip_id, MIN(event_sec) AS next_event_sec
+        FROM stop_events_today
+        WHERE route_id = $routeId
+          AND direction_id = $direction
+          AND event_sec BETWEEN $startSec AND $endSec
+        GROUP BY trip_id
+    ) nxt
+      ON se.trip_id = nxt.trip_id
+     AND se.event_sec = nxt.next_event_sec
+    JOIN (
+        SELECT trip_id, event_sec, MIN(stop_sequence) AS min_seq
+        FROM stop_events_today
+        WHERE route_id = $routeId
+          AND direction_id = $direction
+          AND event_sec BETWEEN $startSec AND $endSec
+        GROUP BY trip_id, event_sec
+    ) tb
+      ON se.trip_id = tb.trip_id
+     AND se.event_sec = tb.event_sec
+     AND se.stop_sequence = tb.min_seq
+    ORDER BY se.stop_sequence DESC;
+  `;
+
+  const params = {
+    routeId,
+    direction,
+    startSec: secNow,
+    endSec: secEnd,
+  };
+
+  const rows = db.prepare(sql).all(params);
+
+  await closeDb(db);
+  return rows;
+}
+
+export async function getUpcomingByStop(
+  stopId,
+  startTime = Math.floor(Date.now() / 1000), // epoch seconds (defaults to now)
+  duration = 7200,                           // 2 hours in seconds
+  configPath = defaultConfigPath
+) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  // Convert startTime (epoch seconds) -> seconds since local midnight
+  const date = new Date(startTime * 1000);
+  const midnight = new Date(date);
+  midnight.setHours(0, 0, 0, 0);
+  const startSec = Math.floor((date - midnight) / 1000);
+  const endSec = startSec + duration;
+
+  const sql = `
+    SELECT
+      se.route_id,
+      se.route_short_name,
+      se.route_color,
+      se.route_text_color,
+      se.service_id,
+      se.trip_id,
+      se.trip_headsign,
+      se.direction_id,
+      se.stop_id,
+      se.stop_code,
+      se.stop_name,
+      se.stop_sequence,
+      se.arrival_time   AS scheduled_arrival_time,
+      se.departure_time AS scheduled_departure_time,
+      se.estimated_arrival_time,
+      se.estimated_departure_time,
+      se.arrival_delay,
+      se.departure_delay,
+      se.real_time_data
+    FROM stop_events_today se
+    WHERE se.stop_id = $stopId
+      AND se.event_sec BETWEEN $startSec AND $endSec
+    ORDER BY se.estimated_arrival_time, se.route_short_name, se.trip_id, se.stop_sequence
+  `;
+
+  const params = {
+    stopId: String(stopId),
+    startSec,
+    endSec
+  };
+
+  const rows = db.prepare(sql).all(params);
+
+  await closeDb(db);
+  return rows;
 }

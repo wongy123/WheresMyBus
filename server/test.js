@@ -1,4 +1,4 @@
-import { getAllRoutes, getOneRoute, getAllStops, getOneStop, getAllStopTimeUpdates } from './src/services/gtfsQueries.js';
+import { getAllRoutes, getOneRoute, getAllStops, getOneStop, getAllStopTimeUpdates, getUpcomingByRoute, getUpcomingByStop } from './src/services/gtfsQueries.js';
 
 // Example usage of getAllRoutes
 getAllRoutes("15").then(routes => {
@@ -40,3 +40,15 @@ getOneStop('place_qsbs').then(stop => {
 }).catch(err => {
     console.error('Error fetching all stop time updates:', err);
 }); */
+
+getUpcomingByRoute("130-4158").then(upcoming => {
+    console.log(upcoming);
+}).catch(err => {
+    console.error('Error fetching upcoming by route:', err);
+});
+
+getUpcomingByStop("19051").then(upcoming => {
+    console.log(upcoming);
+}).catch(err => {
+    console.error('Error fetching upcoming by stop:', err);
+});
