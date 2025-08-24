@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "import": "node src/services/gtfsImport.service.js",
-    "fetchrealtime": "node src/services/gtfsRealtime.service.js"
+    "fetchrealtime": "node src/services/gtfsRealtime.service.js",
+    "buildviews": "node sqlite/db.js"
   },
   "author": "Angus Wong",
   "license": "MIT",
