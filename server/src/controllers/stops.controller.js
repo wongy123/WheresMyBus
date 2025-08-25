@@ -16,6 +16,7 @@ import {
   getMyStopReview,
   listStopReviews,
   deleteMyStopReview,
+  getStopRatingSummary,
   pool
 } from '../models/db.js';
 
@@ -257,6 +258,16 @@ export async function deleteMyReview(req, res) {
     return res.status(204).send();
   } catch (e) {
     console.error('deleteMyReview:', e);
+    return res.status(500).json({ error: 'server_error' });
+  }
+}
+
+export async function getStopRating(req, res) {
+  try {
+    const data = await getStopRatingSummary(req.params.stopId);
+    return res.json({ stop_id: req.params.stopId, ...data });
+  } catch (e) {
+    console.error('getStopRating:', e);
     return res.status(500).json({ error: 'server_error' });
   }
 }

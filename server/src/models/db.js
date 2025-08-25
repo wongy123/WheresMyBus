@@ -198,3 +198,16 @@ export async function deleteMyStopReview(stop_id, user_id) {
   );
   return rowCount > 0;
 }
+
+export async function getStopRatingSummary(stop_id) {
+  const { rows } = await pool.query(
+    `SELECT
+       ROUND(AVG(rating)::numeric, 2) AS avg_rating,
+       COUNT(*)::int                AS ratings_count
+     FROM stop_review
+     WHERE stop_id = $1`,
+    [stop_id]
+  );
+  // rows[0].avg_rating will be null when count = 0 (which is fine)
+  return rows[0];
+}
