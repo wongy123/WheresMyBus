@@ -1,0 +1,23 @@
+services:
+  api:
+    build: .
+    container_name: wheresmybus-api
+    restart: always
+    env_file: .env
+    environment:
+      # Override localhost from .env so it reaches the DB container
+      PORT: 3000
+      RT_UPDATE_INTERVAL_MS: 10000
+      JWT_SECRET: supersecret
+      ACCESS_TOKEN_TTL: 60m
+      BCRYPT_ROUNDS: 12
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - wmb-net
+
+networks:
+  wmb-net:
+    external: true
