@@ -95,3 +95,35 @@ export function paginateResponse({
     links
   };
 }
+
+
+// Below are for use with PostgreSQL
+export function buildPaginationAndLinks(req, { page, limit, total }) {
+  const pageNum  = Math.max(1, Number(page || 1));
+  const limitNum = Math.max(1, Number(limit || 20));
+  const pageCount = Math.max(1, Math.ceil(total / limitNum));
+  const hasNext = pageNum < pageCount;
+  const hasPrev = pageNum > 1;
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = new URL(req.originalUrl, origin);
+
+  const make = (n) => {
+    const u = new URL(baseUrl);
+    u.searchParams.set('page', String(n));
+    u.searchParams.set('limit', String(limitNum));
+    // Return path + query (your other endpoints do this)
+    return u.pathname + u.search;
+  };
+
+  return {
+    pagination: { page: pageNum, limit: limitNum, total, pageCount, hasNext, hasPrev },
+    links: {
+      self:  make(pageNum),
+      next:  hasNext ? make(pageNum + 1) : null,
+      prev:  hasPrev ? make(pageNum - 1) : null,
+      first: make(1),
+      last:  make(pageCount),
+    }
+  };
+}
