@@ -5,6 +5,7 @@ import requests
 
 bp = Blueprint("route", __name__)
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
+BASE_PATH = os.environ.get("BASE_PATH", "")
 SUGGEST_LIMIT = int(os.environ.get("SUGGEST_LIMIT", "8"))
 
 def api_get(path, params=None):
@@ -22,10 +23,11 @@ def routes_index():
 @bp.get("/hx/routes/suggest")
 def routes_suggest():
     q = (request.args.get("q") or "").strip()
-    # dest can be "timetable" to link to /timetable/route/<id> instead of /routes/<id>
-    dest = request.args.get("dest", "details")
-    href_prefix = "/timetable/route" if dest == "timetable" else "/routes"
-
+    dest = request.args.get("dest", "details")  # "details" OR "timetable"
+    if dest == "timetable":
+        href_prefix = f"{BASE_PATH.rstrip('/')}/timetable/route"
+    else:
+        href_prefix = f"{BASE_PATH.rstrip('/')}/routes"
     items = []
     if q:
         data = api_get("routes/search", {"q": q, "limit": SUGGEST_LIMIT})

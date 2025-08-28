@@ -64,7 +64,7 @@
     <div class="d-flex justify-content-center my-3">
       <button
         class="btn btn-outline-secondary"
-        hx-get="/hx/timetable/stop/{{ stop_id }}?page={{ page + 1 }}&duration={{ duration }}"
+        hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop_id }}?page={{ page + 1 }}&duration={{ duration }}"
         hx-target="#tt-stop-results"
         hx-swap="beforeend"
       >Load more</button>

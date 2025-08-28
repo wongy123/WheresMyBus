@@ -11,15 +11,14 @@
 <div class="d-flex align-items-center gap-2 mb-3">
   <span class="text-muted">Window:</span>
   <div class="btn-group" role="group" aria-label="duration">
-    {# use links so the URL is shareable with duration #}
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="?duration=3600">1h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="?duration=7200">2h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="?duration=14400">4h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}?duration=3600">1h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}?duration=7200">2h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}?duration=14400">4h</a>
   </div>
 </div>
 
 <div id="tt-stop-results"
-     hx-get="/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}"
+     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}"
      hx-trigger="load"
      hx-target="this"
      hx-swap="innerHTML">
