@@ -5,7 +5,7 @@ import requests
 
 bp = Blueprint("timetable", __name__)
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
-DEFAULT_DURATION = int(os.environ.get("DURATION_SECONDS", "7200"))  # 2h
+DEFAULT_DURATION = int(os.environ.get("DURATION_SECONDS", "7200"))
 
 def api_get(path, params=None):
     url = f"{API_BASE.rstrip('/')}/{path.lstrip('/')}"
@@ -15,18 +15,15 @@ def api_get(path, params=None):
     resp.raise_for_status()
     return resp.json()
 
-# ---------- Entry ----------
 @bp.route("/timetable")
 def timetable_index():
     return render_template("timetable/index.html")
 
-# ---------- Shareable pages ----------
 @bp.route("/timetable/stop/<stop_id>")
 def timetable_by_stop(stop_id: str):
     stop = api_get(f"stops/{stop_id}")
     if stop is None:
         abort(404)
-    # Read duration from query (fallback 2h)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
     return render_template("timetable/stop.html", stop=stop, duration=duration)
 
@@ -42,7 +39,7 @@ def timetable_by_route(route_id: str):
     return render_template("timetable/route.html",
                            route=route, direction=direction, duration=duration)
 
-# ---------- HTMX fragments ----------
+# HTMX fragments
 @bp.get("/hx/timetable/stop/<stop_id>")
 def hx_timetable_stop(stop_id: str):
     page = request.args.get("page", 1, type=int)

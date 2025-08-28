@@ -27,7 +27,7 @@
 </div>
 
 <div id="stop-rating" 
-     hx-get="/hx/stops/{{ stop.stop_id }}/rating"
+     hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/rating"
      hx-trigger="load"
      hx-target="this"
      hx-swap="outerHTML">
@@ -53,7 +53,7 @@
 <div class="tab-content">
   <div class="tab-pane fade show active" id="images-pane" role="tabpanel" aria-labelledby="images-tab">
     <div id="stop-images"
-         hx-get="/hx/stops/{{ stop.stop_id }}/images?page=1"
+         hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images?page=1"
          hx-trigger="load"
          hx-target="this"
          hx-swap="innerHTML">
@@ -62,7 +62,7 @@
   </div>
   <div class="tab-pane fade" id="reviews-pane" role="tabpanel" aria-labelledby="reviews-tab">
     <div id="stop-reviews"
-         hx-get="/hx/stops/{{ stop.stop_id }}/reviews?page=1"
+         hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/reviews?page=1"
          hx-trigger="revealed"
          hx-target="this"
          hx-swap="innerHTML">

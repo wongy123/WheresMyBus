@@ -23,29 +23,29 @@
   <div class="btn-group" role="group" aria-label="direction">
     <button
       class="btn btn-outline-primary {{ 'active' if direction == 0 else '' }}"
-      hx-get="/hx/timetable/route/{{ route.route_id }}/upcoming?direction=0&duration={{ duration }}"
+      hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/upcoming?direction=0&duration={{ duration }}"
       hx-target="#tt-route-results"
       hx-swap="innerHTML"
-      hx-push-url="?direction=0&duration={{ duration }}"
+      hx-push-url="{{ BASE_PATH }}/timetable/route/{{ route.route_id }}?direction=0&duration={{ duration }}"
     >Inbound (0)</button>
     <button
       class="btn btn-outline-primary {{ 'active' if direction == 1 else '' }}"
-      hx-get="/hx/timetable/route/{{ route.route_id }}/upcoming?direction=1&duration={{ duration }}"
+      hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/upcoming?direction=1&duration={{ duration }}"
       hx-target="#tt-route-results"
       hx-swap="innerHTML"
-      hx-push-url="?direction=1&duration={{ duration }}"
+      hx-push-url="{{ BASE_PATH }}/timetable/route/{{ route.route_id }}?direction=1&duration={{ duration }}"
     >Outbound (1)</button>
   </div>
 
   <div class="btn-group" role="group" aria-label="duration">
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="?direction={{ direction }}&duration=3600">1h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="?direction={{ direction }}&duration=7200">2h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="?direction={{ direction }}&duration=14400">4h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="{{ BASE_PATH }}/timetable/route/{{ route.route_id }}?direction={{ direction }}&duration=3600">1h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="{{ BASE_PATH }}/timetable/route/{{ route.route_id }}?direction={{ direction }}&duration=7200">2h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="{{ BASE_PATH }}/timetable/route/{{ route.route_id }}?direction={{ direction }}&duration=14400">4h</a>
   </div>
 </div>
 
 <div id="tt-route-results"
-     hx-get="/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}"
+     hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}"
      hx-trigger="load"
      hx-target="this"
      hx-swap="innerHTML">
