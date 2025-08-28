@@ -1,0 +1,75 @@
+<!-- templates/timetable/_stop_results.html -->
+{% set rows = payload.get('data', []) %}
+{% set pg = payload.get('pagination', {}) %}
+{% set page = pg.get('page', 1) %}
+{% set has_next = pg.get('hasNext', False) %}
+
+{% if rows %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th scope="col">Time</th>
+          <th scope="col">Route</th>
+          <th scope="col">Headsign</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in rows %}
+          {% set bg = '#' + (it.route_color or 'CCCCCC') %}
+          {% set fg = '#' + (it.route_text_color or '000000') %}
+          {# choose a delay: prefer departure_delay, else arrival_delay #}
+          {% if it.departure_delay is not none %}
+            {% set dly = it.departure_delay %}
+          {% elif it.arrival_delay is not none %}
+            {% set dly = it.arrival_delay %}
+          {% else %}
+            {% set dly = none %}
+          {% endif %}
+          {% set info = dly | delay_info %}
+
+          {# choose which time to show large: estimated first if present #}
+          {% set est = it.estimated_departure_time or it.estimated_arrival_time %}
+          {% set sch = it.scheduled_departure_time or it.scheduled_arrival_time %}
+          {% set main_time = est or sch %}
+          {% set show_sched_under = est and sch and (est != sch) %}
+
+          <tr>
+            <td class="text-nowrap">
+              <div>{{ main_time }}</div>
+              {% if show_sched_under %}
+                <div class="small text-muted">sched {{ sch }}</div>
+              {% endif %}
+            </td>
+            <td class="text-nowrap">
+              <span class="badge rounded-pill" style="background-color: {{ bg }}; color: {{ fg }};">
+                {{ it.route_short_name }}
+              </span>
+            </td>
+            <td>{{ it.trip_headsign }}</td>
+            <td>
+              <span class="badge {{ info.cls }}">{{ info.label }}</span>
+              {% if it.real_time_data and info.status in ['late','early','ontime'] %}
+                <span class="badge text-bg-success ms-1">Realtime</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if has_next %}
+    <div class="d-flex justify-content-center my-3">
+      <button
+        class="btn btn-outline-secondary"
+        hx-get="/hx/timetable/stop/{{ stop_id }}?page={{ page + 1 }}&duration={{ duration }}"
+        hx-target="#tt-stop-results"
+        hx-swap="beforeend"
+      >Load more</button>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="alert alert-light border">No upcoming services in this window.</div>
+{% endif %}

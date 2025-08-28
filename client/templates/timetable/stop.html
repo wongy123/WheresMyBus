@@ -1,0 +1,28 @@
+<!-- templates/timetable/stop.html -->
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h4 mb-1">Upcoming at {{ stop.stop_name }}</h1>
+<div class="text-muted small mb-3">
+  Stop ID: <code>{{ stop.stop_id }}</code>
+  {% if stop.stop_code %} • Code: <code>{{ stop.stop_code }}</code>{% endif %}
+  {% if stop.zone_id %} • Zone: {{ stop.zone_id }}{% endif %}
+</div>
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <span class="text-muted">Window:</span>
+  <div class="btn-group" role="group" aria-label="duration">
+    {# use links so the URL is shareable with duration #}
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="?duration=3600">1h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="?duration=7200">2h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="?duration=14400">4h</a>
+  </div>
+</div>
+
+<div id="tt-stop-results"
+     hx-get="/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}"
+     hx-trigger="load"
+     hx-target="this"
+     hx-swap="innerHTML">
+  <div class="text-muted small">Loading timetable…</div>
+</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+<!-- templates/timetable/index.html -->
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 mb-4">Timetable</h1>
+
+<ul class="nav nav-pills mb-3" id="ttTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tt-stop-tab" data-bs-toggle="pill" data-bs-target="#tt-stop-pane" type="button" role="tab" aria-controls="tt-stop-pane" aria-selected="true">
+      By Stop
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tt-route-tab" data-bs-toggle="pill" data-bs-target="#tt-route-pane" type="button" role="tab" aria-controls="tt-route-pane" aria-selected="false">
+      By Route
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <!-- By Stop -->
+  <div class="tab-pane fade show active" id="tt-stop-pane" role="tabpanel" aria-labelledby="tt-stop-tab">
+    <div class="position-relative" style="max-width:700px">
+      <input
+        id="tt-stop-typeahead"
+        name="q"
+        type="search"
+        class="form-control form-control-lg"
+        placeholder="Search stop name or code…"
+        autocomplete="off"
+        aria-label="Search stops"
+        role="combobox"
+        aria-expanded="false"
+        aria-controls="tt-stop-suggest"
+        hx-get="/hx/stops/suggest?dest=timetable"
+        hx-trigger="input changed delay:250ms, search"
+        hx-target="#tt-stop-suggest"
+        hx-swap="innerHTML"
+      >
+      <div id="tt-stop-suggest" class="typeahead-list shadow-sm"></div>
+    </div>
+    <p class="mt-3 text-muted">Choose a stop to view upcoming services.</p>
+  </div>
+
+  <!-- By Route -->
+  <div class="tab-pane fade" id="tt-route-pane" role="tabpanel" aria-labelledby="tt-route-tab">
+    <div class="position-relative" style="max-width:700px">
+      <input
+        id="tt-route-typeahead"
+        name="q"
+        type="search"
+        class="form-control form-control-lg"
+        placeholder="Search route # or name…"
+        autocomplete="off"
+        aria-label="Search routes"
+        role="combobox"
+        aria-expanded="false"
+        aria-controls="tt-route-suggest"
+        hx-get="/hx/routes/suggest?dest=timetable"
+        hx-trigger="input changed delay:250ms, search"
+        hx-target="#tt-route-suggest"
+        hx-swap="innerHTML"
+      >
+      <div id="tt-route-suggest" class="typeahead-list shadow-sm"></div>
+    </div>
+    <p class="mt-3 text-muted">Choose a route to view upcoming trips by direction.</p>
+  </div>
+</div>
+{% endblock %}

@@ -22,12 +22,16 @@ def routes_index():
 @bp.get("/hx/routes/suggest")
 def routes_suggest():
     q = (request.args.get("q") or "").strip()
+    # dest can be "timetable" to link to /timetable/route/<id> instead of /routes/<id>
+    dest = request.args.get("dest", "details")
+    href_prefix = "/timetable/route" if dest == "timetable" else "/routes"
+
     items = []
     if q:
         data = api_get("routes/search", {"q": q, "limit": SUGGEST_LIMIT})
         if isinstance(data, dict):
             items = data.get("data", [])[:SUGGEST_LIMIT]
-    return render_template("routes/_suggest.html", q=q, items=items)
+    return render_template("routes/_suggest.html", q=q, items=items, href_prefix=href_prefix)
 
 @bp.route("/routes/<route_id>")
 def route_details(route_id: str):

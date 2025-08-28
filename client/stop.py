@@ -15,7 +15,6 @@ def api_get(path, params=None):
     resp.raise_for_status()
     return resp.json()
 
-# ---------- Stops: index with typeahead ----------
 @bp.route("/stops")
 def stops_index():
     return render_template("stops/index.html")
@@ -23,24 +22,24 @@ def stops_index():
 @bp.get("/hx/stops/suggest")
 def stops_suggest():
     q = (request.args.get("q") or "").strip()
+    dest = request.args.get("dest", "details")
+    href_prefix = "/timetable/stop" if dest == "timetable" else "/stops"
+
     items = []
     if q:
         data = api_get("stops/search", {"q": q, "limit": SUGGEST_LIMIT})
         if isinstance(data, dict):
             items = data.get("data", [])[:SUGGEST_LIMIT]
-    return render_template("stops/_suggest.html", q=q, items=items)
+    return render_template("stops/_suggest.html", q=q, items=items, href_prefix=href_prefix)
 
-# ---------- Stop details (page) ----------
 @bp.route("/stops/<stop_id>")
 def stop_details(stop_id: str):
     details = api_get(f"stops/{stop_id}")
     if details is None:
         abort(404)
-    # Fetch rating (small, fast) to display headline info; images/reviews lazy-load via HTMX
     rating = api_get(f"stops/{stop_id}/rating") or {}
     return render_template("stops/details.html", stop=details, rating=rating)
 
-# ---------- HTMX fragments inside details ----------
 @bp.get("/hx/stops/<stop_id>/rating")
 def stop_rating(stop_id: str):
     rating = api_get(f"stops/{stop_id}/rating") or {}
