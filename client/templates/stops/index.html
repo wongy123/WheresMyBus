@@ -1,0 +1,27 @@
+<!-- templates/stops/index.html -->
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 mb-4">Stops</h1>
+
+<div class="position-relative" style="max-width:700px">
+  <input
+    id="stop-typeahead"
+    name="q"
+    type="search"
+    class="form-control form-control-lg"
+    placeholder="Search stop name or code…"
+    autocomplete="off"
+    aria-label="Search stops"
+    role="combobox"
+    aria-expanded="false"
+    aria-controls="stop-suggest"
+    hx-get="/hx/stops/suggest"
+    hx-trigger="input changed delay:250ms, search"
+    hx-target="#stop-suggest"
+    hx-swap="innerHTML"
+  >
+  <div id="stop-suggest" class="typeahead-list shadow-sm"></div>
+</div>
+
+<p class="mt-4 text-muted">Try “City Hall”, “Garden City”, or enter a stop code.</p>
+{% endblock %}
