@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="mb-3">Timetable</h2>
+
+
+<!-- Toggle: Route or Stop -->
+<div class="mb-3">
+<div class="btn-group" role="group" aria-label="Toggle timetable type">
+<input type="radio" class="btn-check" name="ttType" id="ttRoute" autocomplete="off" checked>
+<label class="btn btn-outline-primary" for="ttRoute">By Route</label>
+
+
+<input type="radio" class="btn-check" name="ttType" id="ttStop" autocomplete="off">
+<label class="btn btn-outline-primary" for="ttStop">By Stop</label>
+</div>
+</div>
+
+
+<!-- Search -->
+<div class="input-group mb-3">
+<input id="ttQuery" type="search" class="form-control" placeholder="Search route ID or stop ID">
+<button id="ttSearch" class="btn btn-primary">Search</button>
+</div>
+
+
+<!-- Results -->
+<div id="ttStatus" class="text-muted small mb-2"></div>
+<div class="table-responsive">
+<table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th scope="col">Time</th>
+<th scope="col">Trip</th>
+<th scope="col">Headsign</th>
+<th scope="col">Stop</th>
+<th scope="col">Platform</th>
+</tr>
+</thead>
+<tbody id="ttBody"></tbody>
+</table>
+</div>
+{% endblock %}

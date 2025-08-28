@@ -10,7 +10,7 @@ import { paginateResponse } from '../utils/paginate.js';
  */
 export async function searchRoutes(req, res, next) {
   try {
-    const searchTerm = (req.query.searchTerm ?? '').trim();
+    const searchTerm = (req.query.q ?? '').trim();
     const rows = await getAllRoutes(searchTerm);
 
     const body = paginateResponse({

@@ -1,0 +1,2 @@
+/* Small, clean tweaks */
+.card img { object-fit: cover; height: 160px; }

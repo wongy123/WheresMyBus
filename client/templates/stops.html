@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="mb-3">Stops</h2>
+
+
+<!-- Search -->
+<div class="input-group mb-3">
+<input id="stopQuery" type="search" class="form-control" placeholder="Search stop by ID or name">
+<button id="stopSearch" class="btn btn-primary">Search</button>
+</div>
+<div id="stopStatus" class="text-muted small mb-3"></div>
+
+
+<!-- Stop info -->
+<div id="stopInfo" class="card d-none mb-4">
+<div class="card-body">
+<h5 class="card-title" id="stopName"></h5>
+<p class="card-text mb-1"><strong>ID:</strong> <span id="stopId"></span></p>
+<p class="card-text mb-1"><strong>Location:</strong> <span id="stopLocation"></span></p>
+<p class="card-text mb-1"><strong>Routes:</strong> <span id="stopRoutes"></span></p>
+</div>
+</div>
+
+
+<!-- Reviews -->
+<section id="reviewsSection" class="mb-4 d-none">
+<h5>Reviews</h5>
+<ul id="reviewsList" class="list-group mb-3"></ul>
+<div id="reviewFormWrapper" class="card d-none">
+<div class="card-body">
+<div class="mb-2">
+<label for="reviewText" class="form-label">Add a review</label>
+<textarea id="reviewText" class="form-control" rows="2" placeholder="Share your experience..."></textarea>
+</div>
+<button id="btnSubmitReview" class="btn btn-primary btn-sm">Submit Review</button>
+</div>
+</div>
+</section>
+
+
+<!-- Images -->
+<section id="imagesSection" class="mb-4 d-none">
+<h5>Images</h5>
+<div id="imageGrid" class="row g-2 mb-3"></div>
+
+
+<div id="imageUploadWrapper" class="card d-none">
+<div class="card-body">
+<label for="imageFile" class="form-label">Upload an image</label>
+<input id="imageFile" type="file" accept="image/*" class="form-control mb-2">
+<button id="btnUploadImage" class="btn btn-primary btn-sm">Upload</button>
+</div>
+</div>
+</section>
+{% endblock %}
