@@ -1,0 +1,32 @@
+<!-- templates/stops/_images.html -->
+{% set items = data.get('items', []) %}
+{% set pagination = data.get('pagination', {}) %}
+{% set page = pagination.get('page', 1) %}
+{% set has_next = pagination.get('hasNext', False) %}
+
+{% if items %}
+  <div class="row g-3">
+    {% for img in items %}
+      <div class="col-6 col-md-4 col-lg-3">
+        <div class="card h-100">
+          <img src="{{ img.url }}" class="card-img-top" alt="Stop image">
+          <div class="card-body p-2">
+            <small class="text-muted d-block">Uploaded {{ img.uploaded_at | to_brisbane("%d %b %Y %I:%M %p") }}</small>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% if has_next %}
+    <div class="d-flex justify-content-center my-3">
+      <button
+        class="btn btn-outline-secondary"
+        hx-get="/hx/stops/{{ stop_id }}/images?page={{ page + 1 }}"
+        hx-target="#stop-images"
+        hx-swap="beforeend"
+      >Load more</button>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="alert alert-light border">No images yet for this stop.</div>
+{% endif %}

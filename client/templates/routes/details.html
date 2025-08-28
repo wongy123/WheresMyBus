@@ -1,0 +1,36 @@
+<!-- templates/routes/details.html -->
+{% extends "base.html" %}
+{% block content %}
+{# Fields come exactly as shown by your API for /api/routes/<route_id> #}
+{% set bg = '#' + (route.route_color or 'CCCCCC') %}
+{% set fg = '#' + (route.route_text_color or '000000') %}
+
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
+  <div class="d-flex align-items-center gap-3">
+    <span class="badge rounded-pill px-3 py-2 fs-5"
+          style="background-color: {{ bg }}; color: {{ fg }};">
+      {{ route.route_short_name }}
+    </span>
+    <div>
+      <h1 class="h4 mb-1">{{ route.route_long_name }}</h1>
+      <div class="text-muted small">
+        <span class="me-3">Route ID: <code>{{ route.route_id }}</code></span>
+        <span class="me-3">Type: {{ route.route_type }}</span>
+        <span class="me-3">Color: <code>{{ bg }}</code></span>
+        <span>Text: <code>#{{ route.route_text_color }}</code></span>
+      </div>
+    </div>
+  </div>
+  <span class="route-color-chip-lg" style="background-color: {{ bg }};" aria-hidden="true"></span>
+</div>
+
+<hr class="my-4">
+
+<!-- Placeholder note (extend later with HTMX for directions/date/departures) -->
+<p class="text-muted">
+  Route details loaded from <code>/api/routes/{{ route.route_id }}</code>. You can add direction & date
+  controls here and load departures with HTMX when your API is ready.
+</p>
+
+<a class="btn btn-primary" href="/timetable?routeId={{ route.route_id }}">View full timetable</a>
+{% endblock %}

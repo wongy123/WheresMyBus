@@ -1,0 +1,27 @@
+<!-- templates/routes/index.html -->
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 mb-4">Routes</h1>
+
+<div class="position-relative" style="max-width:700px">
+  <input
+    id="route-typeahead"
+    name="q"
+    type="search"
+    class="form-control form-control-lg"
+    placeholder="Search route # or name..."
+    autocomplete="off"
+    aria-label="Search routes"
+    role="combobox"
+    aria-expanded="false"
+    aria-controls="route-suggest"
+    hx-get="/hx/routes/suggest"
+    hx-trigger="input changed delay:250ms, search"
+    hx-target="#route-suggest"
+    hx-swap="innerHTML"
+  >
+  <div id="route-suggest" class="typeahead-list shadow-sm"></div>
+</div>
+
+<p class="mt-4 text-muted">Tip: type “60”, “R603”, or a name like “Heathwood”.</p>
+{% endblock %}
