@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { readFile, mkdir } from 'node:fs/promises';
 import { initSchema, pool } from './src/models/db.js';
+import cors from 'cors';
 
 // GTFS helpers
 import { openDb, closeDb } from 'gtfs';
@@ -19,6 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.use(cors());
 const PORT = process.env.PORT || 3000;
 const RT_UPDATE_INTERVAL_MS = Number(process.env.RT_UPDATE_INTERVAL_MS ?? 10000); // default 10s
 const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');

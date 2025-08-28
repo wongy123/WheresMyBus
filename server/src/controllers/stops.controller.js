@@ -28,7 +28,7 @@ import {
  */
 export async function searchStops(req, res, next) {
   try {
-    const searchTerm = (req.query.searchTerm ?? "").trim();
+    const searchTerm = (req.query.q ?? "").trim();
     const rows = await getAllStops(searchTerm);
 
     const body = paginateResponse({
