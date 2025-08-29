@@ -1,26 +1,28 @@
-# Use a small official Python image
+# Use a minimal, official Python image
 FROM python:3.12-slim
 
-# Prevent Python from writing .pyc files and buffering stdout
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+# Set environment variables to optimize Python's behavior in a container
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Set workdir
+# Set the working directory for subsequent commands
 WORKDIR /app
 
-# Install deps first (better cache)
+# Install dependencies first for better Docker caching
+# A single layer is created for the dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your app
+# Copy the rest of the application code
 COPY . .
 
-# Flask settings (dev server)
-ENV FLASK_APP=app.py \
-    FLASK_RUN_HOST=0.0.0.0 \
-    FLASK_RUN_PORT=8000
+# Set Flask environment variables
+ENV FLASK_APP=app.py
+ENV FLASK_RUN_HOST=0.0.0.0
+ENV FLASK_RUN_PORT=8000
 
+# Expose the port the app runs on
 EXPOSE 8000
 
-# Start Flask dev server
+# Command to run the Flask development server
 CMD ["flask", "run"]

@@ -1,0 +1,15 @@
+services:
+  client:
+    build: .
+    container_name: wheresmybus-client
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - wmb-net
+
+networks:
+  wmb-net:
+    external: true

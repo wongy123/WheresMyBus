@@ -6,7 +6,7 @@ from datetime import datetime
 import pytz
 
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
-BASE_PATH = os.environ.get("BASE_PATH", "")  # e.g. "/wheresmybus"
+BASE_PATH = os.environ.get("BASE_PATH", "")
 BRISBANE_TZ = pytz.timezone("Australia/Brisbane")
 
 def create_app():
