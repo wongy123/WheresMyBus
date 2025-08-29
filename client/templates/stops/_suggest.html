@@ -1,19 +1,36 @@
 <!-- templates/stops/_suggest.html -->
 {% set has_items = items|length > 0 %}
-{% set href_prefix = href_prefix or (BASE_PATH ~ "/stops") %}
-<div class="list-group position-absolute w-100 mt-1 z-10" role="listbox" aria-label="Stop suggestions" style="max-height:320px;overflow:auto;">
+{% set href_prefix = href_prefix or "/stops" %}
+<div
+  class="list-group position-absolute w-100 mt-1 z-10"
+  role="listbox"
+  aria-label="Stop suggestions"
+  style="max-height: 320px; overflow:auto;"
+>
   {% if has_items %}
     {% for s in items %}
       {% set is_place = (s.location_type == 1) %}
-      <a href="{{ href_prefix }}/{{ s.stop_id }}" class="list-group-item list-group-item-action d-flex align-items-center justify-content-between" role="option">
+      <a
+        href="{{ href_prefix }}/{{ s.stop_id }}"
+        class="list-group-item list-group-item-action d-flex align-items-center justify-content-between"
+        role="option"
+      >
         <span class="me-3">
           <strong class="d-block">{{ s.stop_name }}</strong>
           <small class="text-muted">ID: {{ s.stop_id }}</small>
         </span>
-        {% if is_place %}<span class="badge text-bg-info">Interchange</span>{% endif %}
+        {% if is_place %}
+          <span class="badge text-bg-info">Interchange</span>
+        {% endif %}
       </a>
     {% endfor %}
   {% else %}
-    <div class="list-group-item text-muted">{% if q %}No stops match “{{ q }}”.{% else %}Start typing to search stops.{% endif %}</div>
+    <div class="list-group-item text-muted">
+      {% if q %}
+        No stops match “{{ q }}”.
+      {% else %}
+        Start typing to search stops.
+      {% endif %}
+    </div>
   {% endif %}
 </div>

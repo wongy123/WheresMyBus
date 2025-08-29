@@ -8,24 +8,24 @@
   <div class="btn-group" role="group" aria-label="direction">
     <button
       class="btn btn-outline-primary {{ 'active' if direction == 0 else '' }}"
-      hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route_id }}/upcoming?direction=0&duration={{ duration }}"
+      hx-get="/hx/timetable/route/{{ route_id }}/upcoming?direction=0&duration={{ duration }}"
       hx-target="#tt-route-results"
       hx-swap="innerHTML"
-      hx-push-url="{{ BASE_PATH }}/timetable/route/{{ route_id }}?direction=0&duration={{ duration }}"
+      hx-push-url="?direction=0&duration={{ duration }}"
     >Inbound (0)</button>
     <button
       class="btn btn-outline-primary {{ 'active' if direction == 1 else '' }}"
-      hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route_id }}/upcoming?direction=1&duration={{ duration }}"
+      hx-get="/hx/timetable/route/{{ route_id }}/upcoming?direction=1&duration={{ duration }}"
       hx-target="#tt-route-results"
       hx-swap="innerHTML"
-      hx-push-url="{{ BASE_PATH }}/timetable/route/{{ route_id }}?direction=1&duration={{ duration }}"
+      hx-push-url="?direction=1&duration={{ duration }}"
     >Outbound (1)</button>
   </div>
 
   <div class="btn-group" role="group" aria-label="duration">
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="{{ BASE_PATH }}/timetable/route/{{ route_id }}?direction={{ direction }}&duration=3600">1h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="{{ BASE_PATH }}/timetable/route/{{ route_id }}?direction={{ direction }}&duration=7200">2h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="{{ BASE_PATH }}/timetable/route/{{ route_id }}?direction={{ direction }}&duration=14400">4h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="?direction={{ direction }}&duration=3600">1h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="?direction={{ direction }}&duration=7200">2h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="?direction={{ direction }}&duration=14400">4h</a>
   </div>
 </div>
 
@@ -37,12 +37,13 @@
           <th scope="col">Time</th>
           <th scope="col">Stop</th>
           <th scope="col">Headsign</th>
-          <th scope="col">Leg</th>
+          <th scope="col">Leg</th>         {# NEW: shows sequence / total when available #}
           <th scope="col">Status</th>
         </tr>
       </thead>
       <tbody>
         {% for it in rows %}
+          {# delay selection #}
           {% if it.departure_delay is not none %}
             {% set dly = it.departure_delay %}
           {% elif it.arrival_delay is not none %}
@@ -56,6 +57,8 @@
           {% set sch = it.scheduled_departure_time or it.scheduled_arrival_time %}
           {% set main_time = est or sch %}
           {% set show_sched_under = est and sch and (est != sch) %}
+
+          {# Try to detect a total if your API later adds it #}
           {% set seq = it.stop_sequence %}
           {% set total = it.total_stops or it.stop_count or it.last_stop_sequence %}
 
@@ -68,7 +71,13 @@
             </td>
             <td class="text-nowrap">{{ it.stop_name }}</td>
             <td>{{ it.trip_headsign }}</td>
-            <td class="text-nowrap">{% if total %}{{ seq }} / {{ total }}{% else %}#{{ seq }}{% endif %}</td>
+            <td class="text-nowrap">
+              {% if total %}
+                {{ seq }} / {{ total }}
+              {% else %}
+                #{{ seq }}
+              {% endif %}
+            </td>
             <td>
               <span class="badge {{ info.cls }}">{{ info.label }}</span>
               {% if it.real_time_data and info.status in ['late','early','ontime'] %}
@@ -85,7 +94,7 @@
     <div class="d-flex justify-content-center my-3">
       <button
         class="btn btn-outline-secondary"
-        hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route_id }}/upcoming?page={{ page + 1 }}&direction={{ direction }}&duration={{ duration }}"
+        hx-get="/hx/timetable/route/{{ route_id }}/upcoming?page={{ page + 1 }}&direction={{ direction }}&duration={{ duration }}"
         hx-target="#tt-route-results"
         hx-swap="beforeend"
       >Load more</button>

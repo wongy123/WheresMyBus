@@ -21,7 +21,7 @@
     <div class="d-flex justify-content-center my-3">
       <button
         class="btn btn-outline-secondary"
-        hx-get="{{ BASE_PATH }}/hx/stops/{{ stop_id }}/images?page={{ page + 1 }}"
+        hx-get="/hx/stops/{{ stop_id }}/images?page={{ page + 1 }}"
         hx-target="#stop-images"
         hx-swap="beforeend"
       >Load more</button>
