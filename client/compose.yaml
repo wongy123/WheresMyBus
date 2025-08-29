@@ -7,7 +7,7 @@ services:
       - TZ=Australia/Brisbane
       - API_BASE_URL=http://wheresmybus-api:3000/api
     ports:
-      - "8000:8000"
+      - "5000:5000"
     volumes:
       - ./uploads:/app/uploads
     networks:
