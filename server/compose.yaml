@@ -3,12 +3,15 @@ services:
     build: .
     container_name: wheresmybus-api
     restart: always
+    env_file: .env
     environment:
       - PORT=${PORT}
       - RT_UPDATE_INTERVAL_MS=${RT_UPDATE_INTERVAL_MS}
       - JWT_SECRET=${JWT_SECRET}
       - ACCESS_TOKEN_TTL=${ACCESS_TOKEN_TTL}
       - BCRYPT_ROUNDS=${BCRYPT_ROUNDS}
+      - PGHOST=wheresmybus-db
+      - TZ=Australia/Brisbane
     ports:
       - "${PORT}:${PORT}"
     volumes:

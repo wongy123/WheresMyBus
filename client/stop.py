@@ -5,7 +5,6 @@ import requests
 
 bp = Blueprint("stop", __name__)
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
-BASE_PATH = os.environ.get("BASE_PATH", "")
 SUGGEST_LIMIT = int(os.environ.get("SUGGEST_LIMIT", "8"))
 
 def api_get(path, params=None):
@@ -23,11 +22,9 @@ def stops_index():
 @bp.get("/hx/stops/suggest")
 def stops_suggest():
     q = (request.args.get("q") or "").strip()
-    dest = request.args.get("dest", "details")  # "details" OR "timetable"
-    if dest == "timetable":
-        href_prefix = f"{BASE_PATH.rstrip('/')}/timetable/stop"
-    else:
-        href_prefix = f"{BASE_PATH.rstrip('/')}/stops"
+    dest = request.args.get("dest", "details")
+    href_prefix = "/timetable/stop" if dest == "timetable" else "/stops"
+
     items = []
     if q:
         data = api_get("stops/search", {"q": q, "limit": SUGGEST_LIMIT})

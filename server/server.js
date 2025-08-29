@@ -38,8 +38,8 @@ async function initDbPragmas() {
     // Better read/write concurrency with SQLite
     db.pragma('journal_mode = WAL');
     db.pragma('busy_timeout = 3000'); // ms
-  } finally {
-    await closeDb(db);
+  } catch (e) {
+    console.warn('Failed to set SQLite PRAGMAs (continuing):', e?.message || e);
   }
 }
 
