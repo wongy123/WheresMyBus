@@ -3,7 +3,13 @@ FROM python:3.12-slim
 
 # Set environment variables to optimize Python's behavior in a container
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=
+
+# Install the tzdata package
+RUN apk add --no-cache tzdata
+
+# Set the timezone
+ENV TZ=Australia/Brisbane
 
 # Set the working directory for subsequent commands
 WORKDIR /app
