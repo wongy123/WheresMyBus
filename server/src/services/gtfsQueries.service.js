@@ -118,50 +118,51 @@ export async function getUpcomingByRoute(
   const secEnd = secNow + duration;
 
   const sql = `
-    SELECT
-        se.route_id,
-        se.route_short_name,
-        se.route_color,
-        se.route_text_color,
-        se.service_id,
-        se.trip_id,
-        se.trip_headsign,
-        se.direction_id,
-        se.stop_id,
-        se.stop_code,
-        se.stop_name,
-        se.stop_sequence,
-        se.arrival_time AS scheduled_arrival_time,
-        se.departure_time AS scheduled_departure_time,
-        se.estimated_arrival_time,
-        se.estimated_departure_time,
-        se.arrival_delay,
-        se.departure_delay,
-        se.real_time_data,
-        se.event_sec
-    FROM stop_events_today se
-    JOIN (
-        SELECT trip_id, MIN(event_sec) AS next_event_sec
-        FROM stop_events_today
-        WHERE route_id = $routeId
-          AND direction_id = $direction
-          AND event_sec BETWEEN $startSec AND $endSec
-        GROUP BY trip_id
-    ) nxt
-      ON se.trip_id = nxt.trip_id
-     AND se.event_sec = nxt.next_event_sec
-    JOIN (
-        SELECT trip_id, event_sec, MIN(stop_sequence) AS min_seq
-        FROM stop_events_today
-        WHERE route_id = $routeId
-          AND direction_id = $direction
-          AND event_sec BETWEEN $startSec AND $endSec
-        GROUP BY trip_id, event_sec
-    ) tb
-      ON se.trip_id = tb.trip_id
-     AND se.event_sec = tb.event_sec
-     AND se.stop_sequence = tb.min_seq
-    ORDER BY se.stop_sequence DESC;
+SELECT
+    se.route_id,
+    se.route_short_name,
+    se.route_color,
+    se.route_text_color,
+    se.service_id,
+    se.trip_id,
+    se.trip_headsign,
+    se.direction_id,
+    se.stop_id,
+    se.stop_code,
+    se.stop_name,
+    se.stop_sequence,
+    se.arrival_time   AS scheduled_arrival_time,
+    se.departure_time AS scheduled_departure_time,
+    se.estimated_arrival_time,
+    se.estimated_departure_time,
+    se.arrival_delay,
+    se.departure_delay,
+    se.real_time_data,
+    se.event_sec,      -- keep for response continuity
+    se.win_sec         -- new: used for filtering/ordering across midnight
+FROM stop_events_3day se
+JOIN (
+    SELECT trip_id, MIN(win_sec) AS next_win_sec
+    FROM stop_events_3day
+    WHERE route_id = $routeId
+      AND direction_id = $direction
+      AND win_sec BETWEEN $startSec AND $endSec
+    GROUP BY trip_id
+) nxt
+  ON se.trip_id = nxt.trip_id
+ AND se.win_sec = nxt.next_win_sec
+JOIN (
+    SELECT trip_id, win_sec, MIN(stop_sequence) AS min_seq
+    FROM stop_events_3day
+    WHERE route_id = $routeId
+      AND direction_id = $direction
+      AND win_sec BETWEEN $startSec AND $endSec
+    GROUP BY trip_id, win_sec
+) tb
+  ON se.trip_id = tb.trip_id
+ AND se.win_sec = tb.win_sec
+ AND se.stop_sequence = tb.min_seq
+ORDER BY se.win_sec ASC;
   `;
 
   const params = {
@@ -214,10 +215,10 @@ export async function getUpcomingByStop(
       se.arrival_delay,
       se.departure_delay,
       se.real_time_data
-    FROM stop_events_today se
+    FROM stop_events_3day se
     WHERE se.stop_id = $stopId
-      AND se.event_sec BETWEEN $startSec AND $endSec
-    ORDER BY se.estimated_arrival_time, se.route_short_name, se.trip_id, se.stop_sequence
+      AND se.win_sec BETWEEN $startSec AND $endSec
+    ORDER BY se.win_sec, se.route_short_name, se.trip_id, se.stop_sequence
   `;
 
   const params = {

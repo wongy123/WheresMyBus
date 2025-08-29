@@ -11,13 +11,34 @@ const SQL_DIR = path.resolve(__dirname, 'sql');
 // Explicit dependency order so CREATE VIEW statements don’t fail.
 // (We’ll run any extra .sql files alphabetically after these.)
 const VIEW_ORDER = [
-  'active_services_today.sql',        // base
-  'trips_today.sql',                  // depends on active_services_today
-  'trips_today_with_routes.sql',      // depends on trips_today
-  'stop_time_updates_latest.sql',     // independent table -> view
-  'stop_times_today.sql',             // depends on trips_today
-  'stop_events_today.sql'             // depends on stop_times_today + stop_time_updates_latest
+  // 1) Service activation windows
+  'active_services_yesterday.sql',
+  'active_services_today.sql',
+  'active_services_tomorrow.sql',
+
+  // 2) Trips per service window
+  'trips_yesterday.sql',
+  'trips_today.sql',
+  'trips_tomorrow.sql',
+  'trips_today_with_routes.sql', // if used elsewhere; safe to keep after trips_today
+
+  // 3) Realtime snapshot used by stop_event* views
+  'stop_time_updates_latest.sql',
+
+  // 4) Stop times per window (depend on trips_* above)
+  'stop_times_yesterday.sql',
+  'stop_times_today.sql',
+  'stop_times_tomorrow.sql',
+
+  // 5) Stop events per window (depend on stop_times_* and RT)
+  'stop_events_yesterday.sql',
+  'stop_events_today.sql',
+  'stop_events_tomorrow.sql',
+
+  // 6) Union view providing win_sec across midnight
+  'stop_events_3day.sql'
 ];
+
 
 // Try common locations or specify GTFS_CONFIG=/path/to/config.json
 const CONFIG_CANDIDATES = [
