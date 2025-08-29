@@ -4,6 +4,12 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Install the tzdata package using apk
+RUN apk add --no-cache tzdata
+
+# Set the timezone
+ENV TZ=Australia/Brisbane
+
 # Build deps for native modules (bcrypt, sqlite/better-sqlite3, etc.)
 RUN apk add --no-cache python3 make g++
 
