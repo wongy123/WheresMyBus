@@ -1,0 +1,48 @@
+{% set has = review is not none and review != {} and review.get('rating') %}
+<form
+  class="card p-3"
+  hx-put="{{ BASE_PATH }}/hx/stops/{{ stop_id }}/review"
+  hx-target="#your-review"
+  hx-swap="outerHTML"
+  hx-on::after-request="window.location.reload()"
+>
+  <div class="mb-2">
+    <label class="form-label">Rating</label>
+    <select name="rating" class="form-select" required>
+      {% for r in [5,4,3,2,1] %}
+        <option value="{{ r }}" {{ 'selected' if has and review.rating == r else '' }}>
+          {{ r }} ★
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Comment</label>
+    <textarea name="comment" class="form-control" rows="3" placeholder="Your thoughts…">{{ review.comment if has else '' }}</textarea>
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary" type="submit">{{ 'Update review' if has else 'Submit review' }}</button>
+    {% if has %}
+        <button
+            class="btn btn-outline-danger"
+            hx-delete="{{ BASE_PATH }}/hx/stops/{{ stop_id }}/review"
+            hx-target="#your-review"
+            hx-swap="outerHTML"
+            hx-confirm="Delete your review?"
+            hx-on::after-request="window.location.reload()"
+        >
+        Delete review
+        </button>
+    {% endif %}
+  </div>
+
+  {% if has %}
+    <div class="small text-muted mt-2">
+      {% if review.updated_at %}
+        Updated {{ review.updated_at|to_brisbane }}
+      {% else %}
+        Created {{ review.created_at|to_brisbane }}
+      {% endif %}
+    </div>
+  {% endif %}
+</form>

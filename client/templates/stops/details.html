@@ -1,29 +1,10 @@
-<!-- templates/stops/details.html -->
 {% extends "base.html" %}
 {% block content %}
-{# stop: full object from /api/stops/<stop_id> #}
-<div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-3">
-  <div>
-    <h1 class="h4 mb-1">{{ stop.stop_name }}</h1>
-    <div class="text-muted small">
-      <span class="me-3">Stop ID: <code>{{ stop.stop_id }}</code></span>
-      {% if stop.stop_code %}<span class="me-3">Code: <code>{{ stop.stop_code }}</code></span>{% endif %}
-      {% if stop.zone_id %}<span class="me-3">Zone: {{ stop.zone_id }}</span>{% endif %}
-      {% if stop.location_type == 1 %}<span class="badge text-bg-info align-middle">Interchange</span>{% endif %}
-    </div>
-  </div>
-  <div class="text-end">
-    {% if stop.stop_lat and stop.stop_lon %}
-      <a class="btn btn-outline-secondary btn-sm"
-         target="_blank"
-         href="https://www.google.com/maps?q={{ stop.stop_lat }},{{ stop.stop_lon }}">
-        Open in Maps
-      </a>
-    {% endif %}
-    {% if stop.stop_url %}
-      <a class="btn btn-outline-primary btn-sm" target="_blank" href="{{ stop.stop_url }}">Translink page</a>
-    {% endif %}
-  </div>
+<h1 class="h4 mb-1">{{ stop.stop_name }}</h1>
+<div class="text-muted small mb-3">
+  Stop ID: <code>{{ stop.stop_id }}</code>
+  {% if stop.stop_code %} • Code: <code>{{ stop.stop_code }}</code>{% endif %}
+  {% if stop.zone_id %} • Zone: {{ stop.zone_id }}{% endif %}
 </div>
 
 <div id="stop-rating" 
@@ -40,35 +21,60 @@
   </a>
 </div>
 
-<hr class="my-4">
+<hr>
 
-<ul class="nav nav-pills mb-3" id="stopTabs" role="tablist">
-  <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="images-tab" data-bs-toggle="pill" data-bs-target="#images-pane" type="button" role="tab" aria-controls="images-pane" aria-selected="true">
-      Images
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="reviews-tab" data-bs-toggle="pill" data-bs-target="#reviews-pane" type="button" role="tab" aria-controls="reviews-pane" aria-selected="false">
-      Reviews
-    </button>
-  </li>
-</ul>
+<div class="row g-4">
+  <div class="col-lg-7">
+    <h2 class="h5">Photos</h2>
 
-<div class="tab-content">
-  <div class="tab-pane fade show active" id="images-pane" role="tabpanel" aria-labelledby="images-tab">
+    {% if current_user %}
+      <!-- Upload form -->
+      <form
+        class="d-flex align-items-center gap-2 mb-3"
+        hx-post="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images"
+        hx-encoding="multipart/form-data"
+        hx-target="#image-upload-result"
+        hx-swap="innerHTML"
+        hx-on::after-request="htmx.ajax('GET', '{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images', {target:'#stop-images', swap:'innerHTML'});"
+      >
+        <input class="form-control form-control-sm" type="file" name="file" accept="image/*" required>
+        <button class="btn btn-secondary btn-sm" type="submit">Upload</button>
+      </form>
+      <div id="image-upload-result"></div>
+    {% endif %}
+
+    <!-- Images list -->
     <div id="stop-images"
-         hx-get="/hx/stops/{{ stop.stop_id }}/images?page=1"
+         hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images"
          hx-trigger="load"
          hx-target="this"
          hx-swap="innerHTML">
       <div class="text-muted small">Loading images…</div>
     </div>
   </div>
-  <div class="tab-pane fade" id="reviews-pane" role="tabpanel" aria-labelledby="reviews-tab">
-    <div id="stop-reviews"
-         hx-get="/hx/stops/{{ stop.stop_id }}/reviews?page=1"
-         hx-trigger="revealed"
+
+  <div class="col-lg-5">
+    <h2 class="h5">Your review</h2>
+    {% if current_user %}
+      <div id="your-review"
+           hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/review/form"
+           hx-trigger="load"
+           hx-target="this"
+           hx-swap="innerHTML">
+        <div class="text-muted small">Loading your review…</div>
+      </div>
+    {% else %}
+      <div class="alert alert-light border small">
+        <a href="{{ BASE_PATH }}/login">Log in</a> to rate and comment on this stop.
+      </div>
+    {% endif %}
+
+    <hr class="my-4">
+
+    <h2 class="h6 text-muted">All reviews</h2>
+    <div id="all-reviews"
+         hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/reviews"
+         hx-trigger="load"
          hx-target="this"
          hx-swap="innerHTML">
       <div class="text-muted small">Loading reviews…</div>
