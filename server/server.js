@@ -25,6 +25,14 @@ const PORT = process.env.PORT || 3000;
 const RT_UPDATE_INTERVAL_MS = Number(process.env.RT_UPDATE_INTERVAL_MS ?? 10000); // default 10s
 const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 
+// Never time out any request/response (useful for slow CPUs / load tests)
+app.use((req, res, next) => {
+  // Disable timeouts on the underlying sockets
+  if (typeof req.setTimeout === 'function') req.setTimeout(0);
+  if (typeof res.setTimeout === 'function') res.setTimeout(0);
+  next();
+});
+
 const CONFIG_PATH = path.join(__dirname, './config.json');
 
 async function loadConfig() {
@@ -112,6 +120,11 @@ const server = app.listen(PORT, async () => {
 
   startRealtimeLoop();
 });
+
+// Fully disable Node http timeouts (headers + entire request + socket inactivity)
+server.setTimeout(0);        // socket inactivity timeout (legacy)
+server.requestTimeout = 0;   // time to receive entire request (default ~5m)
+server.headersTimeout = 0;   // time to receive headers (default ~60s)
 
 // ---- Graceful shutdown ----
 async function shutdown() {
