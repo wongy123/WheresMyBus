@@ -31,6 +31,7 @@
               <span class="navbar-text text-light small mb-0">
                 Welcome, {{ current_user.username }}
               </span>
+              <a class="btn btn-outline-light btn-sm" href="{{ BASE_PATH }}/user">Account</a>
               <form method="post" action="{{ BASE_PATH }}/logout" class="mb-0">
                 <button class="btn btn-outline-warning btn-sm" type="submit">Logout</button>
               </form>
