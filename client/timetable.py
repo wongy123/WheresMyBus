@@ -28,7 +28,7 @@ def timetable_by_stop(stop_id: str):
         abort(404)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
     page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 20, type=int)
+    limit = request.args.get("limit", 10, type=int)
     return render_template("timetable/stop.html", stop=stop, duration=duration, page=page, limit=limit)
 
 @bp.route("/timetable/route/<route_id>")
@@ -39,7 +39,7 @@ def timetable_by_route(route_id: str):
     direction = request.args.get("direction", default=0, type=int)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
     page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 20, type=int)
+    limit = request.args.get("limit", 10, type=int)
     if direction not in (0, 1):
         direction = 0
     return render_template("timetable/route.html",
@@ -50,7 +50,7 @@ def timetable_by_route(route_id: str):
 @bp.get("/hx/timetable/stop/<stop_id>")
 def hx_timetable_stop(stop_id: str):
     page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 20, type=int)
+    limit = request.args.get("limit", 10, type=int)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
     resp = api_get(f"stops/{stop_id}/timetable", {"page": page, "limit": limit, "duration": duration})
 
@@ -68,7 +68,7 @@ def hx_timetable_stop(stop_id: str):
 @bp.get("/hx/timetable/route/<route_id>/upcoming")
 def hx_timetable_route(route_id: str):
     page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 20, type=int)
+    limit = request.args.get("limit", 10, type=int)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
     direction = request.args.get("direction", default=0, type=int)
     if direction not in (0, 1):

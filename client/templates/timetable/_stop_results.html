@@ -58,10 +58,17 @@
         {% set prev_page = page - 1 %}
         {% set next_page = page + 1 %}
 
+        <!-- First -->
         <li class="page-item {{ 'disabled' if page <= 1 else '' }}">
-          <a class="page-link" href="?duration={{ duration }}&page={{ prev_page }}&limit={{ limit }}">Previous</a>
+          <a class="page-link" href="?duration={{ duration }}&page=1&limit={{ limit }}" aria-label="First">« First</a>
         </li>
 
+        <!-- Prev -->
+        <li class="page-item {{ 'disabled' if page <= 1 else '' }}">
+          <a class="page-link" href="?duration={{ duration }}&page={{ prev_page }}&limit={{ limit }}" aria-label="Previous">‹ Prev</a>
+        </li>
+
+        {# window of pages #}
         {% set start = (page - 2) if page > 3 else 1 %}
         {% set start = 1 if start < 1 else start %}
         {% set end = start + 4 %}
@@ -77,8 +84,14 @@
           </li>
         {% endfor %}
 
+        <!-- Next -->
         <li class="page-item {{ 'disabled' if page >= page_count else '' }}">
-          <a class="page-link" href="?duration={{ duration }}&page={{ next_page }}&limit={{ limit }}">Next</a>
+          <a class="page-link" href="?duration={{ duration }}&page={{ next_page }}&limit={{ limit }}" aria-label="Next">Next ›</a>
+        </li>
+
+        <!-- Last -->
+        <li class="page-item {{ 'disabled' if page >= page_count else '' }}">
+          <a class="page-link" href="?duration={{ duration }}&page={{ page_count }}&limit={{ limit }}" aria-label="Last">Last »</a>
         </li>
       </ul>
     </nav>
