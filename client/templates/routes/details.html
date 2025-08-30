@@ -26,11 +26,5 @@
 
 <hr class="my-4">
 
-<!-- Placeholder note (extend later with HTMX for directions/date/departures) -->
-<p class="text-muted">
-  Route details loaded from <code>/api/routes/{{ route.route_id }}</code>. You can add direction & date
-  controls here and load departures with HTMX when your API is ready.
-</p>
-
-<a class="btn btn-primary" href="/timetable?routeId={{ route.route_id }}">View full timetable</a>
+<a class="btn btn-primary" href="/timetable/route/{{ route.route_id }}">View timetable</a>
 {% endblock %}
