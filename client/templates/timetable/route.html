@@ -23,7 +23,7 @@
     <input type="hidden" name="direction" value="{{ direction }}">
     <input type="hidden" name="duration" value="{{ duration }}">
     <input type="hidden" name="page" value="1">
-    <label for="limit" class="small text-muted">Per page</label>
+    <label for="limit" class="small text-muted text-nowrap">Per page</label>
     <select id="limit" name="limit" class="form-select form-select-sm" onchange="this.form.submit()">
       {% for opt in [5,10,15,20] %}
         <option value="{{ opt }}" {{ 'selected' if limit == opt else '' }}>{{ opt }}</option>
