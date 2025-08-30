@@ -5,7 +5,8 @@ import requests
 
 bp = Blueprint("stop", __name__)
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
-SUGGEST_LIMIT = int(os.environ.get("SUGGEST_LIMIT", "8"))
+BASE_PATH = os.environ.get("BASE_PATH", "")
+SUGGEST_LIMIT_DEFAULT = int(os.environ.get("SUGGEST_LIMIT", "5"))
 
 def api_get(path, params=None):
     url = f"{API_BASE.rstrip('/')}/{path.lstrip('/')}"
@@ -17,20 +18,38 @@ def api_get(path, params=None):
 
 @bp.route("/stops")
 def stops_index():
-    return render_template("stops/index.html")
+    return render_template("stops/index.html", BASE_PATH=BASE_PATH)
 
 @bp.get("/hx/stops/suggest")
 def stops_suggest():
     q = (request.args.get("q") or "").strip()
     dest = request.args.get("dest", "details")
-    href_prefix = "/timetable/stop" if dest == "timetable" else "/stops"
+    href_prefix = f"{BASE_PATH}/timetable/stop" if dest == "timetable" else f"{BASE_PATH}/stops"
 
-    items = []
+    # NEW: pagination params
+    page = request.args.get("page", 1, type=int)
+    limit = request.args.get("limit", SUGGEST_LIMIT_DEFAULT, type=int)
+    suggest_id = request.args.get("suggest_id", "stop-suggest-list")
+
+    items, pagination = [], {}
     if q:
-        data = api_get("stops/search", {"q": q, "limit": SUGGEST_LIMIT})
-        if isinstance(data, dict):
-            items = data.get("data", [])[:SUGGEST_LIMIT]
-    return render_template("stops/_suggest.html", q=q, items=items, href_prefix=href_prefix)
+        data = api_get("stops/search", {"q": q, "page": page, "limit": limit}) or {}
+        items = data.get("data", [])
+        pagination = data.get("pagination", {})
+
+    suggest_url = f"{BASE_PATH}/hx/stops/suggest"
+
+    return render_template(
+        "stops/_suggest.html",
+        q=q,
+        items=items,
+        pagination=pagination,
+        limit=limit,
+        href_prefix=href_prefix,
+        suggest_id=suggest_id,
+        suggest_url=suggest_url,
+        BASE_PATH=BASE_PATH,
+    )
 
 @bp.route("/stops/<stop_id>")
 def stop_details(stop_id: str):
@@ -38,7 +57,7 @@ def stop_details(stop_id: str):
     if details is None:
         abort(404)
     rating = api_get(f"stops/{stop_id}/rating") or {}
-    return render_template("stops/details.html", stop=details, rating=rating)
+    return render_template("stops/details.html", stop=details, rating=rating, BASE_PATH=BASE_PATH)
 
 @bp.get("/hx/stops/<stop_id>/rating")
 def stop_rating(stop_id: str):
