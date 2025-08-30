@@ -8,21 +8,41 @@
   {% if stop.zone_id %} • Zone: {{ stop.zone_id }}{% endif %}
 </div>
 
-<div class="d-flex align-items-center gap-2 mb-3">
-  <span class="text-muted">Window:</span>
-  <div class="btn-group" role="group" aria-label="duration">
-    {# use links so the URL is shareable with duration #}
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="?duration=3600">1h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="?duration=7200">2h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="?duration=14400">4h</a>
+<div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-muted">Window:</span>
+    <div class="btn-group" role="group" aria-label="duration">
+      <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}"
+         href="?duration=3600&page=1&limit={{ limit }}">1h</a>
+      <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}"
+         href="?duration=7200&page=1&limit={{ limit }}">2h</a>
+      <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}"
+         href="?duration=14400&page=1&limit={{ limit }}">4h</a>
+    </div>
   </div>
+
+  <!-- Page size control -->
+  <form class="d-flex align-items-center gap-2" method="get">
+    <input type="hidden" name="duration" value="{{ duration }}">
+    <input type="hidden" name="page" value="1">
+    <label for="limit" class="small text-muted">Per page</label>
+    <select id="limit" name="limit" class="form-select form-select-sm" onchange="this.form.submit()">
+      {% for opt in [5,10,15,20] %}
+        <option value="{{ opt }}" {{ 'selected' if limit == opt else '' }}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </form>
 </div>
 
 <div id="tt-stop-results"
-     hx-get="/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}"
+     hx-get="/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}&page={{ page }}&limit={{ limit }}"
      hx-trigger="load"
      hx-target="this"
-     hx-swap="innerHTML">
-  <div class="text-muted small">Loading timetable…</div>
+     hx-swap="innerHTML"
+     aria-live="polite">
+  <div class="text-muted small d-flex align-items-center gap-2 htmx-indicator">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>Loading timetable…</span>
+  </div>
 </div>
 {% endblock %}

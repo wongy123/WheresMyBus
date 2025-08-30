@@ -17,38 +17,48 @@
       </div>
     </div>
   </div>
+
+  <!-- Page size control (navigates to keep consistency) -->
+  <form class="d-flex align-items-center gap-2 ms-auto" method="get">
+    <input type="hidden" name="direction" value="{{ direction }}">
+    <input type="hidden" name="duration" value="{{ duration }}">
+    <input type="hidden" name="page" value="1">
+    <label for="limit" class="small text-muted">Per page</label>
+    <select id="limit" name="limit" class="form-select form-select-sm" onchange="this.form.submit()">
+      {% for opt in [5,10,15,20] %}
+        <option value="{{ opt }}" {{ 'selected' if limit == opt else '' }}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </form>
 </div>
 
 <div id="tt-route-controls" class="d-flex align-items-center gap-3 mb-3">
   <div class="btn-group" role="group" aria-label="direction">
-    <button
-      class="btn btn-outline-primary {{ 'active' if direction == 0 else '' }}"
-      hx-get="/hx/timetable/route/{{ route.route_id }}/upcoming?direction=0&duration={{ duration }}"
-      hx-target="#tt-route-results"
-      hx-swap="innerHTML"
-      hx-push-url="?direction=0&duration={{ duration }}"
-    >Inbound (0)</button>
-    <button
-      class="btn btn-outline-primary {{ 'active' if direction == 1 else '' }}"
-      hx-get="/hx/timetable/route/{{ route.route_id }}/upcoming?direction=1&duration={{ duration }}"
-      hx-target="#tt-route-results"
-      hx-swap="innerHTML"
-      hx-push-url="?direction=1&duration={{ duration }}"
-    >Outbound (1)</button>
+    <a class="btn btn-outline-primary {{ 'active' if direction == 0 else '' }}"
+       href="?duration={{ duration }}&page=1&limit={{ limit }}">Inbound</a>
+    <a class="btn btn-outline-primary {{ 'active' if direction == 1 else '' }}"
+       href="?direction=1&duration={{ duration }}&page=1&limit={{ limit }}">Outbound</a>
   </div>
 
   <div class="btn-group" role="group" aria-label="duration">
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}" href="?direction={{ direction }}&duration=3600">1h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}" href="?direction={{ direction }}&duration=7200">2h</a>
-    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}" href="?direction={{ direction }}&duration=14400">4h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}"
+       href="?direction={{ direction }}&duration=3600&page=1&limit={{ limit }}">1h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}"
+       href="?direction={{ direction }}&duration=7200&page=1&limit={{ limit }}">2h</a>
+    <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}"
+       href="?direction={{ direction }}&duration=14400&page=1&limit={{ limit }}">4h</a>
   </div>
 </div>
 
 <div id="tt-route-results"
-     hx-get="/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}"
+     hx-get="/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}&page={{ page }}&limit={{ limit }}"
      hx-trigger="load"
      hx-target="this"
-     hx-swap="innerHTML">
-  <div class="text-muted small">Loading timetable…</div>
+     hx-swap="innerHTML"
+     aria-live="polite">
+  <div class="text-muted small d-flex align-items-center gap-2 htmx-indicator">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>Loading timetable…</span>
+  </div>
 </div>
 {% endblock %}

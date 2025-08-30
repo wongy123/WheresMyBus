@@ -1,8 +1,10 @@
 <!-- templates/timetable/_stop_results.html -->
-{% set rows = payload.get('data', []) %}
-{% set pg = payload.get('pagination', {}) %}
-{% set page = pg.get('page', 1) %}
-{% set has_next = pg.get('hasNext', False) %}
+{% set rows = rows or payload.get('data', []) if payload is defined else rows %}
+{% set pg = pagination or payload.get('pagination', {}) if payload is defined else pagination %}
+{% set page = page or pg.get('page', 1) %}
+{% set limit = limit or 20 %}
+{% set page_count = pg.get('pageCount', 1) %}
+{% set total = pg.get('total', 0) %}
 
 {% if rows %}
   <div class="table-responsive">
@@ -19,17 +21,8 @@
         {% for it in rows %}
           {% set bg = '#' + (it.route_color or 'CCCCCC') %}
           {% set fg = '#' + (it.route_text_color or '000000') %}
-          {# choose a delay: prefer departure_delay, else arrival_delay #}
-          {% if it.departure_delay is not none %}
-            {% set dly = it.departure_delay %}
-          {% elif it.arrival_delay is not none %}
-            {% set dly = it.arrival_delay %}
-          {% else %}
-            {% set dly = none %}
-          {% endif %}
+          {% set dly = it.departure_delay if it.departure_delay is not none else (it.arrival_delay if it.arrival_delay is not none else none) %}
           {% set info = dly | delay_info %}
-
-          {# choose which time to show large: estimated first if present #}
           {% set est = it.estimated_departure_time or it.estimated_arrival_time %}
           {% set sch = it.scheduled_departure_time or it.scheduled_arrival_time %}
           {% set main_time = est or sch %}
@@ -38,14 +31,10 @@
           <tr>
             <td class="text-nowrap">
               <div>{{ main_time }}</div>
-              {% if show_sched_under %}
-                <div class="small text-muted">sched {{ sch }}</div>
-              {% endif %}
+              {% if show_sched_under %}<div class="small text-muted">sched {{ sch }}</div>{% endif %}
             </td>
             <td class="text-nowrap">
-              <span class="badge rounded-pill" style="background-color: {{ bg }}; color: {{ fg }};">
-                {{ it.route_short_name }}
-              </span>
+              <span class="badge rounded-pill" style="background-color: {{ bg }}; color: {{ fg }};">{{ it.route_short_name }}</span>
             </td>
             <td>{{ it.trip_headsign }}</td>
             <td>
@@ -60,15 +49,39 @@
     </table>
   </div>
 
-  {% if has_next %}
-    <div class="d-flex justify-content-center my-3">
-      <button
-        class="btn btn-outline-secondary"
-        hx-get="/hx/timetable/stop/{{ stop_id }}?page={{ page + 1 }}&duration={{ duration }}"
-        hx-target="#tt-stop-results"
-        hx-swap="beforeend"
-      >Load more</button>
-    </div>
+  {% if page_count > 1 %}
+    <nav class="d-flex justify-content-between align-items-center">
+      <div class="small text-muted">
+        Page {{ page }} of {{ page_count }}{% if total %} • {{ total }} results{% endif %}
+      </div>
+      <ul class="pagination pagination-sm mb-0">
+        {% set prev_page = page - 1 %}
+        {% set next_page = page + 1 %}
+
+        <li class="page-item {{ 'disabled' if page <= 1 else '' }}">
+          <a class="page-link" href="?duration={{ duration }}&page={{ prev_page }}&limit={{ limit }}">Previous</a>
+        </li>
+
+        {% set start = (page - 2) if page > 3 else 1 %}
+        {% set start = 1 if start < 1 else start %}
+        {% set end = start + 4 %}
+        {% if end > page_count %}{% set end = page_count %}{% endif %}
+        {% if (end - start) < 4 and page_count >= 5 %}
+          {% set start = end - 4 %}
+          {% if start < 1 %}{% set start = 1 %}{% endif %}
+        {% endif %}
+
+        {% for p in range(start, end + 1) %}
+          <li class="page-item {{ 'active' if p == page else '' }}">
+            <a class="page-link" href="?duration={{ duration }}&page={{ p }}&limit={{ limit }}">{{ p }}</a>
+          </li>
+        {% endfor %}
+
+        <li class="page-item {{ 'disabled' if page >= page_count else '' }}">
+          <a class="page-link" href="?duration={{ duration }}&page={{ next_page }}&limit={{ limit }}">Next</a>
+        </li>
+      </ul>
+    </nav>
   {% endif %}
 {% else %}
   <div class="alert alert-light border">No upcoming services in this window.</div>
