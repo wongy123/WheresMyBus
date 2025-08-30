@@ -46,8 +46,3 @@ export async function login(req, res) {
     return res.status(500).json({ error: 'server_error' });
   }
 }
-
-export async function logout(_req, res) {
-  // stateless JWT: nothing to do server-side
-  return res.status(204).send();
-}
