@@ -1,11 +1,25 @@
-<!-- templates/stops/_suggest.html -->
-{% set has_items = items|length > 0 %}
-{% set href_prefix = href_prefix or "/stops" %}
+{% set has_items   = items|length > 0 %}
+{% set q           = q or '' %}
+{% set href_prefix = href_prefix
+  or (BASE_PATH ~ '/stops' if BASE_PATH is defined else '/stops') %}
+{% set suggest_url = suggest_url
+  or (BASE_PATH ~ '/hx/stops/suggest' if BASE_PATH is defined else '/hx/stops/suggest') %}
+
+{% set pg = pagination or {} %}
+{% set page = pg.get('page', 1) %}
+{% set limit = limit or pg.get('limit', 5) %}
+{% set total = pg.get('total', 0) %}
+{% set page_count = pg.get('pageCount', 1) %}
+{% set has_prev = pg.get('hasPrev', page > 1) %}
+{% set has_next = pg.get('hasNext', page < page_count) %}
+{% set target_id = suggest_id or 'stop-suggest-list' %}
+
 <div
+  id="{{ target_id }}"
   class="list-group position-absolute w-100 mt-1 z-10"
   role="listbox"
   aria-label="Stop suggestions"
-  style="max-height: 320px; overflow:auto;"
+  style="max-height: 500px; overflow:auto;"
 >
   {% if has_items %}
     {% for s in items %}
@@ -24,6 +38,78 @@
         {% endif %}
       </a>
     {% endfor %}
+
+    <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div class="small text-muted">
+        Page {{ page }} of {{ page_count }}{% if total %} • {{ total }} results{% endif %}
+        <span class="htmx-indicator ms-2 align-middle">
+          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        </span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item {{ 'disabled' if not has_prev }}">
+            <a class="page-link"
+               hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page=1&limit={{ limit }}"
+               hx-target="#{{ target_id }}"
+               hx-swap="outerHTML"
+               aria-label="First">«</a>
+          </li>
+          <li class="page-item {{ 'disabled' if not has_prev }}">
+            <a class="page-link"
+               hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page - 1 }}&limit={{ limit }}"
+               hx-target="#{{ target_id }}"
+               hx-swap="outerHTML"
+               aria-label="Previous">‹</a>
+          </li>
+
+          {% set start = (page - 1) if page_count <= 5 else (page - 2) %}
+          {% if start < 1 %}{% set start = 1 %}{% endif %}
+          {% set end = start + 4 %}
+          {% if end > page_count %}{% set end = page_count %}{% endif %}
+          {% if (end - start) < 4 and page_count >= 5 %}
+            {% set start = end - 4 %}
+            {% if start < 1 %}{% set start = 1 %}{% endif %}
+          {% endif %}
+
+          {% for p in range(start, end + 1) %}
+            <li class="page-item {{ 'active' if p == page else '' }}">
+              <a class="page-link"
+                 hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ p }}&limit={{ limit }}"
+                 hx-target="#{{ target_id }}"
+                 hx-swap="outerHTML">{{ p }}</a>
+            </li>
+          {% endfor %}
+
+          <li class="page-item {{ 'disabled' if not has_next }}">
+            <a class="page-link"
+               hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page + 1 }}&limit={{ limit }}"
+               hx-target="#{{ target_id }}"
+               hx-swap="outerHTML"
+               aria-label="Next">›</a>
+          </li>
+          <li class="page-item {{ 'disabled' if not has_next }}">
+            <a class="page-link"
+               hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page_count }}&limit={{ limit }}"
+               hx-target="#{{ target_id }}"
+               hx-swap="outerHTML"
+               aria-label="Last">»</a>
+          </li>
+        </ul>
+
+        <div class="d-flex align-items-center gap-2">
+          <span class="small text-muted text-nowrap">Per page:</span>
+            <select name="limit" class="form-select form-select-sm"
+                    hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page=1"
+                    hx-target="#{{ target_id }}"
+                    hx-swap="outerHTML">
+              {% for opt in [5,10,15] %}
+                <option value="{{ opt }}" {{ 'selected' if limit == opt else '' }}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+        </div>
+      </div>
+    </div>
   {% else %}
     <div class="list-group-item text-muted">
       {% if q %}
