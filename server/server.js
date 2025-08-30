@@ -33,6 +33,8 @@ app.use((req, res, next) => {
   next();
 });
 
+app.set('trust proxy', true);
+
 const CONFIG_PATH = path.join(__dirname, './config.json');
 
 async function loadConfig() {
