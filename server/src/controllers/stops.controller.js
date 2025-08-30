@@ -22,6 +22,7 @@ import {
   getStopRatingSummary,
   pool,
 } from "../models/db.js";
+import { getPublicOrigin } from '../utils/public-origin.js';
 
 /**
  * GET /api/stops/search?searchTerm=...&page=1&limit=20
@@ -169,26 +170,20 @@ export async function postStopImage(req, res) {
 
 export async function listStopImages(req, res) {
   try {
-    const page = Math.max(1, Number(req.query.page || 1));
+    const page  = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
 
-    const origin = `${req.protocol}://${req.get("host")}`;
-    const toUrl = (fn) => origin + "/" + fn.replace(/^uploads\//, "static/");
+    const origin = getPublicOrigin(req);
+    const toUrl = (fn) => `${origin}/static/${fn.replace(/^uploads\//, '')}`;
 
-    const { items, total } = await listStopImagesByStop(req.params.stopId, {
-      page,
-      limit,
-    });
-    const itemsWithUrl = items.map((it) => ({
-      ...it,
-      url: toUrl(it.filename),
-    }));
+    const { items, total } = await listStopImagesByStop(req.params.stopId, { page, limit });
+    const itemsWithUrl = items.map(it => ({ ...it, url: toUrl(it.filename) }));
 
     const meta = buildPaginationAndLinks(req, { page, limit, total });
     return res.json({ items: itemsWithUrl, ...meta });
   } catch (e) {
-    console.error("listStopImages:", e);
-    return res.status(500).json({ error: "server_error" });
+    console.error('listStopImages:', e);
+    return res.status(500).json({ error: 'server_error' });
   }
 }
 
