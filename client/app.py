@@ -72,12 +72,14 @@ def create_app():
     from stop import bp as stop_bp
     from timetable import bp as timetable_bp
     from auth import bp as auth_bp
+    from user import bp as user_bp
 
     # Register all blueprints under the same BASE_PATH prefix
     app.register_blueprint(auth_bp,      url_prefix=BASE_PATH or None)
     app.register_blueprint(route_bp,     url_prefix=BASE_PATH or None)
     app.register_blueprint(stop_bp,      url_prefix=BASE_PATH or None)
     app.register_blueprint(timetable_bp, url_prefix=BASE_PATH or None)
+    app.register_blueprint(user_bp)
 
     return app
 

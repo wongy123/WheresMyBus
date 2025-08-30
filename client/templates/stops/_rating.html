@@ -1,16 +1,14 @@
-<!-- templates/stops/_rating.html -->
 {% set avg = rating.get('avg_rating') %}
 {% set count = rating.get('ratings_count', 0) %}
-<div class="d-inline-flex align-items-center gap-2">
-  <div class="fs-6">
-    <strong>Rating:</strong>
-    {% if avg %}
-      {{ '%.2f'|format(avg|float) }} / 5
-    {% else %}
-      No ratings yet
-    {% endif %}
-  </div>
-  {% if count %}
-    <span class="text-muted small">({{ count }} review{{ '' if count == 1 else 's' }})</span>
+<div id="stop-rating">
+  {% if avg %}
+    <span class="badge text-bg-primary">
+      {{ '%.2f'|format(avg|float) }} ★
+    </span>
+    <span class="text-muted small ms-2">
+      {{ count }} {{ 'rating' if count == 1 else 'ratings' }}
+    </span>
+  {% else %}
+    <span class="text-muted small">No ratings yet.</span>
   {% endif %}
 </div>

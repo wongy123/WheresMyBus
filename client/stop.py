@@ -79,11 +79,16 @@ def stop_details(stop_id: str):
     # We render the page; user-specific review & images list can lazy-load via HTMX
     return render_template("stops/details.html", stop=details, rating=rating, BASE_PATH=BASE_PATH)
 
+@bp.get("/hx/stops/<stop_id>/rating")
+def stop_rating(stop_id: str):
+    data = api_get(f"stops/{stop_id}/rating") or {}
+    return render_template("stops/_rating.html", rating=data)
+
 # ---------- Images list (unchanged except passing current_user) ----------
 @bp.get("/hx/stops/<stop_id>/images")
 def stop_images(stop_id: str):
     page = request.args.get("page", 1, type=int)
-    data = api_get(f"stops/{stop_id}/images", {"page": page, "limit": 20}) or {"items": [], "pagination": {}}
+    data = api_get(f"stops/{stop_id}/images", {"page": page, "limit": 5}) or {"items": [], "pagination": {}}
     current_user = session.get("user")
     return render_template("stops/_images.html", data=data, stop_id=stop_id, current_user=current_user)
 
@@ -91,7 +96,7 @@ def stop_images(stop_id: str):
 @bp.get("/hx/stops/<stop_id>/reviews")
 def stop_reviews(stop_id: str):
     page = request.args.get("page", 1, type=int)
-    data = api_get(f"stops/{stop_id}/reviews", {"page": page, "limit": 20}) or {"items": [], "pagination": {}}
+    data = api_get(f"stops/{stop_id}/reviews", {"page": page, "limit": 5}) or {"items": [], "pagination": {}}
     return render_template("stops/_reviews.html", data=data, stop_id=stop_id)
 
 # ---------- YOUR review (get form / submit / delete) ----------

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 mb-3">Your account</h1>
+
+{% if not current_user %}
+  <div class="alert alert-light border">
+    You’re not logged in. <a href="{{ BASE_PATH }}/login" class="alert-link">Log in</a> or
+    <a href="{{ BASE_PATH }}/register" class="alert-link">create an account</a>.
+  </div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div id="me-card">
+      {% include "user/_me_card.html" %}
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Change password</h2>
+        <form
+          hx-put="{{ BASE_PATH }}/hx/user/password"
+          hx-target="#password-result"
+          hx-swap="innerHTML"
+          class="row g-3"
+        >
+          <div class="col-12 col-md-6">
+            <label class="form-label">New password</label>
+            <input type="password" class="form-control" name="password" required minlength="6" autocomplete="new-password">
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">Confirm new password</label>
+            <input type="password" class="form-control" name="confirm" required minlength="6" autocomplete="new-password">
+          </div>
+          <div class="col-12 d-flex gap-2">
+            <button class="btn btn-primary" type="submit">
+              Update password
+            </button>
+          </div>
+          <div id="password-result" class="align-self-center"></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-4 border-danger">
+      <div class="card-body">
+        <h2 class="h6 text-danger mb-2">Danger zone</h2>
+        <p class="small text-muted mb-3">
+          Deleting your account is permanent and cannot be undone.
+        </p>
+        <button
+          class="btn btn-outline-danger"
+          hx-delete="{{ BASE_PATH }}/hx/user"
+          hx-confirm="Delete your account permanently?"
+        >
+          Delete account
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
