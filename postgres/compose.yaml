@@ -34,4 +34,5 @@ services:
       - wmb-net
 
 networks:
-  wmb-net: {}
+  wmb-net:
+    name: wmb-net
