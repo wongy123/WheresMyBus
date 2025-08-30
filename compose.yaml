@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16
+    container_name: wheresmybus-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: 901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11941073/assessment1/api:latest
+    container_name: wheresmybus-api
+    restart: always
+    env_file: .env
+    environment:
+      PGHOST: db
+      TZ: Australia/Brisbane
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+    ports:
+      - "${PORT}:${PORT}"
+
+  client:
+    image: 901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11941073/assessment1/client:latest
+    container_name: wheresmybus-client
+    restart: always
+    env_file: .env
+    environment:
+      # IMPORTANT: make the API URL browser-resolvable (public EC2 URL), not the Docker service name
+      API_BASE_URL: "${PUBLIC_BASE_URL}/api"
+      TZ: Australia/Brisbane
+    depends_on:
+      - api
+    volumes:
+          - ./uploads:/app/uploads
+    ports:
+      - "5000:5000"
+
+networks:
+  default:
+    name: wmb-net
