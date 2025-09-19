@@ -25,6 +25,8 @@ export async function initSchema() {
   try {
     await client.query('BEGIN');
 
+    await client.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`); // for gen_random_uuid()
+
     // users
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -38,16 +40,19 @@ export async function initSchema() {
     // stop_image
     await client.query(`
       CREATE TABLE IF NOT EXISTS stop_image (
-        image_id      UUID PRIMARY KEY,
+        image_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         stop_id       TEXT NOT NULL,
         user_id       TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
-        filename      TEXT NOT NULL,
-        mime_type     TEXT NOT NULL,
-        uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+        bucket        TEXT NOT NULL,
+        s3_key        TEXT NOT NULL,
+        content_type  TEXT,
+        size_bytes    BIGINT,
+        etag          TEXT,
+        uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_stop_image_stop   ON stop_image (stop_id);
-      CREATE INDEX IF NOT EXISTS idx_stop_image_user   ON stop_image (user_id, stop_id);
+      CREATE INDEX IF NOT EXISTS stop_image_stop_id_idx ON stop_image(stop_id);
+      CREATE INDEX IF NOT EXISTS stop_image_user_id_idx ON stop_image(user_id);
     `);
 
     // stop_review
@@ -109,44 +114,51 @@ export async function deleteUser(username) {
 }
 
 // ----- Stop Images -----
-export async function insertStopImage({ stop_id, user_id, filename, mime_type }) {
-  const image_id = randomUUID();
+export async function insertStopImage({ stop_id, user_id, bucket, s3_key, content_type, size_bytes = null, etag = null }) {
   const q = `
-    INSERT INTO stop_image (image_id, stop_id, user_id, filename, mime_type)
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING image_id, stop_id, user_id, filename, mime_type, uploaded_at
+    INSERT INTO stop_image (stop_id, user_id, bucket, s3_key, content_type, size_bytes, etag)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING image_id, stop_id, user_id, bucket, s3_key, content_type, size_bytes, etag, uploaded_at
   `;
-  const { rows } = await pool.query(q, [image_id, stop_id, user_id, filename, mime_type]);
+  const { rows } = await pool.query(q, [stop_id, user_id, bucket, s3_key, content_type, size_bytes, etag]);
   return rows[0];
 }
 
-export async function listStopImagesByStop(stop_id, { limit = 20, page = 1 } = {}) {
-  const off = (Math.max(1, page) - 1) * Math.max(1, limit);
-  const q = `
-    SELECT image_id, stop_id, user_id, filename, mime_type, uploaded_at
+export async function listStopImagesByStop(stop_id, { page = 1, limit = 20 } = {}) {
+  const p = Math.max(1, Number(page));
+  const l = Math.max(1, Math.min(100, Number(limit)));
+  const off = (p - 1) * l;
+
+  const dataQ = `
+    SELECT image_id, stop_id, user_id, bucket, s3_key, content_type, size_bytes, etag, uploaded_at
     FROM stop_image
     WHERE stop_id = $1
     ORDER BY uploaded_at DESC
     LIMIT $2 OFFSET $3
   `;
-  const { rows } = await pool.query(q, [stop_id, limit, off]);
+  const countQ = `SELECT COUNT(*)::int AS count FROM stop_image WHERE stop_id = $1`;
 
-  const { rows: c } = await pool.query('SELECT COUNT(*)::int AS count FROM stop_image WHERE stop_id = $1', [stop_id]);
-  return { items: rows, page, limit, total: c[0].count };
+  const [{ rows: items }, { rows: c }] = await Promise.all([
+    pool.query(dataQ, [stop_id, l, off]),
+    pool.query(countQ, [stop_id]),
+  ]);
+
+  return { items, page: p, limit: l, total: c[0].count };
 }
 
-export async function deleteStopImage(stop_id, image_id, requestingUser, isAdmin = false) {
+export async function deleteStopImage(stop_id, image_id, username, isAdmin = false) {
   // Only owner or admin can delete
-  const { rows } = await pool.query(
-    'SELECT user_id FROM stop_image WHERE stop_id = $1 AND image_id = $2',
-    [stop_id, image_id]
-  );
-  const row = rows[0];
-  if (!row) return false;
-  if (!isAdmin && row.user_id !== requestingUser) return false;
+  const cond = isAdmin
+    ? `stop_id = $1 AND image_id = $2`
+    : `stop_id = $1 AND image_id = $2 AND user_id = $3`;
 
-  await pool.query('DELETE FROM stop_image WHERE image_id = $1', [image_id]);
-  return true;
+  const params = isAdmin ? [stop_id, image_id] : [stop_id, image_id, username];
+
+  const { rows } = await pool.query(
+    `DELETE FROM stop_image WHERE ${cond} RETURNING image_id`,
+    params
+  );
+  return !!rows[0];
 }
 
 // ----- Stop Reviews -----

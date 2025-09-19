@@ -1,10 +1,9 @@
 import bcrypt from 'bcrypt';
 import { pool, updateUserPassword, deleteUser } from '../models/db.js';
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { s3 } from '../lib/s3Client.js';
 
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 12);
-const UPLOAD_ROOT = path.resolve(process.cwd(), 'uploads');
 
 export async function me(req, res) {
   // req.user is set by requireAuth
@@ -35,16 +34,19 @@ export async function updateMe(req, res) {
 
 export async function deleteMe(req, res) {
   try {
-    // best-effort: remove user-owned files from disk before DB cascade
+    // best-effort: remove user-owned S3 objects before user deletion
     const { rows } = await pool.query(
-      'SELECT filename FROM stop_image WHERE user_id = $1',
+      'SELECT bucket, s3_key FROM stop_image WHERE user_id = $1',
       [req.user.username]
     );
+
     await Promise.all(rows.map(async r => {
+      if (!r.bucket || !r.s3_key) return;
       try {
-        const abs = path.join(UPLOAD_ROOT, path.normalize(r.filename).replace(/^uploads[\\/]/, ''));
-        await fs.unlink(abs);
-      } catch (_) { /* ignore missing files */ }
+        await s3.send(new DeleteObjectCommand({ Bucket: r.bucket, Key: r.s3_key }));
+      } catch (_) {
+        // ignore missing/denied; user deletion should proceed
+      }
     }));
 
     await deleteUser(req.user.username);

@@ -23,7 +23,6 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 const RT_UPDATE_INTERVAL_MS = Number(process.env.RT_UPDATE_INTERVAL_MS ?? 10000); // default 10s
-const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 
 // Never time out any request/response (useful for slow CPUs / load tests)
 app.use((req, res, next) => {
@@ -85,10 +84,6 @@ function stopRealtimeLoop() {
 // ---- Express setup ----
 app.use(express.json());
 
-// make sure uploads/ exists (and a stops/ subdir for your current use)
-await mkdir(path.join(UPLOADS_DIR, 'stops'), { recursive: true });
-// serve static files (so /static/stops/.. works)
-app.use('/static', express.static(UPLOADS_DIR));
 
 app.get('/', (_req, res) => {
   res.send('Welcome to the WheresMyBus server!');
