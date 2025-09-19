@@ -7,10 +7,6 @@ import {
   paginateResponse,
   buildPaginationAndLinks,
 } from "../utils/paginate.js";
-import path from "node:path";
-import fs from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import multer from "multer";
 import {
   insertStopImage,
   listStopImagesByStop,
@@ -22,7 +18,14 @@ import {
   getStopRatingSummary,
   pool,
 } from "../models/db.js";
-import { getPublicOrigin } from '../utils/public-origin.js';
+import { randomUUID } from "node:crypto";
+import multer from "multer";
+
+import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { s3, S3_BUCKET } from "../lib/s3Client.js";
+import mime from "mime";
+
 
 /**
  * GET /api/stops/search?searchTerm=...&page=1&limit=20
@@ -106,64 +109,68 @@ export async function getStopTimetable(req, res, next) {
   }
 }
 
-// ---------- uploads (multer) ----------
-const UPLOAD_ROOT = path.resolve(process.cwd(), "uploads"); // serve later via app.use('/static', express.static('uploads'))
-
+// ---------- uploads (multer) -> S3 (no local disk) ----------
 const MIME_EXT = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
 };
 
-function ensureDir(p) {
-  return fs.mkdir(p, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  async destination(req, _file, cb) {
-    const stopId = req.params.stopId;
-    const dest = path.join(UPLOAD_ROOT, "stops", String(stopId));
-    try {
-      await ensureDir(dest);
-    } catch {}
-    cb(null, dest);
-  },
-  filename(req, file, cb) {
-    const ext = MIME_EXT[file.mimetype] || "dat";
-    const name = `${randomUUID()}.${ext}`;
-    cb(null, name);
-  },
-});
-
+const storage = multer.memoryStorage();
 export const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter(_req, file, cb) {
     if (!MIME_EXT[file.mimetype]) return cb(new Error("unsupported_file_type"));
     cb(null, true);
   },
 });
 
+function buildStopImageKey(stopId, mimetype) {
+  const ext = MIME_EXT[mimetype] || mime.getExtension(mimetype) || "bin";
+  return `stops/${String(stopId)}/${randomUUID()}.${ext}`;
+}
+
+
 // ---------- images ----------
 export async function postStopImage(req, res) {
   try {
-    // multer put file at: uploads/stops/<stopId>/<uuid>.<ext>
+    if (!S3_BUCKET) return res.status(500).json({ error: "s3_not_configured" });
+
     const file = req.file;
     if (!file) return res.status(400).json({ error: "file_required" });
 
-    const rel = path.relative(UPLOAD_ROOT, file.path).replaceAll("\\", "/");
+    const stopId = req.params.stopId;
+    const key = buildStopImageKey(stopId, file.mimetype);
+
+    // Upload to S3
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        CacheControl: "public, max-age=31536000, immutable",
+      })
+    );
+
+    // Store metadata in DB (new S3-only columns)
     const payload = await insertStopImage({
-      stop_id: req.params.stopId,
+      stop_id: stopId,
       user_id: req.user.username,
-      filename: `uploads/${rel}`,
-      mime_type: file.mimetype,
+      bucket: S3_BUCKET,
+      s3_key: key,
+      content_type: file.mimetype,
+      size_bytes: file.size,
+      etag: null, // optional: you could HEAD later to fetch it
     });
 
     return res.status(201).json(payload);
   } catch (e) {
     console.error("postStopImage:", e);
-    if (e.message === "unsupported_file_type")
+    if (e?.message === "unsupported_file_type") {
       return res.status(400).json({ error: "unsupported_file_type" });
+    }
     return res.status(500).json({ error: "server_error" });
   }
 }
@@ -173,17 +180,25 @@ export async function listStopImages(req, res) {
     const page  = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
 
-    const origin = getPublicOrigin(req);
-    const toUrl = (fn) => `${origin}/static/${fn.replace(/^uploads\//, '')}`;
-
     const { items, total } = await listStopImagesByStop(req.params.stopId, { page, limit });
-    const itemsWithUrl = items.map(it => ({ ...it, url: toUrl(it.filename) }));
+
+    // Presign each object for 10 minutes
+    const itemsWithUrl = await Promise.all(
+      items.map(async (it) => {
+        const url = await getSignedUrl(
+          s3,
+          new GetObjectCommand({ Bucket: it.bucket, Key: it.s3_key }),
+          { expiresIn: 600 }
+        );
+        return { ...it, url };
+      })
+    );
 
     const meta = buildPaginationAndLinks(req, { page, limit, total });
     return res.json({ items: itemsWithUrl, ...meta });
   } catch (e) {
-    console.error('listStopImages:', e);
-    return res.status(500).json({ error: 'server_error' });
+    console.error("listStopImages:", e);
+    return res.status(500).json({ error: "server_error" });
   }
 }
 
@@ -191,30 +206,25 @@ export async function deleteStopImageById(req, res) {
   try {
     const { stopId, imageId } = req.params;
 
-    // fetch filename for disk cleanup + owner check
+    // fetch S3 metadata + owner check
     const { rows } = await pool.query(
-      "SELECT filename, user_id FROM stop_image WHERE stop_id = $1 AND image_id = $2",
+      "SELECT user_id, bucket, s3_key FROM stop_image WHERE stop_id = $1 AND image_id = $2",
       [stopId, imageId]
     );
     const row = rows[0];
     if (!row) return res.status(404).json({ error: "not_found" });
-    if (row.user_id !== req.user.username && req.user.role !== "admin") {
-      return res.status(403).json({ error: "forbidden" });
-    }
 
-    // remove DB row
-    const ok = await deleteStopImage(
-      stopId,
-      imageId,
-      req.user.username,
-      req.user.role === "admin"
-    );
+    const isOwner = row.user_id === req.user.username;
+    const isAdmin = req.user.role === "admin";
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: "forbidden" });
+
+    // remove DB row (keeps your existing owner/admin logic)
+    const ok = await deleteStopImage(stopId, imageId, req.user.username, isAdmin);
     if (!ok) return res.status(404).json({ error: "not_found" });
 
-    // best-effort remove file
+    // best-effort: delete the S3 object
     try {
-      const abs = path.resolve(process.cwd(), row.filename);
-      await fs.unlink(abs);
+      await s3.send(new DeleteObjectCommand({ Bucket: row.bucket, Key: row.s3_key }));
     } catch (_) {}
 
     return res.status(204).send();
