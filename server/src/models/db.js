@@ -25,8 +25,6 @@ export async function initSchema() {
   try {
     await client.query('BEGIN');
 
-    await client.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`); // for gen_random_uuid()
-
     // users
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -40,7 +38,7 @@ export async function initSchema() {
     // stop_image
     await client.query(`
       CREATE TABLE IF NOT EXISTS stop_image (
-        image_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        image_id      UUID PRIMARY KEY,
         stop_id       TEXT NOT NULL,
         user_id       TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
         bucket        TEXT NOT NULL,
@@ -114,13 +112,31 @@ export async function deleteUser(username) {
 }
 
 // ----- Stop Images -----
-export async function insertStopImage({ stop_id, user_id, bucket, s3_key, content_type, size_bytes = null, etag = null }) {
+export async function insertStopImage({
+  stop_id,
+  user_id,
+  bucket,
+  s3_key,
+  content_type,
+  size_bytes = null,
+  etag = null,
+}) {
+  const image_id = randomUUID();
   const q = `
-    INSERT INTO stop_image (stop_id, user_id, bucket, s3_key, content_type, size_bytes, etag)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    INSERT INTO stop_image (image_id, stop_id, user_id, bucket, s3_key, content_type, size_bytes, etag)
+    VALUES ($1,        $2,      $3,     $4,     $5,     $6,           $7,        $8)
     RETURNING image_id, stop_id, user_id, bucket, s3_key, content_type, size_bytes, etag, uploaded_at
   `;
-  const { rows } = await pool.query(q, [stop_id, user_id, bucket, s3_key, content_type, size_bytes, etag]);
+  const { rows } = await pool.query(q, [
+    image_id,
+    stop_id,
+    user_id,
+    bucket,
+    s3_key,
+    content_type,
+    size_bytes,
+    etag,
+  ]);
   return rows[0];
 }
 
