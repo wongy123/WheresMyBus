@@ -17,19 +17,7 @@ export async function me(req, res) {
 }
 
 export async function updateMe(req, res) {
-  try {
-    const { password } = req.body || {};
-    if (!password || String(password).length < 8) {
-      return res.status(400).json({ error: 'password_too_short' });
-    }
-    const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const updated = await updateUserPassword(req.user.username, hash);
-    if (!updated) return res.status(404).json({ error: 'not_found' });
-    return res.json(updated);
-  } catch (e) {
-    console.error('updateMe:', e);
-    return res.status(500).json({ error: 'server_error' });
-  }
+  return res.status(400).json({ error: 'use_cognito_change_password' });
 }
 
 export async function deleteMe(req, res) {

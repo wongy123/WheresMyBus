@@ -1,48 +1,63 @@
-import bcrypt from 'bcrypt';
-import { createUser, getUserByUsername } from '../models/db.js';
-import { signAccessToken } from '../middleware/auth.js';
+// src/controllers/auth.controller.js
+import { signUp, confirmSignUp, initiateAuth } from '../lib/cognito.js';
+import { pool, createUser, getUserByUsername } from '../models/db.js';
 
-const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 12);
-
+// POST /api/auth/register  { username, password, email }
 export async function register(req, res) {
   try {
-    const { username, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ error: 'username_and_password_required' });
-    if (String(username).length < 3) return res.status(400).json({ error: 'username_too_short' });
-    if (String(password).length < 8) return res.status(400).json({ error: 'password_too_short' });
-
+    const { username, password, email } = req.body || {};
+    if (!username || !password || !email) {
+      return res.status(400).json({ error: 'missing_fields' });
+    }
+    await signUp({ username, password, email });
+    // optional local user row for role tracking if not exists
     const existing = await getUserByUsername(username);
-    if (existing) return res.status(409).json({ error: 'username_taken' });
-
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const user = await createUser({ username, passwordHash, role: 'user' });
-    const accessToken = signAccessToken({ username: user.username, role: user.role });
-
-    return res.status(201).json({ user, accessToken });
+    if (!existing) {
+      await createUser({ username, passwordHash: '', role: 'user' }); // password unused with Cognito
+    }
+    return res.status(200).json({ ok: true, message: 'confirmation_required' });
   } catch (e) {
     console.error('register:', e);
-    return res.status(500).json({ error: 'server_error' });
+    return res.status(400).json({ error: 'register_failed', detail: String(e.message || e) });
   }
 }
 
+// POST /api/auth/confirm  { username, code }
+export async function confirm(req, res) {
+  try {
+    const { username, code } = req.body || {};
+    if (!username || !code) return res.status(400).json({ error: 'missing_fields' });
+    await confirmSignUp({ username, code });
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('confirm:', e);
+    return res.status(400).json({ error: 'confirm_failed', detail: String(e.message || e) });
+  }
+}
+
+// POST /api/auth/login  { username, password }
 export async function login(req, res) {
   try {
     const { username, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ error: 'username_and_password_required' });
+    if (!username || !password) return res.status(400).json({ error: 'missing_fields' });
 
-    const row = await getUserByUsername(username);
-    if (!row) return res.status(401).json({ error: 'invalid_credentials' });
+    const resp = await initiateAuth({ username, password });
+    const { IdToken, AccessToken, RefreshToken, ExpiresIn, TokenType } = resp.AuthenticationResult || {};
+    if (!IdToken) return res.status(401).json({ error: 'auth_failed' });
 
-    const ok = await bcrypt.compare(password, row.password);
-    if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
+    // ensure local role row exists (optional)
+    const u = await getUserByUsername(username);
+    if (!u) await createUser({ username, passwordHash: '', role: 'user' });
 
-    const accessToken = signAccessToken({ username: row.username, role: row.role });
     return res.json({
-      user: { username: row.username, role: row.role, created_at: row.created_at },
-      accessToken
+      id_token: IdToken,
+      access_token: AccessToken,
+      refresh_token: RefreshToken,
+      token_type: TokenType,
+      expires_in: ExpiresIn,
     });
   } catch (e) {
     console.error('login:', e);
-    return res.status(500).json({ error: 'server_error' });
+    return res.status(401).json({ error: 'auth_failed', detail: String(e.message || e) });
   }
 }
