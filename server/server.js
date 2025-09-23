@@ -1,16 +1,20 @@
+// server.js
 import express from 'express';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { initSchema, pool } from './src/models/db.js';
 import cors from 'cors';
+import { cache } from './src/lib/cache.js';
 
-// GTFS helpers
-import { openDb, closeDb } from 'gtfs';
-import { fetchGtfsRealtime } from './src/services/gtfsRealtime.service.js';
+// GTFS helpers (only for PRAGMAs/opening read-only DB as needed)
+import { openDb } from 'gtfs';
 
-// Routers (make sure ./src/routes/index.js exports a default Express router)
+// NEW: use the cache-populating realtime loop
+import { startGtfsRealtimeLoop, stopGtfsRealtimeLoop } from './src/services/gtfsRealtime.service.js';
+
+// Routers
 import indexRouter from './src/routes/index.js';
 
 dotenv.config();
@@ -22,11 +26,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
-const RT_UPDATE_INTERVAL_MS = Number(process.env.RT_UPDATE_INTERVAL_MS ?? 10000); // default 10s
 
 // Never time out any request/response (useful for slow CPUs / load tests)
 app.use((req, res, next) => {
-  // Disable timeouts on the underlying sockets
   if (typeof req.setTimeout === 'function') req.setTimeout(0);
   if (typeof res.setTimeout === 'function') res.setTimeout(0);
   next();
@@ -41,52 +43,35 @@ async function loadConfig() {
 }
 
 async function initDbPragmas() {
-  const config = await loadConfig();
-  const db = openDb(config);
   try {
-    // Better read/write concurrency with SQLite
+    const config = await loadConfig();
+    const db = openDb(config); // opens (or returns) the global connection
+    // these are harmless even if SQLite file is read-only
     db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 3000'); // ms
+    db.pragma('busy_timeout = 3000');
+    // DO NOT close here — the GTFS package uses a global connection
   } catch (e) {
     console.warn('Failed to set SQLite PRAGMAs (continuing):', e?.message || e);
   }
 }
 
-// ---- Realtime updater (overlap guard) ----
-let isUpdating = false;
-let rtIntervalHandle = null;
-
-async function runRealtimeUpdate() {
-  if (isUpdating) return;
-  isUpdating = true;
-  const started = Date.now();
-  try {
-    await fetchGtfsRealtime(); // uses config.json internally (your service)
-    const ms = Date.now() - started;
-    console.log(`[RT] Updated in ${ms} ms`);
-  } catch (err) {
-    console.error('[RT] Update failed:', err?.message || err);
-  } finally {
-    isUpdating = false;
-  }
-}
-
-function startRealtimeLoop() {
-  // warm cache immediately, then every N seconds
-  runRealtimeUpdate();
-  rtIntervalHandle = setInterval(runRealtimeUpdate, RT_UPDATE_INTERVAL_MS);
-}
-
-function stopRealtimeLoop() {
-  if (rtIntervalHandle) clearInterval(rtIntervalHandle);
-}
 
 // ---- Express setup ----
 app.use(express.json());
 
-
 app.get('/', (_req, res) => {
   res.send('Welcome to the WheresMyBus server!');
+});
+
+app.get('/_debug/rt/:tripId', async (req, res) => {
+  const key = `rt:trip:${req.params.tripId}`;
+  const val = await cache.get(key);
+  res.json({ key, found: !!val, val });
+});
+
+app.get('/_debug/rt-heartbeat', async (_req, res) => {
+  const hb = await cache.get('rt:feed:ts');
+  res.json({ hb });
 });
 
 app.use('/api', indexRouter);
@@ -97,42 +82,36 @@ app.use((err, _req, res, _next) => {
   if (err?.message === 'unsupported_file_type') {
     return res.status(400).json({ error: 'unsupported_file_type' });
   }
-  // Multer size limit
   if (err?.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({ error: 'file_too_large' });
   }
   return res.status(500).json({ error: 'server_error' });
 });
 
-
 // ---- Start server & bootstrap background tasks ----
 const server = app.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
 
-  try {
-    await initDbPragmas();
-  } catch (e) {
-    console.warn('Failed to set SQLite PRAGMAs (continuing):', e?.message || e);
-  }
+  await initDbPragmas();
 
-  startRealtimeLoop();
+  const cfg = await loadConfig();
+  openDb(cfg);
+
+  // NEW: start the cache-populating realtime loop (no DB writes)
+  startGtfsRealtimeLoop();
 });
 
 // Fully disable Node http timeouts (headers + entire request + socket inactivity)
-server.setTimeout(0);        // socket inactivity timeout (legacy)
-server.requestTimeout = 0;   // time to receive entire request (default ~5m)
-server.headersTimeout = 0;   // time to receive headers (default ~60s)
+server.setTimeout(0);
+server.requestTimeout = 0;
+server.headersTimeout = 0;
 
 // ---- Graceful shutdown ----
 async function shutdown() {
   console.log('Shutting down...');
-  stopRealtimeLoop();
 
-  // Wait (briefly) for an in-flight update to finish
-  const waitUntil = Date.now() + 5000;
-  while (isUpdating && Date.now() < waitUntil) {
-    await new Promise(r => setTimeout(r, 100));
-  }
+  // NEW: stop the cache-populating loop
+  try { stopGtfsRealtimeLoop(); } catch {}
 
   server.close(async () => {
     console.log('HTTP server closed.');
