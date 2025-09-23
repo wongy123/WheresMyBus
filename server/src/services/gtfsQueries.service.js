@@ -45,6 +45,31 @@ function epochToHms(epochSeconds) {
   return secToHms(d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds());
 }
 
+function epochToLocalHms(epochSeconds, tzOffsetHours = 10) {
+  if (epochSeconds == null) return null;
+  const d = new Date(epochSeconds * 1000); // input is seconds
+  // adjust to GMT+10
+  const local = new Date(d.getTime() + tzOffsetHours * 3600 * 1000);
+  const h = local.getUTCHours();
+  const m = local.getUTCMinutes();
+  const s = local.getUTCSeconds();
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+
+function epochMsToLocalHms(epochMs, tzOffsetHours = 10) {
+  if (epochMs == null) return null;
+  const d = new Date(Number(epochMs));
+  const local = new Date(d.getTime() + tzOffsetHours * 3600 * 1000);
+  const h = local.getUTCHours();
+  const m = local.getUTCMinutes();
+  const s = local.getUTCSeconds();
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+
 function applyRealtimeToRow(row, rt) {
   if (!rt) return row;
 
@@ -69,6 +94,7 @@ function applyRealtimeToRow(row, rt) {
     enriched.vehicle_label = rt.vehicle.vehicleLabel ?? null;
     enriched.vehicle_current_stop_sequence = rt.vehicle.currentStopSequence ?? null;
     enriched.vehicle_timestamp = rt.vehicle.timestamp ?? null;
+    enriched.vehicle_time_local = epochToLocalHms(rt.vehicle.timestamp);
   }
 
   // If we have any RT for this stop/trip, set the flag
@@ -124,6 +150,7 @@ function applyRealtimeToRow(row, rt) {
 
   // No predicted_* fields — we intentionally omit them
   enriched.realtime_updated_at = rt.updatedAt ?? null;
+  enriched.realtime_updated_local = epochMsToLocalHms(rt.updatedAt);
   return enriched;
 }
 
