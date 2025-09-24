@@ -1,5 +1,5 @@
 // src/middleware/auth.js
-import { idVerifier } from '../lib/cognito.js';
+import { idVerifier, accessVerifier } from '../lib/cognito.js';
 import { pool } from '../models/db.js';
 
 export async function requireAuth(req, res, next) {
@@ -8,9 +8,24 @@ export async function requireAuth(req, res, next) {
     const [, token] = hdr.split(' ');
     if (!token) return res.status(401).json({ error: 'unauthorized' });
 
-    const payload = await idVerifier.verify(token); // throws if invalid/expired
-    // Cognito username is typically in "cognito:username"; also have "email", "sub".
-    const username = payload['cognito:username'] || payload['username'] || payload['email'] || payload['sub'];
+    let payload;
+    try {
+      payload = await accessVerifier.verify(token);
+    } catch (e1) {
+      // Fallback: allow ID tokens (useful for debugging tools)
+      try {
+        payload = await idVerifier.verify(token);
+      } catch (e2) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+    }
+
+    const username =
+      payload['cognito:username'] ||
+      payload['username'] ||
+      payload['email'] ||
+      payload['sub'];
+
     if (!username) return res.status(401).json({ error: 'unauthorized' });
 
     // fetch role from local DB (default 'user')
