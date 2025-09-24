@@ -2,6 +2,7 @@
 import { CognitoIdentityProviderClient, SignUpCommand, ConfirmSignUpCommand, InitiateAuthCommand, AuthFlowType } from '@aws-sdk/client-cognito-identity-provider';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import crypto from 'node:crypto';
+import { RespondToAuthChallengeCommand } from '@aws-sdk/client-cognito-identity-provider';
 
 export const REGION = process.env.AWS_REGION || 'ap-southeast-2';
 export const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
@@ -107,4 +108,20 @@ export async function exchangeAuthCodeForTokens({ code, redirectUri }) {
     throw new Error(`token_exchange_failed: ${resp.status} ${txt}`);
   }
   return resp.json();
+}
+
+// respond to EMAIL OTP (and EMAIL MFA) challenges
+export async function respondToEmailMfa({ username, code, session, challengeName = 'EMAIL_OTP' }) {
+  const codeKey = challengeName === 'EMAIL_MFA' ? 'EMAIL_MFA_CODE' : 'EMAIL_OTP_CODE';
+  const cmd = new RespondToAuthChallengeCommand({
+    ClientId: CLIENT_ID,
+    ChallengeName: challengeName,           // 'EMAIL_OTP' (newer) or 'EMAIL_MFA' (alias)
+    Session: session,
+    ChallengeResponses: {
+      USERNAME: username,
+      [codeKey]: code,
+      SECRET_HASH: secretHash(username),
+    },
+  });
+  return cognito.send(cmd);
 }
