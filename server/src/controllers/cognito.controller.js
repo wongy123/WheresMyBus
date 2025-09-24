@@ -2,13 +2,18 @@
 import { buildAuthorizeUrl, exchangeAuthCodeForTokens, accessVerifier } from '../lib/cognito.js';
 import { createHandoff, consumeHandoff } from '../lib/handoffStore.js';
 import { createUser, getUserByUsername } from '../models/db.js';
+import { resolvePublicBaseUrl } from '../lib/publicBaseUrl.js';
 
 // GET /api/auth/cognito/login[?provider=Google]
 export async function cognitoLogin(req, res) {
   try {
+    const base = await resolvePublicBaseUrl();
+    const redirectUri = new URL('/api/auth/cognito/callback', base).toString();
+
     const provider = req.query.provider === 'Google' ? 'Google' : undefined;
-    // Optional: generate and remember a state per session; for simplicity we let Cognito generate one in buildAuthorizeUrl
-    const url = buildAuthorizeUrl({ provider });
+    const url = buildAuthorizeUrl({ provider, redirectUri });
+    console.log('[AUTH] authorize url =', url);
+    console.log('redirectUri=', new URL('/api/auth/cognito/callback', await resolvePublicBaseUrl()).toString());
     return res.redirect(url);
   } catch (e) {
     console.error('cognitoLogin:', e);
@@ -22,9 +27,10 @@ export async function cognitoCallback(req, res) {
     const { code } = req.query || {};
     if (!code) return res.status(400).send('Missing code');
 
-    const tokens = await exchangeAuthCodeForTokens({ code });
+    const base = await resolvePublicBaseUrl();
+    const redirectUri = new URL('/api/auth/cognito/callback', base).toString();
 
-    // Verify access token (preferred for API auth)
+    const tokens = await exchangeAuthCodeForTokens({ code, redirectUri });
     const payload = await accessVerifier.verify(tokens.access_token);
 
     // Upsert local user row (optional, for roles & analytics)
@@ -41,7 +47,6 @@ export async function cognitoCallback(req, res) {
     const h = createHandoff(tokens);
 
     // Redirect the browser to your frontend route with the opaque code
-    const base = process.env.PUBLIC_BASE_URL || 'http://localhost:5173';
     const target = new URL('/auth/callback', base);
     target.searchParams.set('h', h);
     return res.redirect(target.toString());
