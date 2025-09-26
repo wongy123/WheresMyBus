@@ -13,6 +13,8 @@ import {
   listReviews,
   deleteMyReview,
   getStopRating,
+  presignStopImageUpload,
+  finalizeStopImageUpload
 } from "../controllers/stops.controller.js";
 
 const router = Router();
@@ -22,6 +24,8 @@ router.get("/:stopId/timetable", getStopTimetable);
 router.get("/:stopId", getOneStop);
 
 // images
+router.post("/:stopId/images/presign-upload", requireAuth, presignStopImageUpload);
+router.post("/:stopId/images/finalize", requireAuth, finalizeStopImageUpload);
 router.post(
   "/:stopId/images",
   requireAuth,
