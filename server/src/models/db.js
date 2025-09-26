@@ -2,31 +2,66 @@
 import 'dotenv/config';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getSecretJson } from '../lib/secrets.js';
+
+// ---------- Resolve DB config (Secrets Manager first, then env) ----------
+const SECRET_ID = process.env.DB_SECRET_ID || 'n11941073/assessment02/db';
+
+// build a config object from secret (if present) with env overrides
+async function resolveDbConfig() {
+  let fromSecret = {};
+  try {
+    // If DATABASE_URL is set, pg will use it and ignore the rest; we still return a baseline object.
+    if (!process.env.DATABASE_URL) {
+      fromSecret = await getSecretJson(SECRET_ID);
+      console.log('[db] loaded DB config from Secrets Manager:', SECRET_ID);
+    } else {
+      console.log('[db] using DATABASE_URL from environment');
+    }
+  } catch (e) {
+    console.warn('[db] could not load secret; falling back to env vars:', e?.message || e);
+  }
+
+  // merge: env overrides > secret > sane defaults
+  return {
+    connectionString: process.env.DATABASE_URL || undefined,
+    host: process.env.PGHOST || fromSecret.PGHOST || '127.0.0.1',
+    port: Number(process.env.PGPORT || fromSecret.PGPORT || 5432),
+    user: process.env.PGUSER || fromSecret.PGUSER || 'postgres',
+    password: process.env.PGPASSWORD || fromSecret.PGPASSWORD || 'postgres',
+    database: process.env.PGDATABASE || fromSecret.PGDATABASE || 'wheresmybus',
+    max: Number(process.env.PGPOOL_MAX || 10),
+    idleTimeoutMillis: 30_000,
+    ssl: parseSslFromEnv(), // optional SSL support for RDS
+  };
+}
+
+function parseSslFromEnv() {
+  const v = (process.env.PGSSL || '').toLowerCase();
+  // For RDS, you usually want SSL: PGSSL=true (or leave unset if your RDS forces SSL anyway).
+  if (v === 'true' || v === '1' || v === 'require') return { rejectUnauthorized: false };
+  return undefined;
+}
 
 // ----- Connection pool -----
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // optional, overrides fields below
-  host: process.env.PGHOST || '127.0.0.1',
-  port: Number(process.env.PGPORT || 5432),
-  user: process.env.PGUSER || 'postgres',
-  password: process.env.PGPASSWORD || 'postgres',
-  database: process.env.PGDATABASE || 'wheresmybus',
-  max: Number(process.env.PGPOOL_MAX || 10),
-  idleTimeoutMillis: 30_000,
-});
+// ESM supports top-level await in Node >= 18.
+const DB_CONFIG = await resolveDbConfig();
+export const pool = new Pool(DB_CONFIG);
 
 pool.on('error', (err) => {
   console.error('[pg] unexpected idle client error:', err);
 });
 
 // ----- Schema bootstrap (idempotent) -----
-// NOTE: No local users table anymore. user_id columns store Cognito `sub`.
+// No local users table. user_id columns store Cognito `sub`.
 export async function initSchema() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // stop_image (no FK to users)
+    // stop_image
     await client.query(`
       CREATE TABLE IF NOT EXISTS stop_image (
         image_id      UUID PRIMARY KEY,
@@ -44,7 +79,7 @@ export async function initSchema() {
       CREATE INDEX IF NOT EXISTS stop_image_user_id_idx ON stop_image(user_id);
     `);
 
-    // stop_review (no FK to users). One review per user per stop still enforced.
+    // stop_review
     await client.query(`
       CREATE TABLE IF NOT EXISTS stop_review (
         stop_id     TEXT NOT NULL,
@@ -61,7 +96,7 @@ export async function initSchema() {
     `);
 
     await client.query('COMMIT');
-    console.log('[pg] schema ready (no local users)');
+    console.log('[pg] schema ready');
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('[pg] initSchema failed:', err);
@@ -71,10 +106,37 @@ export async function initSchema() {
   }
 }
 
+/**
+ * One-time migration:
+ *  - Drop FKs to users (if they exist)
+ *  - Drop users table (if it exists)
+ *
+ * This will NOT rewrite existing user_id values.
+ */
+export async function runOneTimeMigration() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(`ALTER TABLE stop_image  DROP CONSTRAINT IF EXISTS stop_image_user_id_fkey;`);
+    await client.query(`ALTER TABLE stop_review DROP CONSTRAINT IF EXISTS stop_review_user_id_fkey;`);
+    await client.query(`DROP TABLE IF EXISTS users;`);
+
+    await client.query('COMMIT');
+    console.log('[pg] one-time migration complete: removed users table and FKs');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[pg] one-time migration failed:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // ----- Stop Images -----
 export async function insertStopImage({
   stop_id,
-  user_id,           // pass Cognito sub
+  user_id,           // Cognito sub
   bucket,
   s3_key,
   content_type,
@@ -123,14 +185,11 @@ export async function listStopImagesByStop(stop_id, { page = 1, limit = 20 } = {
 }
 
 export async function deleteStopImage(stop_id, image_id, user_id, isAdmin = false) {
-  // Only owner or admin can delete
   const cond = isAdmin
     ? `stop_id = $1 AND image_id = $2`
     : `stop_id = $1 AND image_id = $2 AND user_id = $3`;
 
   const params = isAdmin ? [stop_id, image_id] : [stop_id, image_id, user_id];
-
-  console.log(user_id);
 
   const { rows } = await pool.query(
     `DELETE FROM stop_image WHERE ${cond} RETURNING image_id`,
@@ -203,21 +262,35 @@ export async function getStopRatingSummary(stop_id) {
   return rows[0];
 }
 
-// ----- Deprecated user helpers (kept as no-ops for compatibility) -----
-export async function createUser() {
-  console.warn('[db] createUser() is deprecated (no local users).');
-  return null;
-}
-export async function getUserByUsername() {
-  console.warn('[db] getUserByUsername() is deprecated (no local users).');
-  return null;
-}
-export async function updateUserPassword() {
-  console.warn('[db] updateUserPassword() is deprecated (no local users).');
-  return null;
-}
-export async function deleteUser() {
-  console.warn('[db] deleteUser() is deprecated (no local users).');
-  return null;
+// ----- CLI: run one-time migration + ensure schema -----
+export async function main() {
+  try {
+    await runOneTimeMigration();
+    await initSchema();
+  } finally {
+    await pool.end().catch(() => {});
+  }
 }
 
+// Execute when run directly: `node server/src/models/db.js`
+const isDirectRun = (() => {
+  try {
+    const thisFile = fileURLToPath(import.meta.url);
+    const entry = process.argv[1] ? path.resolve(process.argv[1]) : '';
+    return thisFile === entry;
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) {
+  main()
+    .then(() => {
+      console.log('[pg] migration + schema done');
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('[pg] fatal error:', err);
+      process.exit(1);
+    });
+}
