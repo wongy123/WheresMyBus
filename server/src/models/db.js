@@ -20,27 +20,18 @@ pool.on('error', (err) => {
 });
 
 // ----- Schema bootstrap (idempotent) -----
+// NOTE: No local users table anymore. user_id columns store Cognito `sub`.
 export async function initSchema() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // users
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        username      TEXT PRIMARY KEY,
-        password      TEXT NOT NULL,               -- store HASH here (argon2/bcrypt)
-        role          TEXT NOT NULL DEFAULT 'user',
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-      );
-    `);
-
-    // stop_image
+    // stop_image (no FK to users)
     await client.query(`
       CREATE TABLE IF NOT EXISTS stop_image (
         image_id      UUID PRIMARY KEY,
         stop_id       TEXT NOT NULL,
-        user_id       TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+        user_id       TEXT NOT NULL,     -- Cognito sub
         bucket        TEXT NOT NULL,
         s3_key        TEXT NOT NULL,
         content_type  TEXT,
@@ -53,11 +44,11 @@ export async function initSchema() {
       CREATE INDEX IF NOT EXISTS stop_image_user_id_idx ON stop_image(user_id);
     `);
 
-    // stop_review
+    // stop_review (no FK to users). One review per user per stop still enforced.
     await client.query(`
       CREATE TABLE IF NOT EXISTS stop_review (
         stop_id     TEXT NOT NULL,
-        user_id     TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+        user_id     TEXT NOT NULL,       -- Cognito sub
         rating      SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
         comment     TEXT,
         created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -70,7 +61,7 @@ export async function initSchema() {
     `);
 
     await client.query('COMMIT');
-    console.log('[pg] schema ready');
+    console.log('[pg] schema ready (no local users)');
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('[pg] initSchema failed:', err);
@@ -80,41 +71,10 @@ export async function initSchema() {
   }
 }
 
-// ----- Users -----
-export async function createUser({ username, passwordHash, role = 'user' }) {
-  const q = `
-    INSERT INTO users (username, password, role)
-    VALUES ($1, $2, $3)
-    RETURNING username, role, created_at
-  `;
-  const { rows } = await pool.query(q, [username, passwordHash, role]);
-  return rows[0];
-}
-
-export async function getUserByUsername(username) {
-  const { rows } = await pool.query(
-    'SELECT username, password, role, created_at FROM users WHERE username = $1',
-    [username]
-  );
-  return rows[0] || null;
-}
-
-export async function updateUserPassword(username, newPasswordHash) {
-  const { rows } = await pool.query(
-    'UPDATE users SET password = $2 WHERE username = $1 RETURNING username, role, created_at',
-    [username, newPasswordHash]
-  );
-  return rows[0] || null;
-}
-
-export async function deleteUser(username) {
-  await pool.query('DELETE FROM users WHERE username = $1', [username]);
-}
-
 // ----- Stop Images -----
 export async function insertStopImage({
   stop_id,
-  user_id,
+  user_id,           // pass Cognito sub
   bucket,
   s3_key,
   content_type,
@@ -162,13 +122,15 @@ export async function listStopImagesByStop(stop_id, { page = 1, limit = 20 } = {
   return { items, page: p, limit: l, total: c[0].count };
 }
 
-export async function deleteStopImage(stop_id, image_id, username, isAdmin = false) {
+export async function deleteStopImage(stop_id, image_id, user_id, isAdmin = false) {
   // Only owner or admin can delete
   const cond = isAdmin
     ? `stop_id = $1 AND image_id = $2`
     : `stop_id = $1 AND image_id = $2 AND user_id = $3`;
 
-  const params = isAdmin ? [stop_id, image_id] : [stop_id, image_id, username];
+  const params = isAdmin ? [stop_id, image_id] : [stop_id, image_id, user_id];
+
+  console.log(user_id);
 
   const { rows } = await pool.query(
     `DELETE FROM stop_image WHERE ${cond} RETURNING image_id`,
@@ -202,7 +164,9 @@ export async function getMyStopReview(stop_id, user_id) {
 }
 
 export async function listStopReviews(stop_id, { limit = 20, page = 1, sort = 'recent' } = {}) {
-  const off = (Math.max(1, page) - 1) * Math.max(1, limit);
+  const l = Math.max(1, Math.min(100, Number(limit)));
+  const p = Math.max(1, Number(page));
+  const off = (p - 1) * l;
   const orderBy =
     sort === 'rating' ? 'rating DESC, created_at DESC' : 'COALESCE(updated_at, created_at) DESC';
 
@@ -213,10 +177,10 @@ export async function listStopReviews(stop_id, { limit = 20, page = 1, sort = 'r
     ORDER BY ${orderBy}
     LIMIT $2 OFFSET $3
   `;
-  const { rows } = await pool.query(q, [stop_id, limit, off]);
+  const { rows: items } = await pool.query(q, [stop_id, l, off]);
   const { rows: c } = await pool.query('SELECT COUNT(*)::int AS count FROM stop_review WHERE stop_id = $1', [stop_id]);
 
-  return { items: rows, page, limit, total: c[0].count };
+  return { items, page: p, limit: l, total: c[0].count };
 }
 
 export async function deleteMyStopReview(stop_id, user_id) {
@@ -236,6 +200,24 @@ export async function getStopRatingSummary(stop_id) {
      WHERE stop_id = $1`,
     [stop_id]
   );
-  // rows[0].avg_rating will be null when count = 0 (which is fine)
   return rows[0];
 }
+
+// ----- Deprecated user helpers (kept as no-ops for compatibility) -----
+export async function createUser() {
+  console.warn('[db] createUser() is deprecated (no local users).');
+  return null;
+}
+export async function getUserByUsername() {
+  console.warn('[db] getUserByUsername() is deprecated (no local users).');
+  return null;
+}
+export async function updateUserPassword() {
+  console.warn('[db] updateUserPassword() is deprecated (no local users).');
+  return null;
+}
+export async function deleteUser() {
+  console.warn('[db] deleteUser() is deprecated (no local users).');
+  return null;
+}
+
