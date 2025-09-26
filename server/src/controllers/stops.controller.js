@@ -1,3 +1,4 @@
+// src/controllers/stops.controller.js
 import {
   getAllStops,
   getOneStop as getOneStopService,
@@ -26,7 +27,6 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { s3, S3_BUCKET } from "../lib/s3Client.js";
 import mime from "mime";
 
-
 /**
  * GET /api/stops/search?searchTerm=...&page=1&limit=20
  */
@@ -51,19 +51,14 @@ export async function searchStops(req, res, next) {
 
 /**
  * GET /api/stops/:stopId
- * (also accepts ?stopId=... as a fallback)
  */
 export async function getOneStop(req, res, next) {
   try {
     const stopId = req.params.stopId ?? req.query.stopId;
-    if (!stopId) {
-      return res.status(400).json({ error: "stopId is required" });
-    }
+    if (!stopId) return res.status(400).json({ error: "stopId is required" });
 
     const stop = await getOneStopService(stopId);
-    if (!stop) {
-      return res.status(404).json({ error: "Stop not found" });
-    }
+    if (!stop) return res.status(404).json({ error: "Stop not found" });
 
     res.json(stop);
   } catch (err) {
@@ -72,26 +67,18 @@ export async function getOneStop(req, res, next) {
 }
 
 /**
- * GET /api/stops/:stopId/timetable?startTime=...&duration=...&page=1&limit=20
- * startTime/duration are optional (epoch seconds). Falls back to service defaults.
+ * GET /api/stops/:stopId/timetable?startTime=...&duration=...
  */
 export async function getStopTimetable(req, res, next) {
   try {
     const stopId = req.params.stopId ?? req.query.stopId;
-    if (!stopId) {
-      return res.status(400).json({ error: "stopId is required" });
-    }
+    if (!stopId) return res.status(400).json({ error: "stopId is required" });
 
     const startTimeQ = req.query.startTime;
     const durationQ = req.query.duration;
 
-    const startTime = Number.isFinite(parseInt(startTimeQ, 10))
-      ? parseInt(startTimeQ, 10)
-      : undefined;
-
-    const duration = Number.isFinite(parseInt(durationQ, 10))
-      ? parseInt(durationQ, 10)
-      : undefined;
+    const startTime = Number.isFinite(parseInt(startTimeQ, 10)) ? parseInt(startTimeQ, 10) : undefined;
+    const duration = Number.isFinite(parseInt(durationQ, 10)) ? parseInt(durationQ, 10) : undefined;
 
     const rows = await getUpcomingByStop(stopId, startTime, duration);
 
@@ -131,7 +118,6 @@ function buildStopImageKey(stopId, mimetype) {
   return `stops/${String(stopId)}/${randomUUID()}.${ext}`;
 }
 
-
 // ---------- images ----------
 export async function postStopImage(req, res) {
   try {
@@ -143,7 +129,6 @@ export async function postStopImage(req, res) {
     const stopId = req.params.stopId;
     const key = buildStopImageKey(stopId, file.mimetype);
 
-    // Upload to S3
     await s3.send(
       new PutObjectCommand({
         Bucket: S3_BUCKET,
@@ -154,15 +139,14 @@ export async function postStopImage(req, res) {
       })
     );
 
-    // Store metadata in DB (new S3-only columns)
     const payload = await insertStopImage({
       stop_id: stopId,
-      user_id: req.user.username,
+      user_id: req.user.id, // <-- use Cognito sub
       bucket: S3_BUCKET,
       s3_key: key,
       content_type: file.mimetype,
       size_bytes: file.size,
-      etag: null, // optional: you could HEAD later to fetch it
+      etag: null,
     });
 
     return res.status(201).json(payload);
@@ -177,12 +161,11 @@ export async function postStopImage(req, res) {
 
 export async function listStopImages(req, res) {
   try {
-    const page  = Math.max(1, Number(req.query.page || 1));
+    const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
 
     const { items, total } = await listStopImagesByStop(req.params.stopId, { page, limit });
 
-    // Presign each object for 10 minutes
     const itemsWithUrl = await Promise.all(
       items.map(async (it) => {
         const url = await getSignedUrl(
@@ -213,19 +196,18 @@ export async function deleteStopImageById(req, res) {
     );
     const row = rows[0];
     if (!row) return res.status(404).json({ error: "not_found" });
-
-    const isOwner = row.user_id === req.user.username;
+    const isOwner = row.user_id === req.user.id; // <-- use Cognito sub
     const isAdmin = req.user.role === "admin";
     if (!isOwner && !isAdmin) return res.status(403).json({ error: "forbidden" });
 
-    // remove DB row (keeps your existing owner/admin logic)
-    const ok = await deleteStopImage(stopId, imageId, req.user.username, isAdmin);
+    // remove DB row (owner or admin)
+    const ok = await deleteStopImage(stopId, imageId, req.user.id, isAdmin); // <-- pass sub
     if (!ok) return res.status(404).json({ error: "not_found" });
 
     // best-effort: delete the S3 object
     try {
       await s3.send(new DeleteObjectCommand({ Bucket: row.bucket, Key: row.s3_key }));
-    } catch (_) {}
+    } catch (_) { }
 
     return res.status(204).send();
   } catch (e) {
@@ -244,7 +226,7 @@ export async function putMyStopReview(req, res) {
     }
     const review = await upsertStopReview({
       stop_id: req.params.stopId,
-      user_id: req.user.username,
+      user_id: req.user.id, // <-- use Cognito sub
       rating: r,
       comment: comment ?? null,
     });
@@ -257,7 +239,7 @@ export async function putMyStopReview(req, res) {
 
 export async function getMyReview(req, res) {
   try {
-    const review = await getMyStopReview(req.params.stopId, req.user.username);
+    const review = await getMyStopReview(req.params.stopId, req.user.id); // <-- use sub
     if (!review) return res.status(404).json({ error: "not_found" });
     return res.json(review);
   } catch (e) {
@@ -272,11 +254,7 @@ export async function listReviews(req, res) {
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
     const sort = req.query.sort === "rating" ? "rating" : "recent";
 
-    const { items, total } = await listStopReviews(req.params.stopId, {
-      page,
-      limit,
-      sort,
-    });
+    const { items, total } = await listStopReviews(req.params.stopId, { page, limit, sort });
     const meta = buildPaginationAndLinks(req, { page, limit, total });
 
     return res.json({ items, ...meta });
@@ -288,7 +266,7 @@ export async function listReviews(req, res) {
 
 export async function deleteMyReview(req, res) {
   try {
-    const ok = await deleteMyStopReview(req.params.stopId, req.user.username);
+    const ok = await deleteMyStopReview(req.params.stopId, req.user.id); // <-- use sub
     if (!ok) return res.status(404).json({ error: "not_found" });
     return res.status(204).send();
   } catch (e) {

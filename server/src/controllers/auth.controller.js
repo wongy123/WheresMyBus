@@ -1,10 +1,7 @@
 // src/controllers/auth.controller.js
-import { signUp, confirmSignUp, initiateAuth } from '../lib/cognito.js';
-import { pool, createUser, getUserByUsername } from '../models/db.js';
-import { respondToEmailMfa } from '../lib/cognito.js';
+import { signUp, confirmSignUp, initiateAuth, respondToEmailMfa } from '../lib/cognito.js';
 import { CognitoIdentityProviderClient, RespondToAuthChallengeCommand } from '@aws-sdk/client-cognito-identity-provider';
-import { CLIENT_ID } from '../lib/cognito.js'; // reuse from your helper
-import { secretHash } from '../lib/cognito.js';
+import { CLIENT_ID, secretHash } from '../lib/cognito.js';
 
 // POST /api/auth/register  { username, password, email }
 export async function register(req, res) {
@@ -14,11 +11,6 @@ export async function register(req, res) {
       return res.status(400).json({ error: 'missing_fields' });
     }
     await signUp({ username, password, email });
-    // optional local user row for role tracking if not exists
-    const existing = await getUserByUsername(username);
-    if (!existing) {
-      await createUser({ username, passwordHash: '', role: 'user' }); // password unused with Cognito
-    }
     return res.status(200).json({ ok: true, message: 'confirmation_required' });
   } catch (e) {
     console.error('register:', e);
@@ -47,7 +39,7 @@ export async function login(req, res) {
 
     let resp = await initiateAuth({ username, password });
 
-    // If Cognito asks to SELECT a challenge, auto-pick EMAIL_OTP so users aren't stuck
+    // Some pools return SELECT_CHALLENGE first; choose email OTP.
     if (resp.ChallengeName === 'SELECT_CHALLENGE') {
       const client = new CognitoIdentityProviderClient({});
       const selectCmd = new RespondToAuthChallengeCommand({
@@ -63,21 +55,18 @@ export async function login(req, res) {
       resp = await client.send(selectCmd);
     }
 
-    // If we receive an email challenge, tell the client to call /api/auth/login/mfa
+    // Email MFA challenge path
     if (resp.ChallengeName === 'EMAIL_OTP' || resp.ChallengeName === 'EMAIL_MFA') {
       return res.status(200).json({
         challenge: resp.ChallengeName,
-        session: resp.Session, // send back; required in the next call
+        session: resp.Session,
         message: 'mfa_required_email_code_sent',
       });
     }
 
-    // Normal success (no MFA)—unchanged
+    // Success path
     const { IdToken, AccessToken, RefreshToken, ExpiresIn, TokenType } = resp.AuthenticationResult || {};
     if (!IdToken) return res.status(401).json({ error: 'auth_failed' });
-
-    const u = await getUserByUsername(username);
-    if (!u) await createUser({ username, passwordHash: '', role: 'user' });
 
     return res.json({
       id_token: IdToken,
@@ -92,7 +81,7 @@ export async function login(req, res) {
   }
 }
 
-// POST /api/auth/login/mfa { username, code, session, challenge }  // challenge: 'EMAIL_OTP' or 'EMAIL_MFA'
+// POST /api/auth/login/mfa { username, code, session, challenge }  // 'EMAIL_OTP' or 'EMAIL_MFA'
 export async function loginMfa(req, res) {
   try {
     const { username, code, session, challenge } = req.body || {};
@@ -109,9 +98,6 @@ export async function loginMfa(req, res) {
 
     const { IdToken, AccessToken, RefreshToken, ExpiresIn, TokenType } = mfaResp.AuthenticationResult || {};
     if (!AccessToken) return res.status(401).json({ error: 'mfa_failed' });
-
-    const u = await getUserByUsername(username);
-    if (!u) await createUser({ username, passwordHash: '', role: 'user' });
 
     return res.json({
       id_token: IdToken,
