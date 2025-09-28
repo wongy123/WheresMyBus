@@ -11,14 +11,13 @@
           <img src="{{ img.url }}" class="card-img-top" alt="Stop image">
           <div class="card-body p-2 d-flex justify-content-between align-items-center">
             <small class="text-muted">{{ img.uploaded_at|to_brisbane }}</small>
-            {% if current_user and img.user_id == current_user.username %}
+            {% if current_user and (img.user_id == current_user.id or current_user.role == 'admin') %}
               <button
                 class="btn btn-outline-danger btn-sm"
                 hx-delete="{{ BASE_PATH }}/hx/stops/{{ img.stop_id }}/images/{{ img.image_id }}"
                 hx-target="closest .card"
                 hx-swap="outerHTML"
                 hx-confirm="Delete this image?"
-                hx-on::after-request="window.location.reload()"
                 title="Delete">
                 Delete
               </button>
@@ -35,7 +34,7 @@
       <ul class="pagination pagination-sm mb-0">
         {% set prev_page = page - 1 %}
         {% set next_page = page + 1 %}
-        <li class="page-item {{ 'disabled' if page <= 1 else '' }}">
+        <li class="page-item {{ 'disabled' if page <= 1 else ' ' }}">
           <a class="page-link"
              hx-get="{{ BASE_PATH }}/hx/stops/{{ stop_id }}/images?page={{ prev_page }}"
              hx-target="#stop-images" hx-swap="innerHTML">Previous</a>

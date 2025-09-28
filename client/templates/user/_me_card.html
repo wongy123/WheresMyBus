@@ -2,16 +2,37 @@
 <div class="card">
   <div class="card-body">
     <h2 class="h6 mb-3">Profile</h2>
-    {% if me and me.username %}
+    {% if me %}
       <dl class="row mb-0 small">
-        <dt class="col-4 col-sm-3">Username</dt>
-        <dd class="col-8 col-sm-9">{{ me.username }}</dd>
+        {% if me.email %}
+          <dt class="col-4 col-sm-3">Email</dt>
+          <dd class="col-8 col-sm-9">{{ me.email }}</dd>
+        {% endif %}
 
-        <dt class="col-4 col-sm-3">Role</dt>
-        <dd class="col-8 col-sm-9">{{ me.role }}</dd>
+        {% if me.username %}
+          <dt class="col-4 col-sm-3">Username</dt>
+          <dd class="col-8 col-sm-9">{{ me.username }}</dd>
+        {% endif %}
 
-        <dt class="col-4 col-sm-3">Created</dt>
-        <dd class="col-8 col-sm-9">{{ me.created_at|to_brisbane }}</dd>
+        {% if me.id %}
+          <dt class="col-4 col-sm-3">User ID</dt>
+          <dd class="col-8 col-sm-9"><code class="text-break">{{ me.id }}</code></dd>
+        {% endif %}
+
+        {% if me.role %}
+          <dt class="col-4 col-sm-3">Role</dt>
+          <dd class="col-8 col-sm-9">{{ me.role }}</dd>
+        {% endif %}
+
+        {% if me.groups %}
+          <dt class="col-4 col-sm-3">Groups</dt>
+          <dd class="col-8 col-sm-9">{{ me.groups|join(", ") }}</dd>
+        {% endif %}
+
+        {% if me.issued_at %}
+          <dt class="col-4 col-sm-3">Signed in</dt>
+          <dd class="col-8 col-sm-9">{{ me.issued_at|to_brisbane }}</dd>
+        {% endif %}
       </dl>
     {% else %}
       <div class="text-muted small">Loading…</div>
