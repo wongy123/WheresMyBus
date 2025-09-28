@@ -8,21 +8,16 @@ API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
 BASE_PATH = os.environ.get("BASE_PATH", "")
 
 def api_request(method, path, *, json=None):
-    """Small helper to call the users API with Bearer auth from session."""
     url = f"{API_BASE.rstrip('/')}/{path.lstrip('/')}"
     headers = {}
     if session.get("access_token"):
         headers["Authorization"] = f"Bearer {session['access_token']}"
-    resp = requests.request(method, url, json=json, headers=headers, timeout=15)
-    return resp
+    return requests.request(method, url, json=json, headers=headers, timeout=15)
 
 @bp.route("/user")
 def user_index():
-    """Account page shell. We lazy-load details to keep it snappy."""
     if not session.get("user"):
-        # Not logged in – show a friendly page asking to log in
         return render_template("user/index.html", user_info=None, BASE_PATH=BASE_PATH)
-    # Optionally fetch now so the created_at can render without an extra roundtrip:
     me = {}
     try:
         r = api_request("GET", "users/me")
@@ -32,7 +27,6 @@ def user_index():
         me = {}
     return render_template("user/index.html", user_info=me, BASE_PATH=BASE_PATH)
 
-# --- HTMX: refresh "me" card ---
 @bp.get("/hx/user/me")
 def hx_user_me():
     r = api_request("GET", "users/me")
@@ -69,6 +63,7 @@ def hx_user_password():
 @bp.delete("/hx/user")
 def hx_user_delete():
     if not session.get("access_token"):
+        from flask import render_template
         return render_template("common/_alert.html", cls="alert-danger", text="You must be logged in."), 401
 
     resp = api_request("DELETE", "users/me")
@@ -77,9 +72,9 @@ def hx_user_delete():
             msg = resp.json().get("error") or resp.text
         except Exception:
             msg = resp.text
+        from flask import render_template
         return render_template("common/_alert.html", cls="alert-danger", text=f"Delete failed: {msg}"), resp.status_code
 
-    # Clear local session and instruct HTMX to redirect home
     session.clear()
     out = make_response("", 204)
     out.headers["HX-Redirect"] = f"{BASE_PATH}/"

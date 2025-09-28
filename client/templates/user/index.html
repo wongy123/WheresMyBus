@@ -14,41 +14,26 @@
     <div id="me-card">
       {% include "user/_me_card.html" %}
     </div>
+    <div class="card mt-3">
+      <div class="card-body">
+        <h2 class="h6 mb-2">Manage your account</h2>
+        <p class="small text-muted mb-3">
+          Passwords, MFA, and profile are managed by Cognito’s hosted pages.
+          If you signed in with Google, manage your password in your Google account.
+        </p>
+        <a class="btn btn-outline-secondary" href="{{ BASE_PATH }}/auth/cognito/start?next={{ BASE_PATH|urlencode }}/user">
+          Open Cognito account page
+        </a>
+      </div>
+    </div>
   </div>
 
   <div class="col-lg-7">
-    <div class="card">
-      <div class="card-body">
-        <h2 class="h5 mb-3">Change password</h2>
-        <form
-          hx-put="{{ BASE_PATH }}/hx/user/password"
-          hx-target="#password-result"
-          hx-swap="innerHTML"
-          class="row g-3"
-        >
-          <div class="col-12 col-md-6">
-            <label class="form-label">New password</label>
-            <input type="password" class="form-control" name="password" required minlength="6" autocomplete="new-password">
-          </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label">Confirm new password</label>
-            <input type="password" class="form-control" name="confirm" required minlength="6" autocomplete="new-password">
-          </div>
-          <div class="col-12 d-flex gap-2">
-            <button class="btn btn-primary" type="submit">
-              Update password
-            </button>
-          </div>
-          <div id="password-result" class="align-self-center"></div>
-        </form>
-      </div>
-    </div>
-
-    <div class="card mt-4 border-danger">
+    <div class="card border-danger">
       <div class="card-body">
         <h2 class="h6 text-danger mb-2">Danger zone</h2>
         <p class="small text-muted mb-3">
-          Deleting your account is permanent and cannot be undone.
+          Deleting your account removes your uploads and reviews from this app. It doesn’t delete your Cognito/Google identity.
         </p>
         <button
           class="btn btn-outline-danger"

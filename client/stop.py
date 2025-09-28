@@ -19,13 +19,12 @@ def api_get(path, params=None, auth=False):
     resp.raise_for_status()
     return resp.json()
 
-def api_post(path, data=None, files=None, auth=False, json=None):
+def api_post(path, *, json=None, auth=False):
     url = f"{API_BASE.rstrip('/')}/{path.lstrip('/')}"
-    headers = {}
+    headers = {"Content-Type": "application/json"}
     if auth and session.get("access_token"):
         headers["Authorization"] = f"Bearer {session['access_token']}"
-    resp = requests.post(url, data=data, files=files, json=json, headers=headers, timeout=30)
-    return resp
+    return requests.post(url, json=json or {}, headers=headers, timeout=30)
 
 def api_put(path, json=None, auth=False):
     url = f"{API_BASE.rstrip('/')}/{path.lstrip('/')}"
@@ -151,27 +150,39 @@ def stop_review_delete(stop_id: str):
 
     return ("", 204)
 
-# ---------- Image upload & delete ----------
-@bp.post("/hx/stops/<stop_id>/images")
-def stop_image_upload(stop_id: str):
+# ---------- NEW: presign + finalize proxies for direct upload ----------
+
+@bp.post("/hx/stops/<stop_id>/images/presign")
+def stop_image_presign(stop_id: str):
     if not session.get("access_token"):
-        return render_template("common/_alert.html", cls="alert-danger", text="You must be logged in to upload."), 401
-    f = request.files.get("file")
-    if not f:
-        return render_template("common/_alert.html", cls="alert-warning", text="Please choose an image."), 400
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    content_type = (body.get("contentType") or "").strip()
+    if not content_type:
+        return jsonify({"error": "contentType required"}), 400
 
-    # forward multipart to API
-    files = {"file": (f.filename, f.stream, f.mimetype)}
-    resp = api_post(f"stops/{stop_id}/images/", files=files, auth=True)
-    if resp.status_code not in (200, 201):
-        try:
-            msg = resp.json().get("error") or resp.text
-        except Exception:
-            msg = resp.text
-        return render_template("common/_alert.html", cls="alert-danger", text=f"Upload failed: {msg}"), resp.status_code
+    url = f"{API_BASE.rstrip('/')}/stops/{stop_id}/images/presign-upload"
+    r = requests.post(
+        url,
+        json={"contentType": content_type},
+        headers={"Authorization": f"Bearer {session['access_token']}"},
+        timeout=15,
+    )
+    return (r.json(), r.status_code)
 
-    # Return a small success alert; client will also refresh the images list via hx-trigger
-    return render_template("common/_alert.html", cls="alert-success", text="Image uploaded.")
+@bp.post("/hx/stops/<stop_id>/images/finalize")
+def stop_image_finalize(stop_id: str):
+    if not session.get("access_token"):
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    url = f"{API_BASE.rstrip('/')}/stops/{stop_id}/images/finalize"
+    r = requests.post(
+        url,
+        json=body,
+        headers={"Authorization": f"Bearer {session['access_token']}"},
+        timeout=15,
+    )
+    return (r.json(), r.status_code)
 
 @bp.delete("/hx/stops/<stop_id>/images/<image_id>")
 def stop_image_delete(stop_id: str, image_id: str):

@@ -8,15 +8,15 @@
 </div>
 
 <div id="stop-rating" 
-     hx-get="/hx/stops/{{ stop.stop_id }}/rating"
+     hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/rating"
      hx-trigger="load"
      hx-target="this"
      hx-swap="outerHTML">
-  <!-- rating placeholder until HTMX loads -->
   <div class="text-muted small">Loading rating…</div>
 </div>
+
 <div class="my-2">
-  <a class="btn btn-primary" href="/timetable/stop/{{ stop.stop_id }}">
+  <a class="btn btn-primary" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">
     View Timetable
   </a>
 </div>
@@ -28,25 +28,24 @@
     <h2 class="h5">Photos</h2>
 
     {% if current_user %}
-      <!-- Upload form -->
-      <form
-        class="d-flex align-items-center gap-2 mb-3"
-        hx-post="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images"
-        hx-encoding="multipart/form-data"
-        hx-target="#image-upload-result"
-        hx-swap="innerHTML"
-        hx-on::after-request="htmx.ajax('GET', '{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images', {target:'#stop-images', swap:'innerHTML'});"
-      >
-        <input class="form-control form-control-sm" type="file" name="file" accept="image/*" required>
-        <button class="btn btn-secondary btn-sm" type="submit">Upload</button>
-      </form>
-      <div id="image-upload-result"></div>
+      <!-- Direct S3 upload widget (presign -> PUT -> finalize) -->
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2">
+            <input class="form-control form-control-sm" id="stop-upload-input"
+                   type="file" accept="image/png,image/jpeg,image/webp">
+            <button class="btn btn-secondary btn-sm" id="stop-upload-btn" type="button">Upload</button>
+          </div>
+          <div id="image-upload-result" class="small mt-2 text-muted"></div>
+        </div>
+      </div>
     {% endif %}
 
     <!-- Images list -->
     <div id="stop-images"
+         data-images-list
          hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images"
-         hx-trigger="load"
+         hx-trigger="load, refresh from:body"
          hx-target="this"
          hx-swap="innerHTML">
       <div class="text-muted small">Loading images…</div>
@@ -81,4 +80,85 @@
     </div>
   </div>
 </div>
+
+{% if current_user %}
+<script>
+(() => {
+  const btn = document.getElementById('stop-upload-btn');
+  const input = document.getElementById('stop-upload-input');
+  const msg = document.getElementById('image-upload-result');
+  if (!btn || !input) return;
+
+  const STOP_ID = "{{ stop.stop_id }}";
+  const PRESIGN_URL = "{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images/presign";
+  const FINALIZE_URL = "{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images/finalize";
+  const ALLOWED = new Set(["image/png","image/jpeg","image/webp"]);
+
+  async function doUpload(file) {
+    msg.classList.remove('text-danger','text-success');
+    msg.classList.add('text-muted');
+    msg.textContent = 'Requesting upload URL…';
+
+    const contentType = file.type || 'application/octet-stream';
+    if (!ALLOWED.has(contentType)) {
+      msg.classList.replace('text-muted','text-danger');
+      msg.textContent = 'Unsupported file type. Use PNG, JPEG, or WEBP.';
+      return;
+    }
+
+    btn.disabled = true; input.disabled = true;
+    try {
+      // 1) presign
+      const pres = await fetch(PRESIGN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentType })
+      });
+      if (!pres.ok) throw new Error('presign failed');
+      const { url, headers, key, upload_token } = await pres.json();
+
+      // 2) PUT raw file
+      msg.textContent = 'Uploading to S3…';
+      const put = await fetch(url, {
+        method: 'PUT',
+        headers: headers || { 'Content-Type': contentType },
+        body: file
+      });
+      if (!put.ok) throw new Error('upload failed');
+
+      // 3) finalize
+      msg.textContent = 'Finalizing…';
+      const fin = await fetch(FINALIZE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, upload_token })
+      });
+      if (!fin.ok) throw new Error('finalize failed');
+
+      msg.classList.replace('text-muted','text-success');
+      msg.textContent = 'Uploaded!';
+      // refresh the list
+      htmx.ajax('GET', "{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/images", { target:'#stop-images', swap:'innerHTML' });
+      // reset input
+      input.value = '';
+    } catch (err) {
+      msg.classList.replace('text-muted','text-danger');
+      msg.textContent = 'Upload failed. Please try again.';
+    } finally {
+      btn.disabled = false; input.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', () => {
+    const f = input.files && input.files[0];
+    if (!f) {
+      msg.classList.add('text-danger');
+      msg.textContent = 'Please choose an image file.';
+      return;
+    }
+    doUpload(f);
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
