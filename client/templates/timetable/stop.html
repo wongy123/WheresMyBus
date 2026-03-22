@@ -36,7 +36,7 @@
 
 <div id="tt-stop-results"
      hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}&page={{ page }}&limit={{ limit }}"
-     hx-trigger="load"
+     hx-trigger="load, every 30s"
      hx-target="this"
      hx-swap="innerHTML"
      aria-live="polite">
