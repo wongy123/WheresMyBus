@@ -1,5 +1,8 @@
 <!-- templates/routes/details.html -->
 {% extends "base.html" %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
 {% block content %}
 {% set bg = '#' + (route.route_color or 'CCCCCC') %}
 {% set fg = '#' + (route.route_text_color or '000000') %}
@@ -64,6 +67,116 @@
     <span>Loading timetable...</span>
   </div>
 </div>
+
+<!-- Stop mini-map modal -->
+<div class="modal fade" id="stopMapModal" tabindex="-1" aria-labelledby="stopMapModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header py-2 px-3">
+        <h6 class="modal-title mb-0" id="stopMapModalLabel"></h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="diagram-stop-map" style="height: 400px;"></div>
+      </div>
+      <div class="modal-footer py-2 px-3 justify-content-between">
+        <a id="diagram-stop-link" href="#" class="btn btn-primary btn-sm">View Stop Details</a>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var _diagBasePath = {{ BASE_PATH | tojson }};
+var _diagMap = null;
+var _diagFocusMarker = null;
+var _diagNearbyMarkers = {};
+var _diagMoveTimer = null;
+var _diagFocusStopId = null;
+
+function _diagMakeIcon(s) {
+  var rt = s.primary_route_type;
+  var isStation = s.location_type === 1;
+  var color, label;
+  if      (rt === 2 || rt === 1 || rt === 12) { color = '#6f42c1'; label = 'T'; }
+  else if (rt === 0)                           { color = '#e6a817'; label = 'L'; }
+  else if (rt === 4)                           { color = '#0dcaf0'; label = 'F'; }
+  else                                         { color = '#0d6efd'; label = 'B'; }
+  var size = isStation ? 22 : 18, radius = isStation ? '4px' : '50%';
+  return L.divIcon({
+    className: '',
+    html: '<div style="width:' + size + 'px;height:' + size + 'px;background:' + color +
+          ';border-radius:' + radius + ';border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.45);' +
+          'display:flex;align-items:center;justify-content:center;' +
+          'color:white;font-weight:700;font-size:10px;font-family:sans-serif;">' + label + '</div>',
+    iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+  });
+}
+
+function _diagLoadNearby() {
+  var center = _diagMap.getCenter();
+  fetch(window.API_BASE_URL + '/stops/nearby?lat=' + center.lat + '&lng=' + center.lng + '&limit=30')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      Object.values(_diagNearbyMarkers).forEach(function(m) { _diagMap.removeLayer(m); });
+      _diagNearbyMarkers = {};
+      (data.data || []).forEach(function(s) {
+        if (!s.stop_lat || !s.stop_lon || s.stop_id === _diagFocusStopId) return;
+        var popup = '<b>' + s.stop_name + '</b>' +
+          '<br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" ' +
+          'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
+          'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View Stop</a>';
+        _diagNearbyMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: _diagMakeIcon(s) })
+          .addTo(_diagMap).bindPopup(popup);
+      });
+    })
+    .catch(function() {});
+}
+
+function _diagSetFocus(stopName, lat, lon) {
+  if (_diagFocusMarker) _diagMap.removeLayer(_diagFocusMarker);
+  _diagFocusMarker = L.marker([lat, lon]).addTo(_diagMap)
+    .bindPopup('<b>' + stopName + '</b><br><span style="font-size:.8em;color:#6c757d;">Selected stop</span>')
+    .openPopup();
+  _diagMap.setView([lat, lon], 16);
+  _diagLoadNearby();
+}
+
+function showStopMap(stopId, stopName, lat, lon) {
+  _diagFocusStopId = stopId;
+  document.getElementById('stopMapModalLabel').textContent = stopName;
+  document.getElementById('diagram-stop-link').href = _diagBasePath + '/stops/' + stopId;
+
+  var modalEl = document.getElementById('stopMapModal');
+
+  // Modal already open + map ready — update in place
+  if (_diagMap && modalEl.classList.contains('show')) {
+    _diagSetFocus(stopName, lat, lon);
+    return;
+  }
+
+  modalEl.addEventListener('shown.bs.modal', function () {
+    if (!_diagMap) {
+      _diagMap = L.map('diagram-stop-map').setView([lat, lon], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(_diagMap);
+      _diagMap.on('moveend', function() {
+        clearTimeout(_diagMoveTimer);
+        _diagMoveTimer = setTimeout(_diagLoadNearby, 400);
+      });
+    } else {
+      _diagMap.invalidateSize();
+    }
+    _diagSetFocus(stopName, lat, lon);
+  }, { once: true });
+
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
+</script>
 
 <script>
 var currentDirection = 0;

@@ -398,7 +398,7 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
   const db = openDb(config);
 
   const sql = `
-    SELECT st.stop_sequence, st.stop_id, s.stop_name, s.stop_code
+    SELECT st.stop_sequence, st.stop_id, s.stop_name, s.stop_code, s.stop_lat, s.stop_lon
     FROM stop_times st
     JOIN stops s ON st.stop_id = s.stop_id
     WHERE st.trip_id = (
