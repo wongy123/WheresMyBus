@@ -300,5 +300,11 @@ if (navigator.geolocation) {
   });
 }
 </script>
+<div id="stop-vehicle-poll"
+     hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/vehicles?duration=3600"
+     hx-trigger="every 5s"
+     hx-target="this"
+     hx-swap="innerHTML"
+     style="display:none;" aria-hidden="true"></div>
 {% endif %}
 {% endblock %}
