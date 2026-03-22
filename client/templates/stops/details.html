@@ -1,15 +1,117 @@
 {% extends "base.html" %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
 {% block content %}
-<h1 class="h4 mb-1">{{ stop.stop_name }}</h1>
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-1">
+  <h1 class="h4 mb-0">{{ stop.stop_name }}</h1>
+  <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">View Full Timetable</a>
+</div>
 <div class="text-muted small mb-3">
   Stop ID: <code>{{ stop.stop_id }}</code>
-  {% if stop.stop_code %} • Code: <code>{{ stop.stop_code }}</code>{% endif %}
-  {% if stop.zone_id %} • Zone: {{ stop.zone_id }}{% endif %}
+  {% if stop.stop_code %} &bull; Code: <code>{{ stop.stop_code }}</code>{% endif %}
+  {% if stop.zone_id %} &bull; Zone: {{ stop.zone_id }}{% endif %}
 </div>
 
-<div class="my-2">
-  <a class="btn btn-primary" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">
-    View Timetable
-  </a>
+{% if stop.stop_lat and stop.stop_lon %}
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div id="stop-map" style="height: 320px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h2 class="h6 mb-0">Nearby Stops</h2>
+      <button id="loc-btn" class="btn btn-outline-secondary btn-sm" onclick="requestLocation()">
+        Use my location
+      </button>
+    </div>
+    <div id="nearby-stops" class="text-muted small">Enable location to see nearby stops.</div>
+  </div>
 </div>
+{% endif %}
+
+<h2 class="h5 mb-2">Upcoming Services</h2>
+<div id="stop-timetable"
+     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&page=1&limit=10"
+     hx-trigger="load, every 30s"
+     hx-target="this"
+     hx-swap="innerHTML"
+     aria-live="polite">
+  <div class="text-muted small d-flex align-items-center gap-2">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>Loading...</span>
+  </div>
+</div>
+
+{% if stop.stop_lat and stop.stop_lon %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var stopLat = {{ stop.stop_lat }};
+var stopLon = {{ stop.stop_lon }};
+
+var map = L.map('stop-map').setView([stopLat, stopLon], 16);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+
+L.marker([stopLat, stopLon]).addTo(map)
+  .bindPopup('<b>{{ stop.stop_name | e }}</b>').openPopup();
+
+var userMarker = null;
+var nearbyMarkers = [];
+
+function requestLocation() {
+  if (!navigator.geolocation) {
+    alert('Geolocation is not supported by your browser.');
+    return;
+  }
+  var btn = document.getElementById('loc-btn');
+  btn.textContent = 'Locating...';
+  btn.disabled = true;
+
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    var lat = pos.coords.latitude;
+    var lng = pos.coords.longitude;
+
+    if (userMarker) map.removeLayer(userMarker);
+    userMarker = L.circleMarker([lat, lng], {
+      color: '#198754', fillColor: '#198754', fillOpacity: 0.85, radius: 8, weight: 2
+    }).addTo(map).bindPopup('Your location');
+
+    map.fitBounds([[stopLat, stopLon], [lat, lng]], { padding: [50, 50] });
+
+    fetch('{{ BASE_PATH }}/hx/stops/nearby-json?lat=' + lat + '&lng=' + lng + '&limit=8')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        nearbyMarkers.forEach(function(m) { map.removeLayer(m); });
+        nearbyMarkers = [];
+        (data.data || []).forEach(function(s) {
+          if (!s.stop_lat || !s.stop_lon) return;
+          var icon = L.divIcon({
+            className: '',
+            html: '<div style="width:10px;height:10px;background:#6c757d;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4);"></div>',
+            iconSize: [10, 10],
+            iconAnchor: [5, 5]
+          });
+          var m = L.marker([s.stop_lat, s.stop_lon], { icon: icon }).addTo(map)
+            .bindPopup('<b>' + s.stop_name + '</b>');
+          nearbyMarkers.push(m);
+        });
+      });
+
+    htmx.ajax('GET',
+      '{{ BASE_PATH }}/hx/stops/nearby?lat=' + lat + '&lng=' + lng + '&limit=8',
+      { target: '#nearby-stops', swap: 'innerHTML' }
+    );
+
+    btn.textContent = 'Location enabled';
+  }, function() {
+    btn.textContent = 'Use my location';
+    btn.disabled = false;
+    alert('Could not get your location.');
+  });
+}
+</script>
+{% endif %}
 {% endblock %}

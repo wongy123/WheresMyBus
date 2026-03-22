@@ -1,0 +1,68 @@
+<style>
+.schedule-table { border-collapse: collapse; font-size: .82rem; }
+.schedule-table th, .schedule-table td {
+  padding: 5px 10px;
+  white-space: nowrap;
+  border: 1px solid #dee2e6;
+}
+.schedule-table thead th {
+  background: #f8f9fa;
+  text-align: center;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.schedule-table .stop-col {
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 1;
+  font-weight: 500;
+  min-width: 180px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.schedule-table thead th.stop-col { z-index: 3; }
+.schedule-table .time-cell { text-align: center; color: #333; }
+.schedule-table .time-cell.empty { color: #ccc; }
+.schedule-table tbody tr:nth-child(even) td { background: #f8f9fa; }
+.schedule-table tbody tr:nth-child(even) td.stop-col { background: #f8f9fa; }
+.schedule-wrap { overflow-x: auto; max-height: 70vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px; }
+</style>
+
+{% if not stops or not trips %}
+  <div class="alert alert-light border">No scheduled services found for today.</div>
+{% else %}
+  <div class="text-muted small mb-2">{{ trips | length }} service{{ 's' if trips | length != 1 else '' }} today</div>
+  <div class="schedule-wrap">
+    <table class="schedule-table">
+      <thead>
+        <tr>
+          <th class="stop-col">Stop</th>
+          {% for trip in trips %}
+            <th>{{ trip.times.get(stops[0].stop_id, '') or trip.times.get(stops[1].stop_id, '') if stops | length > 1 else '' }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for stop in stops %}
+          <tr>
+            <td class="stop-col">
+              <a href="{{ BASE_PATH }}/stops/{{ stop.stop_id }}" class="text-decoration-none text-body">
+                {{ stop.stop_name }}
+              </a>
+            </td>
+            {% for trip in trips %}
+              {% set t = trip.times.get(stop.stop_id, '') %}
+              <td class="time-cell {{ 'empty' if not t else '' }}">{{ t or '&mdash;' }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="text-muted mt-2" style="font-size: .75rem;">Times are scheduled departures (HH:MM). Services may vary.</div>
+{% endif %}

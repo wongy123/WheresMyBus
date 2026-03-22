@@ -34,7 +34,9 @@
               {% if show_sched_under %}<div class="small text-muted">sched {{ sch }}</div>{% endif %}
             </td>
             <td class="text-nowrap">
-              <span class="badge rounded-pill" style="background-color: {{ bg }}; color: {{ fg }};">{{ it.route_short_name }}</span>
+              <a href="{{ BASE_PATH }}/routes/{{ it.route_id }}" class="text-decoration-none">
+                <span class="badge rounded-pill" style="background-color: {{ bg }}; color: {{ fg }};">{{ it.route_short_name }}</span>
+              </a>
             </td>
             <td>{{ it.trip_headsign }}</td>
             <td>

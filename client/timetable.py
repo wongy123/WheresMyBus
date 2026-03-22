@@ -103,6 +103,22 @@ def hx_timetable_route(route_id: str):
                            route_id=route_id, direction=direction, duration=duration,
                            page=page, limit=limit)
 
+@bp.get("/hx/timetable/route/<route_id>/schedule")
+def hx_timetable_route_schedule(route_id: str):
+    direction = request.args.get("direction", 0, type=int)
+    if direction not in (0, 1):
+        direction = 0
+
+    data = api_get(f"routes/{route_id}/schedule", {"direction": direction}) or {}
+    stops = data.get("stops", [])
+    trips = data.get("trips", [])
+
+    return render_template(
+        "timetable/_route_schedule.html",
+        stops=stops, trips=trips,
+        route_id=route_id, direction=direction,
+    )
+
 @bp.get("/hx/timetable/route/<route_id>/diagram")
 def hx_timetable_route_diagram(route_id: str):
     direction = request.args.get("direction", 0, type=int)

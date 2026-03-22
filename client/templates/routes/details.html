@@ -1,11 +1,11 @@
 <!-- templates/routes/details.html -->
 {% extends "base.html" %}
 {% block content %}
-{# Fields come exactly as shown by your API for /api/routes/<route_id> #}
 {% set bg = '#' + (route.route_color or 'CCCCCC') %}
 {% set fg = '#' + (route.route_text_color or '000000') %}
+{% set type_labels = {0: 'Tram', 1: 'Metro', 2: 'Train', 3: 'Bus', 4: 'Ferry', 5: 'Cable car', 11: 'Trolleybus', 12: 'Monorail'} %}
 
-<div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
   <div class="d-flex align-items-center gap-3">
     <span class="badge rounded-pill px-3 py-2 fs-5"
           style="background-color: {{ bg }}; color: {{ fg }};">
@@ -14,17 +14,103 @@
     <div>
       <h1 class="h4 mb-1">{{ route.route_long_name }}</h1>
       <div class="text-muted small">
-        <span class="me-3">Route ID: <code>{{ route.route_id }}</code></span>
-        <span class="me-3">Type: {{ route.route_type }}</span>
-        <span class="me-3">Color: <code>{{ bg }}</code></span>
-        <span>Text: <code>#{{ route.route_text_color }}</code></span>
+        <span class="me-2">Route ID: <code>{{ route.route_id }}</code></span>
+        {% if route.route_type is not none %}
+          <span class="badge text-bg-secondary">{{ type_labels.get(route.route_type, 'Type ' ~ route.route_type) }}</span>
+        {% endif %}
       </div>
     </div>
   </div>
-  <span class="route-color-chip-lg" style="background-color: {{ bg }};" aria-hidden="true"></span>
+  <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/route/{{ route.route_id }}">View Full Timetable</a>
 </div>
 
-<hr class="my-4">
+<div class="d-flex align-items-center flex-wrap gap-3 mb-3">
+  <div class="btn-group" role="group" aria-label="direction">
+    <button type="button" id="dir-0-btn" class="btn btn-outline-primary active"
+            onclick="setDirection(0)">Inbound</button>
+    <button type="button" id="dir-1-btn" class="btn btn-outline-primary"
+            onclick="setDirection(1)">Outbound</button>
+  </div>
 
-<a class="btn btn-primary" href="{{ BASE_PATH }}/timetable/route/{{ route.route_id }}">View Timetable</a>
+  <div class="btn-group" role="group" aria-label="view">
+    <button type="button" id="view-schedule-btn" class="btn btn-outline-secondary active"
+            onclick="setView('schedule')">Today's Timetable</button>
+    <button type="button" id="view-diagram-btn" class="btn btn-outline-secondary"
+            onclick="setView('diagram')">Diagram</button>
+  </div>
+</div>
+
+<div id="route-diagram"
+     class="d-none"
+     hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction=0&duration=3600"
+     hx-trigger="refresh"
+     hx-target="this"
+     hx-swap="innerHTML"
+     aria-live="polite">
+  <div class="text-muted small d-flex align-items-center gap-2">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>Loading route diagram...</span>
+  </div>
+</div>
+
+<div id="route-schedule"
+     hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/schedule?direction=0"
+     hx-trigger="load, refresh"
+     hx-target="this"
+     hx-swap="innerHTML"
+     aria-live="polite">
+  <div class="text-muted small d-flex align-items-center gap-2">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>Loading timetable...</span>
+  </div>
+</div>
+
+<script>
+var currentDirection = 0;
+var currentView = 'schedule';
+var scheduleLoadedForDirection = 0;
+
+var diagramInterval = setInterval(function() {
+  if (currentView === 'diagram') {
+    htmx.trigger(document.getElementById('route-diagram'), 'refresh');
+  }
+}, 30000);
+
+function setDirection(dir) {
+  currentDirection = dir;
+  document.getElementById('dir-0-btn').classList.toggle('active', dir === 0);
+  document.getElementById('dir-1-btn').classList.toggle('active', dir === 1);
+
+  var diagramDiv = document.getElementById('route-diagram');
+  diagramDiv.setAttribute('hx-get',
+    '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction=' + dir + '&duration=3600');
+  htmx.process(diagramDiv);
+
+  var scheduleDiv = document.getElementById('route-schedule');
+  scheduleDiv.setAttribute('hx-get',
+    '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/schedule?direction=' + dir);
+  htmx.process(scheduleDiv);
+
+  if (currentView === 'diagram') {
+    htmx.trigger(diagramDiv, 'refresh');
+    scheduleLoadedForDirection = -1;
+  } else {
+    scheduleLoadedForDirection = dir;
+    htmx.trigger(scheduleDiv, 'refresh');
+  }
+}
+
+function setView(view) {
+  currentView = view;
+  document.getElementById('route-diagram').classList.toggle('d-none', view !== 'diagram');
+  document.getElementById('route-schedule').classList.toggle('d-none', view !== 'schedule');
+  document.getElementById('view-diagram-btn').classList.toggle('active', view === 'diagram');
+  document.getElementById('view-schedule-btn').classList.toggle('active', view === 'schedule');
+
+  if (view === 'schedule' && scheduleLoadedForDirection !== currentDirection) {
+    scheduleLoadedForDirection = currentDirection;
+    htmx.trigger(document.getElementById('route-schedule'), 'refresh');
+  }
+}
+</script>
 {% endblock %}
