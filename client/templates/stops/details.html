@@ -49,8 +49,23 @@
 </div>
 {% endif %}
 
+{% if stop.location_type != 1 %}
+<h2 class="h5 mb-2">Upcoming Services</h2>
+<div id="stop-timetable"
+     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&page=1&limit=10"
+     hx-trigger="load, every 30s"
+     hx-target="this"
+     hx-swap="innerHTML"
+     aria-live="polite">
+  <div class="text-muted small d-flex align-items-center gap-2">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>Loading...</span>
+  </div>
+</div>
+{% endif %}
+
 {% if stop.stop_lat and stop.stop_lon %}
-<div class="row g-3 mb-4">
+<div class="row g-3 mb-4 mt-2">
   <div class="col-lg-8">
     <div id="stop-map" style="height: 340px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
   </div>
@@ -72,21 +87,6 @@
     {% else %}
       <div class="text-muted small">No nearby stops found.</div>
     {% endif %}
-  </div>
-</div>
-{% endif %}
-
-{% if stop.location_type != 1 %}
-<h2 class="h5 mb-2">Upcoming Services</h2>
-<div id="stop-timetable"
-     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&page=1&limit=10"
-     hx-trigger="load, every 30s"
-     hx-target="this"
-     hx-swap="innerHTML"
-     aria-live="polite">
-  <div class="text-muted small d-flex align-items-center gap-2">
-    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-    <span>Loading...</span>
   </div>
 </div>
 {% endif %}
