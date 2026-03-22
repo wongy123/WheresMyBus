@@ -7,6 +7,10 @@
 {% set total = pg.get('total', 0) %}
 
 {% if rows %}
+  <style>
+    .tt-headsign { overflow-x: auto; white-space: nowrap; max-width: 38vw; }
+    @media (min-width: 768px) { .tt-headsign { max-width: none; white-space: normal; overflow-x: visible; } }
+  </style>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
       <thead class="table-light">
@@ -38,9 +42,9 @@
                 <span class="badge rounded-pill" style="background-color: {{ bg }}; color: {{ fg }};">{{ it.route_short_name }}</span>
               </a>
             </td>
-            <td>{{ it.trip_headsign }}</td>
+            <td><div class="tt-headsign">{{ it.trip_headsign }}</div></td>
             <td>
-              <div class="d-flex align-items-center gap-1">
+              <div class="d-flex align-items-center justify-content-between w-100">
                 <span class="badge {{ info.cls }} status-badge" tabindex="0"
                       data-bs-toggle="popover" data-bs-placement="top"
                       data-bs-content="{{ badge_popup }}"
