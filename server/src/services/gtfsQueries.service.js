@@ -428,6 +428,33 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
   return { stops: canonicalStops, trips };
 }
 
+export async function getRoutesByStop(stopId, configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  // One row per route_short_name; only routes that actually serve this stop
+  const sql = `
+    SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color
+    FROM routes r
+    INNER JOIN (
+      SELECT DISTINCT t.route_id
+      FROM stop_times st
+      JOIN trips t ON st.trip_id = t.trip_id
+      WHERE st.stop_id = $stopId
+    ) serving ON r.route_id = serving.route_id
+    INNER JOIN (
+      SELECT route_short_name, MIN(route_id) AS min_id
+      FROM routes
+      GROUP BY route_short_name
+    ) dedup ON r.route_id = dedup.min_id
+    ORDER BY r.route_short_name
+  `;
+
+  const rows = db.prepare(sql).all({ stopId });
+  await closeDb(db);
+  return rows;
+}
+
 export async function getOneStop(stopId, configPath = defaultConfigPath) {
   const config = await loadConfig(configPath);
   const db = openDb(config);

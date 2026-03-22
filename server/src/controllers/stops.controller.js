@@ -4,6 +4,7 @@ import {
   getNearbyStops,
   getOneStop as getOneStopService,
   getUpcomingByStop,
+  getRoutesByStop,
 } from "../services/gtfsQueries.service.js";
 import {
   paginateResponse,
@@ -62,6 +63,19 @@ export async function getOneStop(req, res, next) {
     if (!stop) return res.status(404).json({ error: "Stop not found" });
 
     res.json(stop);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/stops/:stopId/routes
+ */
+export async function getStopRoutes(req, res, next) {
+  try {
+    const stopId = req.params.stopId;
+    const routes = await getRoutesByStop(stopId);
+    res.json({ data: routes });
   } catch (err) {
     next(err);
   }

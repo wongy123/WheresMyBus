@@ -13,19 +13,46 @@
   {% if stop.zone_id %} &bull; Zone: {{ stop.zone_id }}{% endif %}
 </div>
 
+{% if routes %}
+<div class="mb-4">
+  <div class="fw-semibold small mb-2">Routes serving this stop</div>
+  <div class="d-flex flex-wrap gap-1">
+    {% for r in routes %}
+      {% set bg = '#' + (r.route_color or 'CCCCCC') %}
+      {% set fg = '#' + (r.route_text_color or '000000') %}
+      <a href="{{ BASE_PATH }}/routes/{{ r.route_id }}" class="text-decoration-none">
+        <span class="badge rounded-pill px-2 py-1" style="background-color: {{ bg }}; color: {{ fg }}; font-size: .85rem;">
+          {{ r.route_short_name }}
+        </span>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {% if stop.stop_lat and stop.stop_lon %}
 <div class="row g-3 mb-4">
   <div class="col-lg-8">
-    <div id="stop-map" style="height: 320px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
+    <div id="stop-map" style="height: 340px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
   </div>
   <div class="col-lg-4">
-    <div class="d-flex align-items-center justify-content-between mb-2">
-      <h2 class="h6 mb-0">Nearby Stops</h2>
-      <button id="loc-btn" class="btn btn-outline-secondary btn-sm" onclick="requestLocation()">
-        Use my location
-      </button>
-    </div>
-    <div id="nearby-stops" class="text-muted small">Enable location to see nearby stops.</div>
+    <h2 class="h6 mb-2">Nearby Stops</h2>
+    {% if nearby %}
+      <ul class="list-unstyled mb-0" id="nearby-stop-list">
+        {% for s in nearby %}
+          <li class="d-flex align-items-start justify-content-between gap-2 py-1 border-bottom">
+            <a href="{{ BASE_PATH }}/stops/{{ s.stop_id }}" class="text-decoration-none text-body small">
+              {{ s.stop_name }}
+            </a>
+            <button class="btn btn-link btn-sm p-0 flex-shrink-0"
+                    style="font-size:.75rem; white-space:nowrap;"
+                    onclick="focusStop('{{ s.stop_id }}')">on map</button>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="text-muted small">No nearby stops found.</div>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -48,6 +75,9 @@
 <script>
 var stopLat = {{ stop.stop_lat }};
 var stopLon = {{ stop.stop_lon }};
+var stopName = {{ stop.stop_name | tojson }};
+var nearby = {{ nearby | tojson }};
+var BASE_PATH = {{ BASE_PATH | tojson }};
 
 var map = L.map('stop-map').setView([stopLat, stopLon], 16);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -55,62 +85,38 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19
 }).addTo(map);
 
+// Current stop — blue default pin, popup shows name only (no navigate button)
 L.marker([stopLat, stopLon]).addTo(map)
-  .bindPopup('<b>{{ stop.stop_name | e }}</b>').openPopup();
+  .bindPopup(
+    '<b>' + stopName + '</b>' +
+    '<br><span class="text-muted" style="font-size:.8em;">Current stop</span>'
+  )
+  .openPopup();
 
-var userMarker = null;
-var nearbyMarkers = [];
-
-function requestLocation() {
-  if (!navigator.geolocation) {
-    alert('Geolocation is not supported by your browser.');
-    return;
-  }
-  var btn = document.getElementById('loc-btn');
-  btn.textContent = 'Locating...';
-  btn.disabled = true;
-
-  navigator.geolocation.getCurrentPosition(function(pos) {
-    var lat = pos.coords.latitude;
-    var lng = pos.coords.longitude;
-
-    if (userMarker) map.removeLayer(userMarker);
-    userMarker = L.circleMarker([lat, lng], {
-      color: '#198754', fillColor: '#198754', fillOpacity: 0.85, radius: 8, weight: 2
-    }).addTo(map).bindPopup('Your location');
-
-    map.fitBounds([[stopLat, stopLon], [lat, lng]], { padding: [50, 50] });
-
-    fetch('{{ BASE_PATH }}/hx/stops/nearby-json?lat=' + lat + '&lng=' + lng + '&limit=8')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        nearbyMarkers.forEach(function(m) { map.removeLayer(m); });
-        nearbyMarkers = [];
-        (data.data || []).forEach(function(s) {
-          if (!s.stop_lat || !s.stop_lon) return;
-          var icon = L.divIcon({
-            className: '',
-            html: '<div style="width:10px;height:10px;background:#6c757d;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4);"></div>',
-            iconSize: [10, 10],
-            iconAnchor: [5, 5]
-          });
-          var m = L.marker([s.stop_lat, s.stop_lon], { icon: icon }).addTo(map)
-            .bindPopup('<b>' + s.stop_name + '</b>');
-          nearbyMarkers.push(m);
-        });
-      });
-
-    htmx.ajax('GET',
-      '{{ BASE_PATH }}/hx/stops/nearby?lat=' + lat + '&lng=' + lng + '&limit=8',
-      { target: '#nearby-stops', swap: 'innerHTML' }
-    );
-
-    btn.textContent = 'Location enabled';
-  }, function() {
-    btn.textContent = 'Use my location';
-    btn.disabled = false;
-    alert('Could not get your location.');
+// Nearby stop markers
+var nearbyMarkerMap = {};
+nearby.forEach(function(s) {
+  if (!s.stop_lat || !s.stop_lon) return;
+  var icon = L.divIcon({
+    className: '',
+    html: '<div style="width:10px;height:10px;background:#6c757d;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4);"></div>',
+    iconSize: [10, 10],
+    iconAnchor: [5, 5]
   });
+  var popup =
+    '<b>' + s.stop_name + '</b>' +
+    '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" ' +
+    'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
+    'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View stop</a>';
+  var m = L.marker([s.stop_lat, s.stop_lon], { icon: icon }).addTo(map).bindPopup(popup);
+  nearbyMarkerMap[s.stop_id] = m;
+});
+
+function focusStop(stopId) {
+  var m = nearbyMarkerMap[stopId];
+  if (!m) return;
+  map.flyTo(m.getLatLng(), 17);
+  m.openPopup();
 }
 </script>
 {% endif %}
