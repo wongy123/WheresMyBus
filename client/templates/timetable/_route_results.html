@@ -31,8 +31,10 @@
 
           <tr>
             <td class="text-nowrap">
-              <div>{{ main_time }}</div>
-              {% if show_sched_under %}<div class="small text-muted">sched {{ sch }}</div>{% endif %}
+              <span class="tt-time" data-time="{{ main_time[:5] }}" title="Click to toggle" style="cursor:pointer;">
+                <span class="tt-min fw-semibold"></span><span class="tt-abs d-none text-body-secondary">{{ main_time }}</span>
+              </span>
+              {% if show_sched_under %}<div class="small text-muted">sched {{ sch[:5] }}</div>{% endif %}
             </td>
             <td class="text-nowrap"><a href="{{ BASE_PATH }}/stops/{{ it.stop_id }}" class="text-decoration-none text-body">{{ it.stop_name }}</a></td>
             <td>{{ it.trip_headsign }}</td>
@@ -99,3 +101,31 @@
 {% else %}
   <div class="alert alert-light border">No upcoming services in this window.</div>
 {% endif %}
+<script>
+(function () {
+  function minsFromNow(hhmm) {
+    var p = hhmm.split(':');
+    var target = parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60;
+    var now = new Date();
+    var nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    var diff = target - nowSec;
+    if (diff < -3600) diff += 86400;
+    return Math.round(diff / 60);
+  }
+  function fmtMins(m) {
+    if (m <= 0) return 'now';
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60), r = m % 60;
+    return h + 'h' + (r ? ' ' + r + 'm' : '');
+  }
+  document.querySelectorAll('.tt-time').forEach(function (el) {
+    var minEl = el.querySelector('.tt-min');
+    var absEl = el.querySelector('.tt-abs');
+    minEl.textContent = fmtMins(minsFromNow(el.dataset.time));
+    el.addEventListener('click', function () {
+      minEl.classList.toggle('d-none');
+      absEl.classList.toggle('d-none');
+    });
+  });
+}());
+</script>
