@@ -1,7 +1,8 @@
 import {
   getAllRoutes,
   getOneRoute as getOneRouteService,
-  getUpcomingByRoute
+  getUpcomingByRoute,
+  getStopsByRoute,
 } from '../services/gtfsQueries.service.js';
 import { paginateResponse } from '../utils/paginate.js';
 
@@ -44,6 +45,22 @@ export async function getOneRoute(req, res, next) {
     }
 
     res.json(route);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/routes/:routeId/stops?direction=0
+ */
+export async function getRouteStops(req, res, next) {
+  try {
+    const routeId = req.params.routeId;
+    const dirQ = Number.parseInt(req.query.direction, 10);
+    const direction = dirQ === 0 || dirQ === 1 ? dirQ : 0;
+
+    const stops = await getStopsByRoute(routeId, direction);
+    res.json({ data: stops });
   } catch (err) {
     next(err);
   }

@@ -35,7 +35,7 @@
 </div>
 
 <div id="tt-stop-results"
-     hx-get="/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}&page={{ page }}&limit={{ limit }}"
+     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}&page={{ page }}&limit={{ limit }}"
      hx-trigger="load"
      hx-target="this"
      hx-swap="innerHTML"
