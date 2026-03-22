@@ -78,4 +78,16 @@ def stop_details(stop_id: str):
     details = api_get(f"stops/{stop_id}")
     if details is None:
         abort(404)
-    return render_template("stops/details.html", stop=details, BASE_PATH=BASE_PATH)
+
+    nearby, routes = [], []
+    if details.get("stop_lat") and details.get("stop_lon"):
+        nearby_data = api_get("stops/nearby", {
+            "lat": details["stop_lat"], "lng": details["stop_lon"], "limit": 9
+        }) or {}
+        # exclude the current stop from the nearby list
+        nearby = [s for s in nearby_data.get("data", []) if s.get("stop_id") != stop_id]
+
+    routes_data = api_get(f"stops/{stop_id}/routes") or {}
+    routes = routes_data.get("data", [])
+
+    return render_template("stops/details.html", stop=details, nearby=nearby, routes=routes, BASE_PATH=BASE_PATH)
