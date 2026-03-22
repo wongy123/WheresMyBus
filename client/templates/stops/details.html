@@ -101,6 +101,9 @@ var stopName = {{ stop.stop_name | tojson }};
 var nearby = {{ nearby | tojson }};
 var BASE_PATH = {{ BASE_PATH | tojson }};
 
+var routeTypeMap = {};
+{{ routes | tojson }}.forEach(function(r) { routeTypeMap[r.route_id] = r.route_type; });
+
 var map = L.map('stop-map').setView([stopLat, stopLon], 16);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -185,6 +188,95 @@ map.on('moveend', function() {
   clearTimeout(moveTimer);
   moveTimer = setTimeout(loadStopsNearCenter, 400);
 });
+
+// Live vehicle markers
+var vehicleMarkerMap = {};
+var activeRoutePolyline = null;
+
+function _vehColor(rt) {
+  if (rt === 1 || rt === 2 || rt === 12) return '#6f42c1';
+  if (rt === 0) return '#e6a817';
+  if (rt === 4) return '#0dcaf0';
+  return '#0d6efd';
+}
+function _vehIconName(rt) {
+  if (rt === 1 || rt === 2 || rt === 12) return 'train';
+  if (rt === 0) return 'tram';
+  if (rt === 4) return 'directions_ferry';
+  return 'directions_bus';
+}
+function _makeBusMarkerIcon(color, iconName) {
+  return L.divIcon({
+    className: '',
+    html: '<div style="width:28px;height:28px;background:' + color + ';border-radius:50%;' +
+          'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
+          'display:flex;align-items:center;justify-content:center;">' +
+          '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' + iconName + '</span></div>',
+    iconSize: [28, 28], iconAnchor: [14, 14]
+  });
+}
+
+window.stopMapAddVehicles = function(vehicles) {
+  var seen = {};
+  vehicles.forEach(function(v) {
+    if (!v.lat || !v.lon) return;
+    seen[v.trip_id] = true;
+    var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+    var color = _vehColor(rt);
+
+    var etaStr = '';
+    if (v.eta) {
+      var p = v.eta.split(':');
+      var tSec = parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + (parseInt(p[2]) || 0);
+      var now = new Date();
+      var nSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      var diff = tSec - nSec;
+      if (diff < -3600) diff += 86400;
+      var mins = Math.round(diff / 60);
+      etaStr = mins <= 0 ? 'now' : mins + ' min';
+    }
+    var label = v.label ? ' · ' + v.label : '';
+    var popup = '<b>' + v.route_short_name + '</b>' + label +
+      (v.trip_headsign ? ' — ' + v.trip_headsign : '') +
+      (etaStr ? '<br><span style="font-size:.8em;color:#6c757d;">' + etaStr + '</span>' : '') +
+      '<br><a href="' + BASE_PATH + '/routes/' + encodeURIComponent(v.route_id) + '" ' +
+      'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
+      'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View Route</a>';
+
+    if (vehicleMarkerMap[v.trip_id]) {
+      vehicleMarkerMap[v.trip_id].setLatLng([v.lat, v.lon]);
+      vehicleMarkerMap[v.trip_id].setPopupContent(popup);
+    } else {
+      var marker = L.marker([v.lat, v.lon], {
+        icon: _makeBusMarkerIcon(color, _vehIconName(rt)),
+        zIndexOffset: 1000
+      }).addTo(map).bindPopup(popup);
+
+      (function(vv, col) {
+        marker.on('click', function() {
+          if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+          fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(vv.route_id) + '/shape?direction=' + (vv.direction_id || 0))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              var pts = (data.data || []).map(function(pt) { return [pt.lat, pt.lon]; });
+              if (pts.length) {
+                activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
+              }
+            })
+            .catch(function() {});
+        });
+        marker.on('popupclose', function() {
+          if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+        });
+      }(v, color));
+
+      vehicleMarkerMap[v.trip_id] = marker;
+    }
+  });
+  Object.keys(vehicleMarkerMap).forEach(function(tid) {
+    if (!seen[tid]) { map.removeLayer(vehicleMarkerMap[tid]); delete vehicleMarkerMap[tid]; }
+  });
+};
 
 if (navigator.geolocation) {
   navigator.geolocation.getCurrentPosition(function(pos) {

@@ -2,6 +2,10 @@
 {% extends "base.html" %}
 {% block head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  #route-page-map { height: 420px; }
+  @media (min-width: 992px) { #route-page-map { height: 620px; } }
+</style>
 {% endblock %}
 {% block content %}
 {% set bg = '#' + (route.route_color or 'CCCCCC') %}
@@ -45,7 +49,7 @@
   </div>
 </div>
 
-<div id="route-page-map" class="d-none mb-4" style="height: 420px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
+<div id="route-page-map" class="d-none mb-4" style="border-radius: 8px; border: 1px solid #dee2e6;"></div>
 
 <div id="route-diagram"
      class="d-none"
@@ -209,31 +213,39 @@ function _diagSetFocus(stopName, lat, lon) {
 
 function _diagDrawVehicles() {
   if (!_diagMap) return;
-  Object.values(_diagVehicleMarkers).forEach(function(m) { _diagMap.removeLayer(m); });
-  _diagVehicleMarkers = {};
 
   var route = window._diagRoute;
   if (!route || !route.vehicles) return;
 
+  var seen = {};
   route.vehicles.forEach(function(v) {
     if (!v.lat || !v.lon) return;
-    var icon = L.divIcon({
-      className: '',
-      html: '<div style="width:28px;height:28px;background:' + route.color + ';border-radius:50%;' +
-            'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
-            'display:flex;align-items:center;justify-content:center;">' +
-            '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' +
-            route.vehicleIcon + '</span></div>',
-      iconSize: [28, 28], iconAnchor: [14, 14]
-    });
+    seen[v.trip_id] = true;
     var label = v.label ? ' · ' + v.label : '';
     var eta = v.minutes_away != null
       ? (v.minutes_away === 0 ? 'now' : 'in ' + v.minutes_away + ' min')
       : '';
     var popup = '<b>' + (v.headsign || 'Service') + '</b>' + label +
       (v.stop_name ? '<br><span style="font-size:.8em;color:#6c757d;">Next: ' + v.stop_name + (eta ? ' · ' + eta : '') + '</span>' : '');
-    _diagVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], { icon: icon, zIndexOffset: 1000 })
-      .addTo(_diagMap).bindPopup(popup);
+    if (_diagVehicleMarkers[v.trip_id]) {
+      _diagVehicleMarkers[v.trip_id].setLatLng([v.lat, v.lon]);
+      _diagVehicleMarkers[v.trip_id].setPopupContent(popup);
+    } else {
+      var icon = L.divIcon({
+        className: '',
+        html: '<div style="width:28px;height:28px;background:' + route.color + ';border-radius:50%;' +
+              'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
+              'display:flex;align-items:center;justify-content:center;">' +
+              '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' +
+              route.vehicleIcon + '</span></div>',
+        iconSize: [28, 28], iconAnchor: [14, 14]
+      });
+      _diagVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], { icon: icon, zIndexOffset: 1000 })
+        .addTo(_diagMap).bindPopup(popup);
+    }
+  });
+  Object.keys(_diagVehicleMarkers).forEach(function(tid) {
+    if (!seen[tid]) { _diagMap.removeLayer(_diagVehicleMarkers[tid]); delete _diagVehicleMarkers[tid]; }
   });
 }
 
@@ -381,28 +393,36 @@ function _pageMapLoad(direction) {
 
 function _pageMapDrawVehicles() {
   if (!_pageMap) return;
-  Object.values(_pageVehicleMarkers).forEach(function(m) { _pageMap.removeLayer(m); });
-  _pageVehicleMarkers = {};
 
   var route = window._diagRoute;
   if (!route || !route.vehicles) return;
+  var seen = {};
   route.vehicles.forEach(function(v) {
     if (!v.lat || !v.lon) return;
-    var icon = L.divIcon({
-      className: '',
-      html: '<div style="width:28px;height:28px;background:' + _pageRouteColor + ';border-radius:50%;' +
-            'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
-            'display:flex;align-items:center;justify-content:center;">' +
-            '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' +
-            _pageVehicleIcon + '</span></div>',
-      iconSize: [28, 28], iconAnchor: [14, 14]
-    });
+    seen[v.trip_id] = true;
     var label = v.label ? ' · ' + v.label : '';
     var eta = v.minutes_away != null ? (v.minutes_away === 0 ? 'now' : 'in ' + v.minutes_away + ' min') : '';
     var popup = '<b>' + (v.headsign || 'Service') + '</b>' + label +
       (v.stop_name ? '<br><span style="font-size:.8em;color:#6c757d;">Next: ' + v.stop_name + (eta ? ' · ' + eta : '') + '</span>' : '');
-    _pageVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], { icon: icon, zIndexOffset: 1000 })
-      .addTo(_pageMap).bindPopup(popup);
+    if (_pageVehicleMarkers[v.trip_id]) {
+      _pageVehicleMarkers[v.trip_id].setLatLng([v.lat, v.lon]);
+      _pageVehicleMarkers[v.trip_id].setPopupContent(popup);
+    } else {
+      var icon = L.divIcon({
+        className: '',
+        html: '<div style="width:28px;height:28px;background:' + _pageRouteColor + ';border-radius:50%;' +
+              'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
+              'display:flex;align-items:center;justify-content:center;">' +
+              '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' +
+              _pageVehicleIcon + '</span></div>',
+        iconSize: [28, 28], iconAnchor: [14, 14]
+      });
+      _pageVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], { icon: icon, zIndexOffset: 1000 })
+        .addTo(_pageMap).bindPopup(popup);
+    }
+  });
+  Object.keys(_pageVehicleMarkers).forEach(function(tid) {
+    if (!seen[tid]) { _pageMap.removeLayer(_pageVehicleMarkers[tid]); delete _pageVehicleMarkers[tid]; }
   });
 }
 
