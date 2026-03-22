@@ -5,7 +5,9 @@
 {% block content %}
 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-1">
   <h1 class="h4 mb-0">{{ stop.stop_name }}</h1>
-  <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">View Full Timetable</a>
+  {% if stop.location_type != 1 %}
+    <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">View Full Timetable</a>
+  {% endif %}
 </div>
 <div class="text-muted small mb-3">
   Stop ID: <code>{{ stop.stop_id }}</code>
@@ -24,6 +26,23 @@
         <span class="badge rounded-pill px-2 py-1" style="background-color: {{ bg }}; color: {{ fg }}; font-size: .85rem;">
           {{ r.route_short_name }}
         </span>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if platforms %}
+<div class="mb-4">
+  <h2 class="h6 mb-2">Platforms</h2>
+  <div class="list-group list-group-flush">
+    {% for p in platforms %}
+      <a href="{{ BASE_PATH }}/stops/{{ p.stop_id }}"
+         class="list-group-item list-group-item-action py-2 px-0 border-0 border-bottom">
+        <span class="small">{{ p.stop_name }}</span>
+        {% if p.platform_code %}
+          <span class="badge text-bg-secondary ms-1" style="font-size:.75rem;">Platform {{ p.platform_code }}</span>
+        {% endif %}
       </a>
     {% endfor %}
   </div>
@@ -57,6 +76,7 @@
 </div>
 {% endif %}
 
+{% if stop.location_type != 1 %}
 <h2 class="h5 mb-2">Upcoming Services</h2>
 <div id="stop-timetable"
      hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&page=1&limit=10"
@@ -69,6 +89,7 @@
     <span>Loading...</span>
   </div>
 </div>
+{% endif %}
 
 {% if stop.stop_lat and stop.stop_lon %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -85,30 +106,41 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19
 }).addTo(map);
 
-// Current stop — blue default pin, popup shows name only (no navigate button)
+// Current stop marker
 L.marker([stopLat, stopLon]).addTo(map)
-  .bindPopup(
-    '<b>' + stopName + '</b>' +
-    '<br><span class="text-muted" style="font-size:.8em;">Current stop</span>'
-  )
+  .bindPopup('<b>' + stopName + '</b><br><span style="font-size:.8em;color:#6c757d;">Current stop</span>')
   .openPopup();
 
-// Nearby stop markers
+// Icon: color+label from route_type, shape from location_type
+// route_type: 2=rail/metro/tram → purple T; 4=ferry → cyan F; else → blue B
+// location_type: 1=station → square; else → circle
+function makeNearbyIcon(s) {
+  var rt = s.primary_route_type;
+  var isStation = s.location_type === 1;
+  var color, label;
+  if (rt === 2 || rt === 1 || rt === 12)  { color = '#6f42c1'; label = 'T'; } // heavy rail / metro / monorail
+  else if (rt === 0)                       { color = '#e6a817'; label = 'L'; } // light rail / tram
+  else if (rt === 4)                       { color = '#0dcaf0'; label = 'F'; } // ferry
+  else                                     { color = '#0d6efd'; label = 'B'; } // bus (default)
+  var size   = isStation ? 22 : 18;
+  var radius = isStation ? '4px' : '50%';
+  var html =
+    '<div style="width:' + size + 'px;height:' + size + 'px;background:' + color + ';' +
+    'border-radius:' + radius + ';border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.45);' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'color:white;font-weight:700;font-size:10px;font-family:sans-serif;">' + label + '</div>';
+  return L.divIcon({ className: '', html: html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+}
+
 var nearbyMarkerMap = {};
 nearby.forEach(function(s) {
   if (!s.stop_lat || !s.stop_lon) return;
-  var icon = L.divIcon({
-    className: '',
-    html: '<div style="width:10px;height:10px;background:#6c757d;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4);"></div>',
-    iconSize: [10, 10],
-    iconAnchor: [5, 5]
-  });
   var popup =
     '<b>' + s.stop_name + '</b>' +
     '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" ' +
     'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
     'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View stop</a>';
-  var m = L.marker([s.stop_lat, s.stop_lon], { icon: icon }).addTo(map).bindPopup(popup);
+  var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) }).addTo(map).bindPopup(popup);
   nearbyMarkerMap[s.stop_id] = m;
 });
 

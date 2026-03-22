@@ -326,20 +326,71 @@ export async function getNearbyStops(lat, lng, limit = 5, configPath = defaultCo
   const config = await loadConfig(configPath);
   const db = openDb(config);
 
-  const sql = `
+  const rows = db.prepare(`
     SELECT stop_id, stop_name, stop_lat, stop_lon, location_type
     FROM stops
     WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
       AND (location_type IS NULL OR location_type IN (0, 1))
-  `;
+  `).all();
 
-  const rows = db.prepare(sql).all();
-  await closeDb(db);
-
-  return rows
+  const topN = rows
     .map(s => ({ ...s, distance_km: haversineKm(lat, lng, s.stop_lat, s.stop_lon) }))
     .sort((a, b) => a.distance_km - b.distance_km)
     .slice(0, limit);
+
+  // Batch-resolve the dominant route_type for each nearby stop.
+  // Regular stops: direct stop_times lookup.
+  // Stations (location_type=1): no direct stop_times, so resolve via child stops.
+  // Priority: rail/metro/tram (2) > ferry (4) > bus (3).
+  if (topN.length > 0) {
+    const ids = topN.map(s => s.stop_id);
+    const placeholders = ids.map(() => '?').join(',');
+    const rtRows = db.prepare(`
+      WITH candidates(stop_id, route_id) AS (
+        SELECT st.stop_id, t.route_id
+        FROM stop_times st
+        JOIN trips t ON st.trip_id = t.trip_id
+        WHERE st.stop_id IN (${placeholders})
+        UNION ALL
+        SELECT s.stop_id, t.route_id
+        FROM stops s
+        JOIN stops child ON child.parent_station = s.stop_id
+        JOIN stop_times st ON st.stop_id = child.stop_id
+        JOIN trips t ON st.trip_id = t.trip_id
+        WHERE s.stop_id IN (${placeholders})
+      )
+      SELECT c.stop_id,
+        CASE
+          WHEN SUM(CASE WHEN r.route_type IN (1,2,12) THEN 1 ELSE 0 END) > 0 THEN 2
+          WHEN SUM(CASE WHEN r.route_type = 0          THEN 1 ELSE 0 END) > 0 THEN 0
+          WHEN SUM(CASE WHEN r.route_type = 4          THEN 1 ELSE 0 END) > 0 THEN 4
+          ELSE 3
+        END AS primary_route_type
+      FROM candidates c
+      JOIN routes r ON c.route_id = r.route_id
+      GROUP BY c.stop_id
+    `).all(...ids, ...ids);
+    const rtMap = new Map(rtRows.map(r => [r.stop_id, r.primary_route_type]));
+    topN.forEach(s => { s.primary_route_type = rtMap.get(s.stop_id) ?? null; });
+  }
+
+  await closeDb(db);
+  return topN;
+}
+
+export async function getStopPlatforms(stationId, configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  const platforms = db.prepare(`
+    SELECT stop_id, stop_name, stop_code, stop_lat, stop_lon, platform_code
+    FROM stops
+    WHERE parent_station = $stationId
+    ORDER BY stop_name
+  `).all({ stationId });
+
+  await closeDb(db);
+  return platforms;
 }
 
 export async function getStopsByRoute(routeId, direction = 0, configPath = defaultConfigPath) {
