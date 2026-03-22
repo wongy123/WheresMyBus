@@ -8,6 +8,20 @@
   display: inline-block;
 }
 </style>
+{% if route_type in [1, 2, 12] %}
+  {% set vehicle_icon = 'train' %}
+  {% set vehicle_color = '#6f42c1' %}
+{% elif route_type == 0 %}
+  {% set vehicle_icon = 'tram' %}
+  {% set vehicle_color = '#e6a817' %}
+{% elif route_type == 4 %}
+  {% set vehicle_icon = 'directions_ferry' %}
+  {% set vehicle_color = '#0dcaf0' %}
+{% else %}
+  {% set vehicle_icon = 'directions_bus' %}
+  {% set vehicle_color = '#0d6efd' %}
+{% endif %}
+
 {% if not stops %}
   <div class="alert alert-light border">No stop data available for this route and direction.</div>
 {% else %}
@@ -27,7 +41,7 @@
 
         <div class="d-flex align-items-center" style="min-height: 44px; position: relative; z-index: 1;">
           <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
-            <span style="font-size: 1.3em; background: white; border-radius: 50%; padding: 1px;">&#x1F68C;</span>
+            <span class="material-symbols-outlined" style="font-size: 1.4rem; color: {{ vehicle_color }}; line-height: 1;">{{ vehicle_icon }}</span>
           </div>
           <div class="ms-1 d-flex align-items-center gap-2 py-1 px-2 rounded border bg-white shadow-sm" style="font-size: .82rem;">
             <span class="badge {{ info.cls }}">{{ info.label }}</span>
