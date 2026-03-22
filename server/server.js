@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { pool } from './src/models/db.js';
 import cors from 'cors';
 import { cacheGet } from './src/services/cache.service.js';
 
@@ -95,10 +94,6 @@ async function shutdown() {
 
   server.close(async () => {
     console.log('HTTP server closed.');
-    try {
-      await pool.end();
-      console.log('Postgres pool closed.');
-    } catch {}
     process.exit(0);
   });
 
