@@ -20,14 +20,13 @@ A Brisbane public transit tracker built on the Translink GTFS and GTFS-RT feeds.
 The quickest way is Docker:
 
 ```bash
-docker run -d -p 6379:6379 redis:7-alpine
+docker compose up redis -d
 ```
 
-Or use the provided Compose file from the `server/` directory:
+Or without Compose:
 
 ```bash
-cd server
-docker compose up redis -d
+docker run -d -p 6379:6379 redis:7-alpine
 ```
 
 ### 2. API
@@ -76,18 +75,16 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file:
-
-```
-API_BASE_URL=http://localhost:3000/api
-BASE_PATH=
-FLASK_SECRET_KEY=dev-secret
-```
-
 Run the development server:
 
 ```bash
-flask --app "app:create_app()" run
+python app.py
+```
+
+No `.env` needed — it defaults to `http://localhost:3000/api` and serves at `/`. To override, set environment variables before running:
+
+```bash
+API_BASE_URL=http://other-host:3000/api BASE_PATH=/wheresmybus python app.py
 ```
 
 The client will be available at `http://localhost:5000`.
