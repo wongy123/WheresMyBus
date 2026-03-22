@@ -63,7 +63,7 @@
             </td>
             {% for trip in trips %}
               {% set t = trip.times.get(stop.stop_id, '') %}
-              <td class="time-cell {{ 'empty' if not t else '' }}">{{ t or '&mdash;' }}</td>
+              <td class="time-cell {{ 'empty' if not t else '' }}">{{ t or '—' }}</td>
             {% endfor %}
           </tr>
         {% endfor %}

@@ -90,4 +90,9 @@ def stop_details(stop_id: str):
     routes_data = api_get(f"stops/{stop_id}/routes") or {}
     routes = routes_data.get("data", [])
 
-    return render_template("stops/details.html", stop=details, nearby=nearby, routes=routes, BASE_PATH=BASE_PATH)
+    platforms = []
+    if details.get("location_type") == 1:
+        platforms_data = api_get(f"stops/{stop_id}/platforms") or {}
+        platforms = platforms_data.get("data", [])
+
+    return render_template("stops/details.html", stop=details, nearby=nearby, routes=routes, platforms=platforms, BASE_PATH=BASE_PATH)
