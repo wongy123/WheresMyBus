@@ -99,3 +99,13 @@
     {% if updated_at %}Live data &mdash; updated {{ updated_at }}{% else %}No live data available{% endif %}
   </div>
 {% endif %}
+<script>
+window._diagRoute = {
+  stops: {{ stops | tojson }},
+  color: {{ vehicle_color | tojson }},
+  vehicleIcon: {{ vehicle_icon | tojson }},
+  routeId: {{ route_id | tojson }},
+  direction: {{ direction }},
+  vehicles: {{ vehicle_positions | tojson }}
+};
+</script>

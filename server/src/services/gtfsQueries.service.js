@@ -417,6 +417,30 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
   return stops;
 }
 
+export async function getRouteShape(routeId, direction = 0, configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  const sql = `
+    SELECT sh.shape_pt_lat AS lat, sh.shape_pt_lon AS lon
+    FROM shapes sh
+    WHERE sh.shape_id = (
+      SELECT t.shape_id
+      FROM trips t
+      JOIN routes r ON t.route_id = r.route_id
+      WHERE (t.route_id = $routeId OR r.route_short_name = $routeId)
+        AND t.direction_id = $direction
+        AND t.shape_id IS NOT NULL
+      LIMIT 1
+    )
+    ORDER BY sh.shape_pt_sequence
+  `;
+
+  const points = db.prepare(sql).all({ routeId, direction });
+  await closeDb(db);
+  return points;
+}
+
 export async function getRouteSchedule(routeId, direction = 0, configPath = defaultConfigPath) {
   const config = await loadConfig(configPath);
   const db = openDb(config);

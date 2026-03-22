@@ -163,9 +163,28 @@ def hx_timetable_route_diagram(route_id: str):
         None
     )
 
+    # Collect vehicles that have GPS positions for the map
+    seen_trips = set()
+    vehicle_positions = []
+    for t in trips:
+        tid = t.get("trip_id")
+        if tid in seen_trips:
+            continue
+        seen_trips.add(tid)
+        if t.get("vehicle_latitude") and t.get("vehicle_longitude"):
+            vehicle_positions.append({
+                "trip_id": tid,
+                "headsign": t.get("trip_headsign", ""),
+                "lat": t["vehicle_latitude"],
+                "lon": t["vehicle_longitude"],
+                "label": t.get("vehicle_label") or t.get("vehicle_id") or "",
+                "minutes_away": t.get("minutes_away"),
+                "stop_name": t.get("stop_name", ""),
+            })
+
     return render_template(
         "timetable/_route_diagram.html",
         stops=stops, vehicles_by_seq=vehicles_by_seq,
         route_id=route_id, direction=direction, updated_at=updated_at,
-        route_type=route_type,
+        route_type=route_type, vehicle_positions=vehicle_positions,
     )

@@ -40,8 +40,12 @@
             onclick="setView('schedule')">Today's Timetable</button>
     <button type="button" id="view-diagram-btn" class="btn btn-outline-secondary"
             onclick="setView('diagram')">Diagram</button>
+    <button type="button" id="view-map-btn" class="btn btn-outline-secondary"
+            onclick="setView('map')">Map</button>
   </div>
 </div>
+
+<div id="route-page-map" class="d-none mb-4" style="height: 420px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
 
 <div id="route-diagram"
      class="d-none"
@@ -80,7 +84,10 @@
         <div id="diagram-stop-map" style="height: 400px;"></div>
       </div>
       <div class="modal-footer py-2 px-3 justify-content-between">
-        <a id="diagram-stop-link" href="#" class="btn btn-primary btn-sm">View Stop Details</a>
+        <div class="d-flex gap-2">
+          <a id="diagram-stop-link" href="#" class="btn btn-primary btn-sm">View Stop Details</a>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="_diagFitRoute()">Fit Route</button>
+        </div>
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
@@ -93,6 +100,9 @@ var _diagBasePath = {{ BASE_PATH | tojson }};
 var _diagMap = null;
 var _diagFocusMarker = null;
 var _diagNearbyMarkers = {};
+var _diagRouteMarkers = {};
+var _diagVehicleMarkers = {};
+var _diagPolyline = null;
 var _diagMoveTimer = null;
 var _diagFocusStopId = null;
 
@@ -115,6 +125,57 @@ function _diagMakeIcon(s) {
   });
 }
 
+function _diagDrawRoute() {
+  if (_diagPolyline) { _diagMap.removeLayer(_diagPolyline); _diagPolyline = null; }
+  Object.values(_diagRouteMarkers).forEach(function(m) { _diagMap.removeLayer(m); });
+  _diagRouteMarkers = {};
+
+  var route = window._diagRoute;
+  if (!route || !route.stops) return;
+  var valid = route.stops.filter(function(s) { return s.stop_lat && s.stop_lon; });
+
+  // Draw stop dot markers
+  valid.forEach(function(s) {
+    var dot = L.divIcon({
+      className: '',
+      html: '<div style="width:14px;height:14px;background:white;border-radius:50%;' +
+            'border:3px solid ' + route.color + ';box-shadow:0 1px 4px rgba(0,0,0,.45);"></div>',
+      iconSize: [14, 14], iconAnchor: [7, 7]
+    });
+    _diagRouteMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: dot })
+      .addTo(_diagMap)
+      .bindPopup('<b>' + s.stop_name + '</b><br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" ' +
+        'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
+        'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View Stop</a>');
+  });
+
+  // Fetch GTFS shape and draw polyline following the actual route path
+  fetch(window.API_BASE_URL + '/routes/' + route.routeId + '/shape?direction=' + route.direction)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var coords = (data.data || []).map(function(p) { return [p.lat, p.lon]; });
+      if (coords.length < 2) {
+        // Fall back to straight lines between stops if no shape data
+        coords = valid.map(function(s) { return [s.stop_lat, s.stop_lon]; });
+      }
+      if (_diagPolyline) _diagMap.removeLayer(_diagPolyline);
+      _diagPolyline = L.polyline(coords, { color: route.color, weight: 4, opacity: 0.75, lineJoin: 'round' }).addTo(_diagMap);
+    })
+    .catch(function() {
+      // Fall back to stop-to-stop straight lines on error
+      if (valid.length >= 2 && !_diagPolyline) {
+        _diagPolyline = L.polyline(
+          valid.map(function(s) { return [s.stop_lat, s.stop_lon]; }),
+          { color: route.color, weight: 4, opacity: 0.75, lineJoin: 'round' }
+        ).addTo(_diagMap);
+      }
+    });
+}
+
+function _diagFitRoute() {
+  if (_diagPolyline) _diagMap.fitBounds(_diagPolyline.getBounds(), { padding: [20, 20] });
+}
+
 function _diagLoadNearby() {
   var center = _diagMap.getCenter();
   fetch(window.API_BASE_URL + '/stops/nearby?lat=' + center.lat + '&lng=' + center.lng + '&limit=30')
@@ -123,7 +184,7 @@ function _diagLoadNearby() {
       Object.values(_diagNearbyMarkers).forEach(function(m) { _diagMap.removeLayer(m); });
       _diagNearbyMarkers = {};
       (data.data || []).forEach(function(s) {
-        if (!s.stop_lat || !s.stop_lon || s.stop_id === _diagFocusStopId) return;
+        if (!s.stop_lat || !s.stop_lon || s.stop_id === _diagFocusStopId || _diagRouteMarkers[s.stop_id]) return;
         var popup = '<b>' + s.stop_name + '</b>' +
           '<br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" ' +
           'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
@@ -136,6 +197,8 @@ function _diagLoadNearby() {
 }
 
 function _diagSetFocus(stopName, lat, lon) {
+  _diagDrawRoute();
+  _diagDrawVehicles();
   if (_diagFocusMarker) _diagMap.removeLayer(_diagFocusMarker);
   _diagFocusMarker = L.marker([lat, lon]).addTo(_diagMap)
     .bindPopup('<b>' + stopName + '</b><br><span style="font-size:.8em;color:#6c757d;">Selected stop</span>')
@@ -144,6 +207,44 @@ function _diagSetFocus(stopName, lat, lon) {
   _diagLoadNearby();
 }
 
+function _diagDrawVehicles() {
+  if (!_diagMap) return;
+  Object.values(_diagVehicleMarkers).forEach(function(m) { _diagMap.removeLayer(m); });
+  _diagVehicleMarkers = {};
+
+  var route = window._diagRoute;
+  if (!route || !route.vehicles) return;
+
+  route.vehicles.forEach(function(v) {
+    if (!v.lat || !v.lon) return;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="width:28px;height:28px;background:' + route.color + ';border-radius:50%;' +
+            'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
+            'display:flex;align-items:center;justify-content:center;">' +
+            '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' +
+            route.vehicleIcon + '</span></div>',
+      iconSize: [28, 28], iconAnchor: [14, 14]
+    });
+    var label = v.label ? ' · ' + v.label : '';
+    var eta = v.minutes_away != null
+      ? (v.minutes_away === 0 ? 'now' : 'in ' + v.minutes_away + ' min')
+      : '';
+    var popup = '<b>' + (v.headsign || 'Service') + '</b>' + label +
+      (v.stop_name ? '<br><span style="font-size:.8em;color:#6c757d;">Next: ' + v.stop_name + (eta ? ' · ' + eta : '') + '</span>' : '');
+    _diagVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], { icon: icon, zIndexOffset: 1000 })
+      .addTo(_diagMap).bindPopup(popup);
+  });
+}
+
+// Refresh vehicle positions on both maps whenever the diagram HTMX content updates
+document.addEventListener('htmx:afterSettle', function(e) {
+  if (e.detail.target && e.detail.target.id === 'route-diagram') {
+    _diagDrawVehicles();
+    _pageMapDrawVehicles();
+  }
+});
+
 function showStopMap(stopId, stopName, lat, lon) {
   _diagFocusStopId = stopId;
   document.getElementById('stopMapModalLabel').textContent = stopName;
@@ -151,7 +252,6 @@ function showStopMap(stopId, stopName, lat, lon) {
 
   var modalEl = document.getElementById('stopMapModal');
 
-  // Modal already open + map ready — update in place
   if (_diagMap && modalEl.classList.contains('show')) {
     _diagSetFocus(stopName, lat, lon);
     return;
@@ -184,10 +284,10 @@ var currentView = 'schedule';
 var scheduleLoadedForDirection = 0;
 
 var diagramInterval = setInterval(function() {
-  if (currentView === 'diagram') {
+  if (currentView === 'diagram' || currentView === 'map') {
     htmx.trigger(document.getElementById('route-diagram'), 'refresh');
   }
-}, 30000);
+}, 5000);
 
 function setDirection(dir) {
   currentDirection = dir;
@@ -204,6 +304,8 @@ function setDirection(dir) {
     '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/schedule?direction=' + dir);
   htmx.process(scheduleDiv);
 
+  if (mapLoaded) _pageMapLoad(dir);
+
   if (currentView === 'diagram') {
     diagramLoaded = true;
     htmx.trigger(diagramDiv, 'refresh');
@@ -215,13 +317,103 @@ function setDirection(dir) {
 }
 
 var diagramLoaded = false;
+var mapLoaded = false;
+var _pageMap = null;
+var _pagePolyline = null;
+var _pageStopMarkers = {};
+var _pageVehicleMarkers = {};
+var _pageRouteId = {{ route.route_id | tojson }};
+var _pageRouteColor, _pageVehicleIcon;
+{% set rt = route.route_type %}
+{% if rt in [1, 2, 12] %}
+_pageRouteColor = '#6f42c1'; _pageVehicleIcon = 'train';
+{% elif rt == 0 %}
+_pageRouteColor = '#e6a817'; _pageVehicleIcon = 'tram';
+{% elif rt == 4 %}
+_pageRouteColor = '#0dcaf0'; _pageVehicleIcon = 'directions_ferry';
+{% else %}
+_pageRouteColor = '#0d6efd'; _pageVehicleIcon = 'directions_bus';
+{% endif %}
+
+(function () {
+  _pageMap = L.map('route-page-map').setView([-27.47, 153.02], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(_pageMap);
+}());
+
+function _pageMapLoad(direction) {
+  // Shape
+  fetch(window.API_BASE_URL + '/routes/' + _pageRouteId + '/shape?direction=' + direction)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (_pagePolyline) { _pageMap.removeLayer(_pagePolyline); _pagePolyline = null; }
+      var coords = (data.data || []).map(function(p) { return [p.lat, p.lon]; });
+      if (coords.length >= 2) {
+        _pagePolyline = L.polyline(coords, { color: _pageRouteColor, weight: 4, opacity: 0.8, lineJoin: 'round' }).addTo(_pageMap);
+        _pageMap.fitBounds(_pagePolyline.getBounds(), { padding: [30, 30] });
+      }
+    }).catch(function() {});
+
+  // Stops
+  fetch(window.API_BASE_URL + '/routes/' + _pageRouteId + '/stops?direction=' + direction)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      Object.values(_pageStopMarkers).forEach(function(m) { _pageMap.removeLayer(m); });
+      _pageStopMarkers = {};
+      (data.data || []).forEach(function(s) {
+        if (!s.stop_lat || !s.stop_lon) return;
+        var dot = L.divIcon({
+          className: '',
+          html: '<div style="width:14px;height:14px;background:white;border-radius:50%;' +
+                'border:3px solid ' + _pageRouteColor + ';box-shadow:0 1px 4px rgba(0,0,0,.45);"></div>',
+          iconSize: [14, 14], iconAnchor: [7, 7]
+        });
+        _pageStopMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: dot })
+          .addTo(_pageMap)
+          .bindPopup('<b>' + s.stop_name + '</b><br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" ' +
+            'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
+            'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View Stop</a>');
+      });
+    }).catch(function() {});
+}
+
+function _pageMapDrawVehicles() {
+  if (!_pageMap) return;
+  Object.values(_pageVehicleMarkers).forEach(function(m) { _pageMap.removeLayer(m); });
+  _pageVehicleMarkers = {};
+
+  var route = window._diagRoute;
+  if (!route || !route.vehicles) return;
+  route.vehicles.forEach(function(v) {
+    if (!v.lat || !v.lon) return;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="width:28px;height:28px;background:' + _pageRouteColor + ';border-radius:50%;' +
+            'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
+            'display:flex;align-items:center;justify-content:center;">' +
+            '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' +
+            _pageVehicleIcon + '</span></div>',
+      iconSize: [28, 28], iconAnchor: [14, 14]
+    });
+    var label = v.label ? ' · ' + v.label : '';
+    var eta = v.minutes_away != null ? (v.minutes_away === 0 ? 'now' : 'in ' + v.minutes_away + ' min') : '';
+    var popup = '<b>' + (v.headsign || 'Service') + '</b>' + label +
+      (v.stop_name ? '<br><span style="font-size:.8em;color:#6c757d;">Next: ' + v.stop_name + (eta ? ' · ' + eta : '') + '</span>' : '');
+    _pageVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], { icon: icon, zIndexOffset: 1000 })
+      .addTo(_pageMap).bindPopup(popup);
+  });
+}
 
 function setView(view) {
   currentView = view;
   document.getElementById('route-diagram').classList.toggle('d-none', view !== 'diagram');
   document.getElementById('route-schedule').classList.toggle('d-none', view !== 'schedule');
+  document.getElementById('route-page-map').classList.toggle('d-none', view !== 'map');
   document.getElementById('view-diagram-btn').classList.toggle('active', view === 'diagram');
   document.getElementById('view-schedule-btn').classList.toggle('active', view === 'schedule');
+  document.getElementById('view-map-btn').classList.toggle('active', view === 'map');
 
   if (view === 'diagram' && !diagramLoaded) {
     diagramLoaded = true;
@@ -230,6 +422,18 @@ function setView(view) {
   if (view === 'schedule' && scheduleLoadedForDirection !== currentDirection) {
     scheduleLoadedForDirection = currentDirection;
     htmx.trigger(document.getElementById('route-schedule'), 'refresh');
+  }
+  if (view === 'map') {
+    if (!mapLoaded) {
+      mapLoaded = true;
+      _pageMapLoad(currentDirection);
+      // Also trigger diagram for vehicle positions
+      if (!diagramLoaded) {
+        diagramLoaded = true;
+        htmx.trigger(document.getElementById('route-diagram'), 'refresh');
+      }
+    }
+    _pageMap.invalidateSize();
   }
 }
 </script>
