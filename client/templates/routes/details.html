@@ -92,6 +92,7 @@ function setDirection(dir) {
   htmx.process(scheduleDiv);
 
   if (currentView === 'diagram') {
+    diagramLoaded = true;
     htmx.trigger(diagramDiv, 'refresh');
     scheduleLoadedForDirection = -1;
   } else {
@@ -100,6 +101,8 @@ function setDirection(dir) {
   }
 }
 
+var diagramLoaded = false;
+
 function setView(view) {
   currentView = view;
   document.getElementById('route-diagram').classList.toggle('d-none', view !== 'diagram');
@@ -107,6 +110,10 @@ function setView(view) {
   document.getElementById('view-diagram-btn').classList.toggle('active', view === 'diagram');
   document.getElementById('view-schedule-btn').classList.toggle('active', view === 'schedule');
 
+  if (view === 'diagram' && !diagramLoaded) {
+    diagramLoaded = true;
+    htmx.trigger(document.getElementById('route-diagram'), 'refresh');
+  }
   if (view === 'schedule' && scheduleLoadedForDirection !== currentDirection) {
     scheduleLoadedForDirection = currentDirection;
     htmx.trigger(document.getElementById('route-schedule'), 'refresh');
