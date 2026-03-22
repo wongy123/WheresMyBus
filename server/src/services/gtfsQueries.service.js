@@ -366,6 +366,68 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
   return stops;
 }
 
+export async function getRouteSchedule(routeId, direction = 0, configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  const sql = `
+    SELECT
+      st.trip_id,
+      st.trip_headsign,
+      st.stop_sequence,
+      st.stop_id,
+      s.stop_name,
+      st.departure_time,
+      st.dep_sec_base
+    FROM stop_times_today st
+    JOIN stops s ON st.stop_id = s.stop_id
+    WHERE st.route_id IN (
+      SELECT route_id FROM routes
+      WHERE route_id = $routeId OR route_short_name = $routeId
+    )
+    AND st.direction_id = $direction
+    ORDER BY st.trip_id, st.stop_sequence
+  `;
+
+  const rows = db.prepare(sql).all({ routeId, direction });
+  await closeDb(db);
+
+  if (!rows.length) return { stops: [], trips: [] };
+
+  // Group rows by trip_id
+  const tripMap = new Map();
+  for (const row of rows) {
+    if (!tripMap.has(row.trip_id)) {
+      tripMap.set(row.trip_id, {
+        trip_id: row.trip_id,
+        headsign: row.trip_headsign,
+        firstDep: row.dep_sec_base,
+        times: {},
+      });
+    }
+    tripMap.get(row.trip_id).times[row.stop_id] = row.departure_time.slice(0, 5);
+  }
+
+  // Canonical stop list: from the trip that covers the most stops, in sequence order
+  const stopsByTrip = new Map();
+  for (const row of rows) {
+    if (!stopsByTrip.has(row.trip_id)) stopsByTrip.set(row.trip_id, []);
+    stopsByTrip.get(row.trip_id).push({
+      stop_sequence: row.stop_sequence,
+      stop_id: row.stop_id,
+      stop_name: row.stop_name,
+    });
+  }
+  let canonicalStops = [];
+  for (const stops of stopsByTrip.values()) {
+    if (stops.length > canonicalStops.length) canonicalStops = stops;
+  }
+
+  const trips = [...tripMap.values()].sort((a, b) => a.firstDep - b.firstDep);
+
+  return { stops: canonicalStops, trips };
+}
+
 export async function getOneStop(stopId, configPath = defaultConfigPath) {
   const config = await loadConfig(configPath);
   const db = openDb(config);

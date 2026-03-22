@@ -34,7 +34,7 @@
               <div>{{ main_time }}</div>
               {% if show_sched_under %}<div class="small text-muted">sched {{ sch }}</div>{% endif %}
             </td>
-            <td class="text-nowrap">{{ it.stop_name }}</td>
+            <td class="text-nowrap"><a href="{{ BASE_PATH }}/stops/{{ it.stop_id }}" class="text-decoration-none text-body">{{ it.stop_name }}</a></td>
             <td>{{ it.trip_headsign }}</td>
             <td class="text-nowrap">{% if totstops %}{{ seq }} / {{ totstops }}{% else %}#{{ seq }}{% endif %}</td>
             <td>

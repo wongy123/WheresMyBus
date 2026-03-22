@@ -1,6 +1,6 @@
 # stop.py
 import os
-from flask import Blueprint, render_template, request, abort
+from flask import Blueprint, render_template, request, abort, jsonify
 import requests
 
 bp = Blueprint("stop", __name__)
@@ -62,6 +62,16 @@ def stops_nearby():
         "stops/_nearby.html",
         items=items, error=error, href_prefix=href_prefix, BASE_PATH=BASE_PATH,
     )
+
+@bp.get("/hx/stops/nearby-json")
+def stops_nearby_json():
+    lat = request.args.get("lat", type=float)
+    lng = request.args.get("lng", type=float)
+    limit = request.args.get("limit", 8, type=int)
+    if lat is None or lng is None:
+        return jsonify({"data": []})
+    data = api_get("stops/nearby", {"lat": lat, "lng": lng, "limit": limit}) or {}
+    return jsonify(data)
 
 @bp.route("/stops/<stop_id>")
 def stop_details(stop_id: str):
