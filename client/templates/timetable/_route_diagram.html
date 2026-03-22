@@ -71,12 +71,26 @@
                style="width: 11px; height: 11px; border: 2px solid {% if vehicles %}#0d6efd{% else %}#6c757d{% endif %}; flex-shrink: 0;">
           </div>
         </div>
+        {% if stop.stop_lat and stop.stop_lon %}
+        <button type="button"
+           class="ms-1 flex-grow-1 d-flex align-items-center justify-content-between px-2 py-2 rounded {% if vehicles %}fw-semibold text-primary{% else %}text-body{% endif %}"
+           style="min-height: 44px; transition: background .15s; border: none; background: transparent; text-align: left; cursor: pointer;"
+           data-stop-id="{{ stop.stop_id }}"
+           data-stop-name="{{ stop.stop_name | e }}"
+           data-lat="{{ stop.stop_lat }}"
+           data-lon="{{ stop.stop_lon }}"
+           onclick="typeof showStopMap === 'function' && showStopMap(this.dataset.stopId, this.dataset.stopName, parseFloat(this.dataset.lat), parseFloat(this.dataset.lon))">
+          <span class="small">{{ stop.stop_name }}</span>
+          <span class="material-symbols-outlined text-muted ms-2" style="font-size: 1rem; flex-shrink: 0;">location_on</span>
+        </button>
+        {% else %}
         <a href="{{ BASE_PATH }}/stops/{{ stop.stop_id }}"
            class="ms-1 flex-grow-1 d-flex align-items-center justify-content-between text-decoration-none px-2 py-2 rounded {% if vehicles %}fw-semibold text-primary{% else %}text-body{% endif %}"
            style="min-height: 44px; transition: background .15s;">
           <span class="small">{{ stop.stop_name }}</span>
           <span class="text-muted ms-2" style="font-size: .8rem;">&#xBB;</span>
         </a>
+        {% endif %}
       </div>
     {% endfor %}
   </div>
