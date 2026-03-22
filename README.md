@@ -50,7 +50,6 @@ cp .env.example .env
 | `REDIS_URL` | Redis connection URL, e.g. `redis://localhost:6379` |
 | `GTFS_RT_TRIP_UPDATES_URL` | Translink SEQ TripUpdates GTFS-RT feed URL |
 | `GTFS_RT_VEHICLE_POSITIONS_URL` | Translink SEQ VehiclePositions GTFS-RT feed URL |
-| `JWT_SECRET` | Secret for signing auth tokens |
 | `PORT` | Port to listen on (default: `3000`) |
 
 Import the GTFS static data (only needed once, or when the feed is updated):

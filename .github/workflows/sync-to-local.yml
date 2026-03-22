@@ -1,0 +1,45 @@
+name: Sync main to local
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'client/**'
+      - 'server/**'
+      - 'scripts/**'
+      - 'compose.yaml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout local branch
+        run: git checkout local
+
+      - name: Copy changed paths from main
+        run: |
+          for path in client server scripts compose.yaml; do
+            if git ls-tree -d main "$path" &>/dev/null || git ls-tree main "$path" &>/dev/null; then
+              git checkout main -- "$path"
+            fi
+          done
+
+      - name: Commit and push if anything changed
+        run: |
+          git diff --staged --quiet && echo "Nothing to sync" || (
+            git commit -m "Sync from main: ${{ github.event.head_commit.message }}"
+            git push origin local
+          )
