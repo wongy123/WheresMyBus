@@ -19,10 +19,11 @@
   background: white;
   z-index: 1;
   font-weight: 500;
-  min-width: 180px;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: 180px;
+  min-width: 120px;
+  max-width: 220px;
+  white-space: normal;
+  word-break: break-word;
 }
 .schedule-table thead th.stop-col { z-index: 3; }
 .schedule-table .time-cell { text-align: center; color: #333; }
@@ -30,19 +31,25 @@
 .schedule-table tbody tr:nth-child(even) td { background: #f8f9fa; }
 .schedule-table tbody tr:nth-child(even) td.stop-col { background: #f8f9fa; }
 .schedule-wrap { overflow-x: auto; max-height: 70vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px; }
+@media (max-width: 767.98px) {
+  .schedule-table { font-size: .75rem; }
+  .schedule-table th, .schedule-table td { padding: 4px 6px; }
+  .schedule-table .stop-col { width: 120px; min-width: 90px; max-width: 140px; }
+}
 </style>
 
 {% if not stops or not trips %}
   <div class="alert alert-light border">No scheduled services found for today.</div>
 {% else %}
-  <div class="text-muted small mb-2">{{ trips | length }} service{{ 's' if trips | length != 1 else '' }} today</div>
+  <div class="text-muted small mb-3">{{ trips | length }} service{{ 's' if trips | length != 1 else '' }} today</div>
+
   <div class="schedule-wrap">
     <table class="schedule-table">
       <thead>
         <tr>
           <th class="stop-col">Stop</th>
           {% for trip in trips %}
-            <th>{{ trip.times.get(stops[0].stop_id, '') or trip.times.get(stops[1].stop_id, '') if stops | length > 1 else '' }}</th>
+            <th>{{ trip.times.get(stops[0].stop_id, '') }}</th>
           {% endfor %}
         </tr>
       </thead>
