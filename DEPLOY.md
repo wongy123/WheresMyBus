@@ -233,7 +233,38 @@ Express is mounted at both `/api` (local dev) and `/wheresmybus-api/api` (produc
 
 ---
 
-## 5. Redeployment
+## 5. Deploying at the root path (optional)
+
+By default the app is served under `/wheresmybus` and `/wheresmybus-api/`. If you want it at the root of your domain instead, three things need to change.
+
+**Client environment file** — clear `BASE_PATH` and point `API_BASE_URL` at `/api`:
+
+```
+API_BASE_URL=https://<YOUR_DOMAIN>/api
+BASE_PATH=
+```
+
+**nginx on the client host** — change the location block from `/wheresmybus` to `/`:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:5000;
+    ...
+}
+```
+
+**Nginx Proxy Manager** — update both custom locations:
+
+| Location (before) | Location (after) |
+|---|---|
+| `/wheresmybus` | `/` |
+| `/wheresmybus-api/` | `/api/` |
+
+The API already responds at `/api/...` natively, so no other changes are needed.
+
+---
+
+## 6. Redeployment
 
 When you update the API:
 
