@@ -19,7 +19,7 @@
   </div>
 
   <!-- Page size control (only relevant for table view) -->
-  <form id="limit-form" class="d-flex align-items-center gap-2 ms-auto" method="get">
+  <form id="limit-form" class="d-flex align-items-center gap-2 ms-auto d-none" method="get">
     <input type="hidden" name="direction" value="{{ direction }}">
     <input type="hidden" name="duration" value="{{ duration }}">
     <input type="hidden" name="page" value="1">
@@ -50,16 +50,17 @@
   </div>
 
   <div class="btn-group" role="group" aria-label="view">
-    <button type="button" id="view-table-btn" class="btn btn-outline-secondary active"
-            onclick="showView('table')">Table</button>
-    <button type="button" id="view-diagram-btn" class="btn btn-outline-secondary"
+    <button type="button" id="view-diagram-btn" class="btn btn-outline-secondary active"
             onclick="showView('diagram')">Diagram</button>
+    <button type="button" id="view-table-btn" class="btn btn-outline-secondary"
+            onclick="showView('table')">Table</button>
   </div>
 </div>
 
 <div id="tt-route-results"
+     class="d-none"
      hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}&page={{ page }}&limit={{ limit }}"
-     hx-trigger="load"
+     hx-trigger="refresh"
      hx-target="this"
      hx-swap="innerHTML"
      aria-live="polite">
@@ -70,9 +71,8 @@
 </div>
 
 <div id="tt-route-diagram"
-     class="d-none"
      hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction={{ direction }}&duration={{ duration }}"
-     hx-trigger="revealed, refresh"
+     hx-trigger="load, refresh"
      hx-target="this"
      hx-swap="innerHTML"
      aria-live="polite">
@@ -83,7 +83,10 @@
 </div>
 
 <script>
-var diagramInterval = null;
+var tableInterval = null;
+var diagramInterval = setInterval(function () {
+  htmx.trigger(document.getElementById('tt-route-diagram'), 'refresh');
+}, 30000);
 
 function showView(view) {
   var tableDiv = document.getElementById('tt-route-results');
@@ -94,6 +97,10 @@ function showView(view) {
     tableDiv.classList.add('d-none');
     diagramDiv.classList.remove('d-none');
     limitForm.classList.add('d-none');
+    if (tableInterval) {
+      clearInterval(tableInterval);
+      tableInterval = null;
+    }
     if (!diagramInterval) {
       diagramInterval = setInterval(function () {
         htmx.trigger(diagramDiv, 'refresh');
@@ -106,6 +113,12 @@ function showView(view) {
     if (diagramInterval) {
       clearInterval(diagramInterval);
       diagramInterval = null;
+    }
+    if (!tableInterval) {
+      htmx.trigger(tableDiv, 'refresh');
+      tableInterval = setInterval(function () {
+        htmx.trigger(tableDiv, 'refresh');
+      }, 30000);
     }
   }
 
