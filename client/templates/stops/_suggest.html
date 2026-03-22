@@ -1,5 +1,6 @@
 {% set has_items   = items|length > 0 %}
 {% set q           = q or '' %}
+{% if not q and not has_items %}{% else %}
 {% set href_prefix = href_prefix
   or (BASE_PATH ~ '/stops' if BASE_PATH is defined else '/stops') %}
 {% set suggest_url = suggest_url
@@ -132,3 +133,4 @@
   if (typeof window.stopSearchUpdateMap === 'function') window.stopSearchUpdateMap(stops);
 }());
 </script>
+{% endif %}
