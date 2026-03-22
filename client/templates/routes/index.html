@@ -11,7 +11,7 @@
   class="form-control form-control-lg"
   placeholder="Search route # or name..."
   autocomplete="off"
-  hx-get="/hx/routes/suggest"
+  hx-get="{{ BASE_PATH }}/hx/routes/suggest"
   hx-trigger="input changed delay:250ms, search"
   hx-target="#route-suggest"
   hx-swap="innerHTML"

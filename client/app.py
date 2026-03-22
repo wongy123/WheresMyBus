@@ -2,7 +2,7 @@
 import os
 from datetime import datetime
 import pytz
-from flask import Flask, render_template, session
+from flask import Flask, render_template
 from flask_htmx import HTMX
 
 # Config from env
@@ -55,8 +55,6 @@ def create_app():
         return {
             "API_BASE_URL": API_BASE,
             "BASE_PATH": BASE_PATH,
-            "current_user": session.get("user"),
-            "access_token": session.get("access_token"),
         }
 
     # -------- Routes --------
@@ -71,15 +69,11 @@ def create_app():
     from route import bp as route_bp
     from stop import bp as stop_bp
     from timetable import bp as timetable_bp
-    from auth import bp as auth_bp
-    from user import bp as user_bp
 
     # Register all blueprints under the same BASE_PATH prefix
-    app.register_blueprint(auth_bp,      url_prefix=BASE_PATH or None)
     app.register_blueprint(route_bp,     url_prefix=BASE_PATH or None)
     app.register_blueprint(stop_bp,      url_prefix=BASE_PATH or None)
     app.register_blueprint(timetable_bp, url_prefix=BASE_PATH or None)
-    app.register_blueprint(user_bp)
 
     return app
 

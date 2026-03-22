@@ -25,22 +25,6 @@
           <li class="nav-item"><a class="nav-link" href="{{ BASE_PATH }}/routes">Routes</a></li>
         </ul>
 
-        <div class="d-flex gap-2">
-          {% if current_user %}
-            <div class="d-flex align-items-center gap-2">
-              <span class="navbar-text text-light small mb-0">
-                Welcome, {{ current_user.username }}
-              </span>
-              <a class="btn btn-outline-light btn-sm" href="{{ BASE_PATH }}/user">Account</a>
-              <form method="post" action="{{ BASE_PATH }}/logout" class="mb-0">
-                <button class="btn btn-outline-warning btn-sm" type="submit">Logout</button>
-              </form>
-            </div>
-          {% else %}
-            <a class="btn btn-outline-light btn-sm" href="{{ BASE_PATH }}/login">Login</a>
-            <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/register">Register</a>
-          {% endif %}
-        </div>
       </div>
     </div>
   </nav>

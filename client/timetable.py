@@ -1,7 +1,21 @@
 # timetable.py
 import os
+from datetime import datetime
+import pytz
 from flask import Blueprint, render_template, request, abort
 import requests
+
+_BRISBANE_TZ = pytz.timezone("Australia/Brisbane")
+
+def _hms_to_sec(hms):
+    """Parse HH:MM:SS (or HH:MM) to seconds since midnight. Returns None on failure."""
+    if not hms:
+        return None
+    try:
+        parts = hms.split(':')
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + (int(parts[2]) if len(parts) > 2 else 0)
+    except Exception:
+        return None
 
 bp = Blueprint("timetable", __name__)
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
@@ -37,7 +51,7 @@ def timetable_by_route(route_id: str):
     if route is None:
         abort(404)
     direction = request.args.get("direction", default=0, type=int)
-    duration = request.args.get("duration", type=int) or DEFAULT_DURATION
+    duration = request.args.get("duration", type=int) or 3600
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 10, type=int)
     if direction not in (0, 1):
@@ -88,3 +102,50 @@ def hx_timetable_route(route_id: str):
                            rows=rows, pagination=pagination,
                            route_id=route_id, direction=direction, duration=duration,
                            page=page, limit=limit)
+
+@bp.get("/hx/timetable/route/<route_id>/diagram")
+def hx_timetable_route_diagram(route_id: str):
+    direction = request.args.get("direction", 0, type=int)
+    duration = request.args.get("duration", type=int) or DEFAULT_DURATION
+    if direction not in (0, 1):
+        direction = 0
+
+    stops_resp = api_get(f"routes/{route_id}/stops", {"direction": direction}) or {}
+    stops = stops_resp.get("data", [])
+
+    upcoming_resp = api_get(f"routes/{route_id}/upcoming",
+                            {"direction": direction, "duration": duration, "limit": 100}) or {}
+    trips = upcoming_resp.get("data", [])
+
+    # Annotate each trip with minutes_away to its next stop
+    now_bne = datetime.now(_BRISBANE_TZ)
+    now_sec = now_bne.hour * 3600 + now_bne.minute * 60 + now_bne.second
+    for t in trips:
+        eta_str = t.get("estimated_arrival_time") or t.get("scheduled_arrival_time")
+        eta_sec = _hms_to_sec(eta_str)
+        if eta_sec is not None:
+            diff = eta_sec - now_sec
+            if diff < -3600:   # handle rollover past midnight
+                diff += 86400
+            t["minutes_away"] = max(0, round(diff / 60))
+        else:
+            t["minutes_away"] = None
+
+    # Group active vehicles by the stop_sequence of their next stop
+    vehicles_by_seq = {}
+    for t in trips:
+        seq = t.get("stop_sequence")
+        if seq is not None:
+            vehicles_by_seq.setdefault(seq, []).append(t)
+
+    # Pick most recent RT update timestamp for the "updated at" footer
+    updated_at = next(
+        (t.get("realtime_updated_local") for t in trips if t.get("realtime_updated_local")),
+        None
+    )
+
+    return render_template(
+        "timetable/_route_diagram.html",
+        stops=stops, vehicles_by_seq=vehicles_by_seq,
+        route_id=route_id, direction=direction, updated_at=updated_at,
+    )

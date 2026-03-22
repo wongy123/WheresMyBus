@@ -1,17 +1,14 @@
 // src/services/gtfsRealtime.service.js
-import { cache } from '../lib/cache.js';
+import { cacheGet, cacheSet } from './cache.service.js';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
+const RT_TTL_SEC = Number(process.env.GTFS_RT_TTL_SECONDS || 30);
 
-// Expect these in config.json or env:
-const REGION = process.env.AWS_REGION || 'ap-southeast-2';
-
-// You already have a config.json in your repo; we’ll accept either source:
 function readConfig() {
   try {
-    // eslint-disable-next-line import/no-commonjs, no-undef
-    const cfg = JSON.parse(require('fs').readFileSync('./config.json', 'utf8'));
+    const cfg = JSON.parse(readFileSync('./config.json', 'utf8'));
     return {
       tripUpdatesUrl: process.env.GTFS_RT_TRIP_UPDATES_URL || cfg.tripUpdatesUrl,
       vehiclePositionsUrl: process.env.GTFS_RT_VEHICLE_POSITIONS_URL || cfg.vehiclePositionsUrl,
@@ -34,7 +31,6 @@ async function fetchProto(url) {
 }
 
 function buildTripUpdateMap(feed) {
-  // tripId -> { updatedAt, stopUpdates: [{ stopSequence, stopId, arrivalTime?, departureTime?, arrivalDelay?, departureDelay? }] }
   const map = new Map();
   const now = Date.now();
 
@@ -60,7 +56,6 @@ function buildTripUpdateMap(feed) {
 }
 
 function buildVehiclePosMap(feed) {
-  // tripId -> { latitude, longitude, vehicleId, vehicleLabel, currentStopSequence, timestamp }
   const map = new Map();
   for (const e of feed.entity || []) {
     const vp = e.vehicle;
@@ -82,7 +77,6 @@ async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl }) {
   let tuFeed = null;
   let vpFeed = null;
 
-  // Fetch in parallel (best effort)
   await Promise.allSettled([
     (async () => { if (tripUpdatesUrl) tuFeed = await fetchProto(tripUpdatesUrl); })(),
     (async () => { if (vehiclePositionsUrl) vpFeed = await fetchProto(vehiclePositionsUrl); })(),
@@ -97,7 +91,6 @@ async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl }) {
     console.warn('[gtfsrt] both feeds empty or failed – check URLs/permissions');
   }
 
-  // Merge by tripId
   const keys = new Set([...tuMap.keys(), ...vpMap.keys()]);
   const writes = [];
   const now = Date.now();
@@ -107,20 +100,19 @@ async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl }) {
     const a = tuMap.get(tripId) || { updatedAt: now, stopUpdates: [] };
     const b = vpMap.get(tripId) || {};
     const merged = { tripId, ...a, vehicle: b };
-    writes.push(cache.set(tripKey(tripId), merged, cache.ttl).then(ok => { if (ok) wrote++; }));
+    writes.push(cacheSet(tripKey(tripId), merged, RT_TTL_SEC).then(() => { wrote++; }));
   }
-  writes.push(cache.set('rt:feed:ts', { ts: now }, cache.ttl));
+  writes.push(cacheSet('rt:feed:ts', { ts: now }, RT_TTL_SEC));
   await Promise.all(writes);
   console.log(`[gtfsrt] wrote rt:trip:* keys=${wrote}`);
 }
 
 function tripKey(tripId) {
   const raw = String(tripId);
-  // Encode to remove spaces/newlines; keep result short enough for memcached
   let enc = encodeURIComponent(raw);
   if (enc.length > 240) {
     const h = crypto.createHash('sha1').update(raw).digest('hex');
-    enc = `h${h}`; // 41 chars
+    enc = `h${h}`;
   }
   return `rt:trip:${enc}`;
 }

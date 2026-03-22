@@ -22,13 +22,12 @@ COPY . .
 
 # Run your data-prep scripts at build time (optional; bakes data into image)
 # Ensure these scripts exist in package.json and can run without external services
-RUN npm run import && npm run buildviews && npm run fetchrealtime
+RUN npm run import && npm run buildviews
 
 # Drop build deps to slim the image (native modules are already compiled)
 RUN apk del --no-cache python3 make g++
 
-# Ensure uploads dir exists and is writable
-RUN mkdir -p /app/uploads && chown -R node:node /app
+RUN chown -R node:node /app
 USER node
 
 EXPOSE 3000

@@ -3,8 +3,9 @@ import { closeDb, openDb, getStops, getStopTimeUpdates } from 'gtfs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { cache } from '../lib/cache.js';
+import { cacheGet } from './cache.service.js';
 import crypto from 'node:crypto';
+import { getLineNames } from '../utils/routeNames.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -169,7 +170,7 @@ async function enrichRowsWithRealtime(rows) {
   const tripIds = [...byTrip.keys()];
   // IMPORTANT: use the same key function you used in the writer
   // If you already added tripKey(...) earlier in this file, keep using it.
-  const lookups = await Promise.all(tripIds.map(id => cache.get(tripKey(id))));
+  const lookups = await Promise.all(tripIds.map(id => cacheGet(tripKey(id))));
   const rtMap = new Map(tripIds.map((id, i) => [id, lookups[i]]));
 
   const out = [];
@@ -197,22 +198,58 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
   const config = await loadConfig(configPath);
   const db = openDb(config);
 
-  let sql = `
-    SELECT route_id, route_short_name, route_long_name, route_type, route_color, route_text_color
-    FROM routes
+  // Fetch all deduplicated routes — only ~80 unique routes, fast enough to filter in JS
+  const sql = `
+    SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color
+    FROM routes r
+    INNER JOIN (
+      SELECT route_short_name, MIN(route_id) AS min_id
+      FROM routes
+      GROUP BY route_short_name
+    ) dedup ON r.route_id = dedup.min_id
   `;
 
-  const params = {};
-  if (searchTerm) {
-    sql += ` WHERE route_short_name LIKE $term OR route_long_name LIKE $term `;
-    params.term = `%${searchTerm}%`;
+  const rows = db.prepare(sql).all();
+  await closeDb(db);
+
+  // Enrich with marketing line name
+  const routes = rows.map(r => ({
+    ...r,
+    line_name: getLineNames(r.route_short_name).join(' / ') || null,
+  }));
+
+  if (!searchTerm) {
+    return routes.sort((a, b) => a.route_short_name.localeCompare(b.route_short_name));
   }
 
-  sql += ` ORDER BY route_short_name ASC `;
+  const tokens = searchTerm.trim().toLowerCase().split(/\s+/).filter(t => t.length > 0);
+  const q = searchTerm.toLowerCase();
 
-  const routes = db.prepare(sql).all(params);
-  await closeDb(db);
-  return routes;
+  const scored = routes
+    .map(r => {
+      const sn       = (r.route_short_name || '').toLowerCase();
+      const ln       = (r.route_long_name  || '').toLowerCase();
+      const lineName = (r.line_name        || '').toLowerCase();
+
+      const allTokensMatch = tokens.every(t => sn.includes(t) || ln.includes(t) || lineName.includes(t));
+      if (!allTokensMatch) return null;
+
+      let rank;
+      if      (sn === q)              rank = 0;
+      else if (sn.startsWith(q))     rank = 1;
+      else if (ln.startsWith(q))     rank = 2;
+      else if (lineName.startsWith(q)) rank = 3;
+      else if (sn.includes(q))       rank = 4;
+      else if (ln.includes(q))       rank = 5;
+      else if (lineName.includes(q)) rank = 6;
+      else                           rank = 7;
+
+      return { ...r, sort_rank: rank };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.sort_rank - b.sort_rank || a.route_short_name.localeCompare(b.route_short_name));
+
+  return scored;
 }
 
 export async function getOneRoute(identifier, configPath = defaultConfigPath) {
@@ -228,7 +265,8 @@ export async function getOneRoute(identifier, configPath = defaultConfigPath) {
 
   const route = db.prepare(sql).get({ id: identifier });
   await closeDb(db);
-  return route || null;
+  if (!route) return null;
+  return { ...route, line_name: getLineNames(route.route_short_name).join(' / ') || null };
 }
 
 /* ---------------------------------- stops ---------------------------------- */
@@ -237,20 +275,93 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
   const config = await loadConfig(configPath);
   const db = openDb(config);
 
-  let sql = `
-    SELECT stop_id, stop_name, location_type
-    FROM stops
-  `;
+  let sql, params;
 
-  const params = {};
   if (searchTerm) {
-    sql += ` WHERE stop_name LIKE $term `;
-    params.term = `%${searchTerm}%`;
+    // Split into tokens so "Adelaide St Stop 40" matches "Adelaide Street Stop 40"
+    const tokens = searchTerm.trim().split(/\s+/).filter(t => t.length > 0);
+    const tokenClauses = tokens.map((_, i) => `stop_name LIKE $tok${i}`).join(' AND ');
+    const tokenParams = Object.fromEntries(tokens.map((t, i) => [`tok${i}`, `%${t}%`]));
+
+    sql = `
+      SELECT stop_id, stop_name, location_type,
+        CASE
+          WHEN stop_name LIKE $fullPrefix    THEN 0
+          WHEN stop_name LIKE $fullContains  THEN 1
+          ELSE                                    2
+        END AS sort_rank
+      FROM stops
+      WHERE ${tokenClauses}
+      ORDER BY sort_rank ASC, stop_name ASC
+    `;
+    params = {
+      ...tokenParams,
+      fullPrefix:   `${searchTerm}%`,
+      fullContains: `%${searchTerm}%`,
+    };
+  } else {
+    sql = `
+      SELECT stop_id, stop_name, location_type
+      FROM stops
+      ORDER BY stop_name ASC
+    `;
+    params = {};
   }
 
-  sql += ` ORDER BY stop_name ASC `;
-
   const stops = db.prepare(sql).all(params);
+  await closeDb(db);
+  return stops;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export async function getNearbyStops(lat, lng, limit = 5, configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  const sql = `
+    SELECT stop_id, stop_name, stop_lat, stop_lon, location_type
+    FROM stops
+    WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
+      AND (location_type IS NULL OR location_type IN (0, 1))
+  `;
+
+  const rows = db.prepare(sql).all();
+  await closeDb(db);
+
+  return rows
+    .map(s => ({ ...s, distance_km: haversineKm(lat, lng, s.stop_lat, s.stop_lon) }))
+    .sort((a, b) => a.distance_km - b.distance_km)
+    .slice(0, limit);
+}
+
+export async function getStopsByRoute(routeId, direction = 0, configPath = defaultConfigPath) {
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  const sql = `
+    SELECT st.stop_sequence, st.stop_id, s.stop_name, s.stop_code
+    FROM stop_times st
+    JOIN stops s ON st.stop_id = s.stop_id
+    WHERE st.trip_id = (
+      SELECT t.trip_id
+      FROM trips t
+      JOIN routes r ON t.route_id = r.route_id
+      WHERE (t.route_id = $routeId OR r.route_short_name = $routeId)
+        AND t.direction_id = $direction
+      LIMIT 1
+    )
+    ORDER BY st.stop_sequence
+  `;
+
+  const stops = db.prepare(sql).all({ routeId, direction });
   await closeDb(db);
   return stops;
 }
@@ -322,7 +433,7 @@ FROM stop_events_3day se
 JOIN (
     SELECT trip_id, MIN(win_sec) AS next_win_sec
     FROM stop_events_3day
-    WHERE route_id = $routeId
+    WHERE (route_id = $routeId OR route_short_name = $routeId)
       AND direction_id = $direction
       AND win_sec BETWEEN $startSec AND $endSec
     GROUP BY trip_id
@@ -332,7 +443,7 @@ JOIN (
 JOIN (
     SELECT trip_id, win_sec, MIN(stop_sequence) AS min_seq
     FROM stop_events_3day
-    WHERE route_id = $routeId
+    WHERE (route_id = $routeId OR route_short_name = $routeId)
       AND direction_id = $direction
       AND win_sec BETWEEN $startSec AND $endSec
     GROUP BY trip_id, win_sec

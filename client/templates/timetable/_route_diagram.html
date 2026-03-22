@@ -1,0 +1,73 @@
+<style>
+@keyframes bounce-down {
+  0%, 100% { transform: translateY(0);   opacity: 1; }
+  50%       { transform: translateY(4px); opacity: 0.5; }
+}
+.arriving-arrow {
+  animation: bounce-down 1s ease-in-out infinite;
+  display: inline-block;
+}
+</style>
+{% if not stops %}
+  <div class="alert alert-light border">No stop data available for this route and direction.</div>
+{% else %}
+  <div class="position-relative py-2" style="max-width: 520px;">
+    {# Continuous spine line behind all rows #}
+    <div class="position-absolute" style="left: 19px; top: 0; bottom: 0; width: 2px; background: #dee2e6; z-index: 0;"></div>
+
+    {% for stop in stops %}
+      {% set seq = stop.stop_sequence %}
+      {% set vehicles = vehicles_by_seq.get(seq, []) %}
+
+      {# Vehicle markers heading to this stop #}
+      {% for v in vehicles | reverse %}
+        {% set dly = v.departure_delay if v.departure_delay is not none else (v.arrival_delay if v.arrival_delay is not none else none) %}
+        {% set info = dly | delay_info %}
+        {% set eta = v.estimated_arrival_time or v.scheduled_arrival_time %}
+
+        <div class="d-flex align-items-center" style="min-height: 44px; position: relative; z-index: 1;">
+          <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
+            <span style="font-size: 1.3em; background: white; border-radius: 50%; padding: 1px;">&#x1F68C;</span>
+          </div>
+          <div class="ms-1 d-flex align-items-center gap-2 py-1 px-2 rounded border bg-white shadow-sm" style="font-size: .82rem;">
+            <span class="badge {{ info.cls }}">{{ info.label }}</span>
+            <span class="fw-semibold">
+              {% if v.minutes_away is not none %}
+                {% if v.minutes_away == 0 %}now{% else %}{{ v.minutes_away }} min{% endif %}
+              {% elif eta %}{{ eta[:5] }}{% endif %}
+            </span>
+            {% if eta and v.minutes_away %}<span class="text-muted">{{ eta[:5] }}</span>{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+
+      {# Arrow indicator above stops with arriving vehicles #}
+      {% if vehicles %}
+        <div class="d-flex align-items-center" style="position: relative; z-index: 1; min-height: 16px;">
+          <div class="flex-shrink-0 d-flex justify-content-center" style="width: 40px;">
+            <span class="arriving-arrow text-primary fw-bold" style="font-size: .9rem; line-height: 1;">&#x2193;</span>
+          </div>
+        </div>
+      {% endif %}
+
+      {# Stop dot and name #}
+      <div class="d-flex align-items-center" style="position: relative; z-index: 1;">
+        <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
+          <div class="rounded-circle bg-white"
+               style="width: 11px; height: 11px; border: 2px solid {% if vehicles %}#0d6efd{% else %}#6c757d{% endif %}; flex-shrink: 0;">
+          </div>
+        </div>
+        <a href="{{ BASE_PATH }}/stops/{{ stop.stop_id }}"
+           class="ms-1 flex-grow-1 d-flex align-items-center justify-content-between text-decoration-none px-2 py-2 rounded {% if vehicles %}fw-semibold text-primary{% else %}text-body{% endif %}"
+           style="min-height: 44px; transition: background .15s;">
+          <span class="small">{{ stop.stop_name }}</span>
+          <span class="text-muted ms-2" style="font-size: .8rem;">&#xBB;</span>
+        </a>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="text-muted mt-1" style="font-size: .75rem;">
+    {% if updated_at %}Live data &mdash; updated {{ updated_at }}{% else %}No live data available{% endif %}
+  </div>
+{% endif %}

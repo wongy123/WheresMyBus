@@ -18,8 +18,8 @@
     </div>
   </div>
 
-  <!-- Page size control (navigates to keep consistency) -->
-  <form class="d-flex align-items-center gap-2 ms-auto" method="get">
+  <!-- Page size control (only relevant for table view) -->
+  <form id="limit-form" class="d-flex align-items-center gap-2 ms-auto" method="get">
     <input type="hidden" name="direction" value="{{ direction }}">
     <input type="hidden" name="duration" value="{{ duration }}">
     <input type="hidden" name="page" value="1">
@@ -32,7 +32,7 @@
   </form>
 </div>
 
-<div id="tt-route-controls" class="d-flex align-items-center gap-3 mb-3">
+<div id="tt-route-controls" class="d-flex align-items-center flex-wrap gap-3 mb-3">
   <div class="btn-group" role="group" aria-label="direction">
     <a class="btn btn-outline-primary {{ 'active' if direction == 0 else '' }}"
        href="?duration={{ duration }}&page=1&limit={{ limit }}">Inbound</a>
@@ -48,17 +48,69 @@
     <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}"
        href="?direction={{ direction }}&duration=14400&page=1&limit={{ limit }}">4h</a>
   </div>
+
+  <div class="btn-group" role="group" aria-label="view">
+    <button type="button" id="view-table-btn" class="btn btn-outline-secondary active"
+            onclick="showView('table')">Table</button>
+    <button type="button" id="view-diagram-btn" class="btn btn-outline-secondary"
+            onclick="showView('diagram')">Diagram</button>
+  </div>
 </div>
 
 <div id="tt-route-results"
-     hx-get="/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}&page={{ page }}&limit={{ limit }}"
+     hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}&page={{ page }}&limit={{ limit }}"
      hx-trigger="load"
      hx-target="this"
      hx-swap="innerHTML"
      aria-live="polite">
-  <div class="text-muted small d-flex align-items-center gap-2 htmx-indicator">
+  <div class="text-muted small d-flex align-items-center gap-2">
     <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-    <span>Loading timetable…</span>
+    <span>Loading timetable...</span>
   </div>
 </div>
+
+<div id="tt-route-diagram"
+     class="d-none"
+     hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction={{ direction }}&duration={{ duration }}"
+     hx-trigger="revealed, refresh"
+     hx-target="this"
+     hx-swap="innerHTML"
+     aria-live="polite">
+  <div class="text-muted small d-flex align-items-center gap-2">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>Loading diagram...</span>
+  </div>
+</div>
+
+<script>
+var diagramInterval = null;
+
+function showView(view) {
+  var tableDiv = document.getElementById('tt-route-results');
+  var diagramDiv = document.getElementById('tt-route-diagram');
+  var limitForm = document.getElementById('limit-form');
+
+  if (view === 'diagram') {
+    tableDiv.classList.add('d-none');
+    diagramDiv.classList.remove('d-none');
+    limitForm.classList.add('d-none');
+    if (!diagramInterval) {
+      diagramInterval = setInterval(function () {
+        htmx.trigger(diagramDiv, 'refresh');
+      }, 30000);
+    }
+  } else {
+    diagramDiv.classList.add('d-none');
+    tableDiv.classList.remove('d-none');
+    limitForm.classList.remove('d-none');
+    if (diagramInterval) {
+      clearInterval(diagramInterval);
+      diagramInterval = null;
+    }
+  }
+
+  document.getElementById('view-table-btn').classList.toggle('active', view === 'table');
+  document.getElementById('view-diagram-btn').classList.toggle('active', view === 'diagram');
+}
+</script>
 {% endblock %}
