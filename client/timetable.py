@@ -77,7 +77,8 @@ def hx_timetable_stop(stop_id: str):
 
     return render_template("timetable/_stop_results.html",
                            rows=rows, pagination=pagination,
-                           stop_id=stop_id, duration=duration, page=page, limit=limit)
+                           stop_id=stop_id, duration=duration, page=page, limit=limit,
+                           hx_target="#stop-timetable")
 
 @bp.get("/hx/timetable/route/<route_id>/upcoming")
 def hx_timetable_route(route_id: str):
@@ -150,10 +151,11 @@ def hx_timetable_route_diagram(route_id: str):
         else:
             t["minutes_away"] = None
 
-    # Group active vehicles by the stop_sequence of their next stop
+    # Group active vehicles by their actual current stop sequence (from RT feed),
+    # falling back to the scheduled stop_sequence when live data is unavailable.
     vehicles_by_seq = {}
     for t in trips:
-        seq = t.get("stop_sequence")
+        seq = t.get("vehicle_current_stop_sequence") if t.get("vehicle_current_stop_sequence") is not None else t.get("stop_sequence")
         if seq is not None:
             vehicles_by_seq.setdefault(seq, []).append(t)
 
@@ -162,6 +164,13 @@ def hx_timetable_route_diagram(route_id: str):
         (t.get("realtime_updated_local") for t in trips if t.get("realtime_updated_local")),
         None
     )
+
+    # Build stop_sequence → stop_name lookup from the canonical stop list
+    seq_to_stop_name = {
+        s["stop_sequence"]: s["stop_name"]
+        for s in stops
+        if "stop_sequence" in s and "stop_name" in s
+    }
 
     # Collect vehicles that have GPS positions for the map
     seen_trips = set()
@@ -172,6 +181,10 @@ def hx_timetable_route_diagram(route_id: str):
             continue
         seen_trips.add(tid)
         if t.get("vehicle_latitude") and t.get("vehicle_longitude"):
+            # Use vehicle_current_stop_sequence from the RT feed for the actual next stop;
+            # fall back to the timetable row's stop_name if not available or not found.
+            cur_seq = t.get("vehicle_current_stop_sequence")
+            next_stop = seq_to_stop_name.get(cur_seq) if cur_seq is not None else None
             vehicle_positions.append({
                 "trip_id": tid,
                 "headsign": t.get("trip_headsign", ""),
@@ -179,7 +192,7 @@ def hx_timetable_route_diagram(route_id: str):
                 "lon": t["vehicle_longitude"],
                 "label": t.get("vehicle_label") or t.get("vehicle_id") or "",
                 "minutes_away": t.get("minutes_away"),
-                "stop_name": t.get("stop_name", ""),
+                "stop_name": next_stop or t.get("stop_name", ""),
             })
 
     return render_template(
