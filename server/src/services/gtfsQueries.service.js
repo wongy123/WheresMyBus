@@ -547,51 +547,39 @@ export async function getUpcomingByRoute(
   const secEnd = secNow + duration;
 
   const sql = `
-SELECT
-    se.route_id,
-    se.route_short_name,
-    se.route_color,
-    se.route_text_color,
-    se.service_id,
-    se.trip_id,
-    se.trip_headsign,
-    se.direction_id,
-    se.stop_id,
-    se.stop_code,
-    se.stop_name,
-    se.stop_sequence,
-    se.arrival_time   AS scheduled_arrival_time,
-    se.departure_time AS scheduled_departure_time,
-    se.estimated_arrival_time,
-    se.estimated_departure_time,
-    se.arrival_delay,
-    se.departure_delay,
-    se.real_time_data,
-    se.event_sec,
-    se.win_sec
-FROM stop_events_3day se
-JOIN (
-    SELECT trip_id, MIN(win_sec) AS next_win_sec
-    FROM stop_events_3day
-    WHERE (route_id = $routeId OR route_short_name = $routeId)
-      AND direction_id = $direction
-      AND win_sec BETWEEN $startSec AND $endSec
-    GROUP BY trip_id
-) nxt
-  ON se.trip_id = nxt.trip_id
- AND se.win_sec = nxt.next_win_sec
-JOIN (
-    SELECT trip_id, win_sec, MIN(stop_sequence) AS min_seq
-    FROM stop_events_3day
-    WHERE (route_id = $routeId OR route_short_name = $routeId)
-      AND direction_id = $direction
-      AND win_sec BETWEEN $startSec AND $endSec
-    GROUP BY trip_id, win_sec
-) tb
-  ON se.trip_id = tb.trip_id
- AND se.win_sec = tb.win_sec
- AND se.stop_sequence = tb.min_seq
-ORDER BY se.win_sec ASC;
+WITH filtered AS (
+  SELECT
+    route_id, route_short_name, route_color, route_text_color,
+    service_id, trip_id, trip_headsign, direction_id,
+    stop_id, stop_code, stop_name, stop_sequence,
+    arrival_time   AS scheduled_arrival_time,
+    departure_time AS scheduled_departure_time,
+    estimated_arrival_time, estimated_departure_time,
+    arrival_delay, departure_delay, real_time_data,
+    event_sec, win_sec
+  FROM stop_events_3day
+  WHERE (route_id = $routeId OR route_short_name = $routeId)
+    AND direction_id = $direction
+    AND win_sec BETWEEN $startSec AND $endSec
+),
+trip_next AS (
+  SELECT trip_id, MIN(win_sec) AS next_win_sec
+  FROM filtered
+  GROUP BY trip_id
+),
+trip_min_seq AS (
+  SELECT f.trip_id, f.win_sec, MIN(f.stop_sequence) AS min_seq
+  FROM filtered f
+  JOIN trip_next n ON f.trip_id = n.trip_id AND f.win_sec = n.next_win_sec
+  GROUP BY f.trip_id, f.win_sec
+)
+SELECT f.*
+FROM filtered f
+JOIN trip_min_seq ms
+  ON f.trip_id = ms.trip_id
+ AND f.win_sec = ms.win_sec
+ AND f.stop_sequence = ms.min_seq
+ORDER BY f.win_sec ASC;
   `;
 
   const params = {
