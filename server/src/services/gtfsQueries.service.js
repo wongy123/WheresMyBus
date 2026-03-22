@@ -284,7 +284,7 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
     const tokenParams = Object.fromEntries(tokens.map((t, i) => [`tok${i}`, `%${t}%`]));
 
     sql = `
-      SELECT stop_id, stop_name, location_type,
+      SELECT stop_id, stop_name, stop_lat, stop_lon, location_type,
         CASE
           WHEN stop_name LIKE $fullPrefix    THEN 0
           WHEN stop_name LIKE $fullContains  THEN 1
@@ -301,7 +301,7 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
     };
   } else {
     sql = `
-      SELECT stop_id, stop_name, location_type
+      SELECT stop_id, stop_name, stop_lat, stop_lon, location_type
       FROM stops
       ORDER BY stop_name ASC
     `;

@@ -1,7 +1,10 @@
 <!-- templates/timetable/stop.html -->
 {% extends "base.html" %}
 {% block content %}
-<h1 class="h4 mb-1">Upcoming at {{ stop.stop_name }}</h1>
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-1">
+  <h1 class="h4 mb-0">Upcoming at {{ stop.stop_name }}</h1>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ BASE_PATH }}/stops/{{ stop.stop_id }}">View Stop</a>
+</div>
 <div class="text-muted small mb-3">
   Stop ID: <code>{{ stop.stop_id }}</code>
   {% if stop.stop_code %} • Code: <code>{{ stop.stop_code }}</code>{% endif %}

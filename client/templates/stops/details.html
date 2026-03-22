@@ -96,6 +96,7 @@
 <script>
 var stopLat = {{ stop.stop_lat }};
 var stopLon = {{ stop.stop_lon }};
+var stopId = {{ stop.stop_id | tojson }};
 var stopName = {{ stop.stop_name | tojson }};
 var nearby = {{ nearby | tojson }};
 var BASE_PATH = {{ BASE_PATH | tojson }};
@@ -144,11 +145,67 @@ nearby.forEach(function(s) {
   nearbyMarkerMap[s.stop_id] = m;
 });
 
-function focusStop(stopId) {
-  var m = nearbyMarkerMap[stopId];
+function focusStop(sid) {
+  var m = nearbyMarkerMap[sid] || dynamicMarkerMap[sid];
   if (!m) return;
   map.flyTo(m.getLatLng(), 17);
   m.openPopup();
+}
+
+// Dynamic stop loading on map pan/zoom
+var dynamicMarkerMap = {};
+var moveTimer = null;
+
+function loadStopsNearCenter() {
+  var center = map.getCenter();
+  fetch(window.API_BASE_URL + '/stops/nearby?lat=' + center.lat + '&lng=' + center.lng + '&limit=30')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      // Remove old dynamic markers
+      Object.values(dynamicMarkerMap).forEach(function(m) { map.removeLayer(m); });
+      dynamicMarkerMap = {};
+
+      (data.data || []).forEach(function(s) {
+        if (!s.stop_lat || !s.stop_lon) return;
+        if (s.stop_id === stopId) return;
+        if (nearbyMarkerMap[s.stop_id]) return;
+        var popup =
+          '<b>' + s.stop_name + '</b>' +
+          '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" ' +
+          'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
+          'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View stop</a>';
+        var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) }).addTo(map).bindPopup(popup);
+        dynamicMarkerMap[s.stop_id] = m;
+      });
+    })
+    .catch(function() {});
+}
+
+map.on('moveend', function() {
+  clearTimeout(moveTimer);
+  moveTimer = setTimeout(loadStopsNearCenter, 400);
+});
+
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    var lat = pos.coords.latitude;
+    var lng = pos.coords.longitude;
+    var accuracy = pos.coords.accuracy;
+
+    var userIcon = L.divIcon({
+      className: '',
+      html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1;">person_pin_circle</span>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32]
+    });
+
+    L.marker([lat, lng], { icon: userIcon }).addTo(map)
+      .bindPopup('<b>Your location</b>');
+
+    if (accuracy < 500) {
+      L.circle([lat, lng], { radius: accuracy, color: '#0d6efd', fillColor: '#0d6efd', fillOpacity: 0.08, weight: 1 }).addTo(map);
+    }
+  });
 }
 </script>
 {% endif %}

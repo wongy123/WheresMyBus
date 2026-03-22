@@ -1,16 +1,19 @@
 <!-- templates/timetable/index.html -->
 {% extends "base.html" %}
+{% from "common/_stop_search.html" import stop_search %}
 {% block content %}
 <h1 class="h3 mb-4">Timetable</h1>
 
 <ul class="nav nav-pills mb-3" id="ttTabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="tt-stop-tab" data-bs-toggle="pill" data-bs-target="#tt-stop-pane" type="button" role="tab" aria-controls="tt-stop-pane" aria-selected="true">
+    <button class="nav-link active" id="tt-stop-tab" data-bs-toggle="pill" data-bs-target="#tt-stop-pane"
+            type="button" role="tab" aria-controls="tt-stop-pane" aria-selected="true">
       By Stop
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="tt-route-tab" data-bs-toggle="pill" data-bs-target="#tt-route-pane" type="button" role="tab" aria-controls="tt-route-pane" aria-selected="false">
+    <button class="nav-link" id="tt-route-tab" data-bs-toggle="pill" data-bs-target="#tt-route-pane"
+            type="button" role="tab" aria-controls="tt-route-pane" aria-selected="false">
       By Route
     </button>
   </li>
@@ -19,40 +22,7 @@
 <div class="tab-content">
   <!-- By Stop -->
   <div class="tab-pane fade show active" id="tt-stop-pane" role="tabpanel" aria-labelledby="tt-stop-tab">
-    <div class="position-relative" style="max-width:700px">
-      <input
-        id="tt-stop-typeahead"
-        name="q"
-        type="search"
-        class="form-control form-control-lg"
-        placeholder="Search stop name or code…"
-        autocomplete="off"
-        aria-label="Search stops"
-        role="combobox"
-        aria-expanded="false"
-        aria-controls="tt-stop-suggest"
-        hx-get="{{ BASE_PATH }}/hx/stops/suggest?dest=timetable"
-        hx-trigger="input changed delay:250ms, search"
-        hx-target="#tt-stop-suggest"
-        hx-swap="innerHTML"
-      >
-      <div id="tt-stop-suggest" class="typeahead-list shadow-sm"></div>
-    </div>
-
-    <div class="mt-3 d-flex align-items-center gap-2">
-      <button id="tt-nearby-btn" class="btn btn-outline-secondary btn-sm" type="button">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-geo-alt me-1" viewBox="0 0 16 16">
-          <path d="M12.166 8.94c-.524 1.062-1.234 2.12-1.96 3.07A32 32 0 0 1 8 14.58a32 32 0 0 1-2.206-2.57c-.726-.95-1.436-2.008-1.96-3.07C3.304 7.867 3 6.862 3 6a5 5 0 0 1 10 0c0 .862-.305 1.867-.834 2.94M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10"/>
-          <path d="M8 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4m0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/>
-        </svg>
-        Use my location
-      </button>
-      <span id="tt-nearby-status" class="text-muted small"></span>
-    </div>
-
-    <div id="tt-nearby-results" style="max-width:700px"></div>
-
-    <p class="mt-3 text-muted">Choose a stop to view upcoming services.</p>
+    {{ stop_search(dest="timetable", uid="tt-stops", base_path=BASE_PATH) }}
   </div>
 
   <!-- By Route -->
@@ -66,9 +36,6 @@
         placeholder="Search route # or name…"
         autocomplete="off"
         aria-label="Search routes"
-        role="combobox"
-        aria-expanded="false"
-        aria-controls="tt-route-suggest"
         hx-get="{{ BASE_PATH }}/hx/routes/suggest?dest=timetable"
         hx-trigger="input changed delay:250ms, search"
         hx-target="#tt-route-suggest"
@@ -79,26 +46,11 @@
     <p class="mt-3 text-muted">Choose a route to view upcoming trips by direction.</p>
   </div>
 </div>
+
 <script>
-document.getElementById('tt-nearby-btn').addEventListener('click', function () {
-  var status = document.getElementById('tt-nearby-status');
-  if (!navigator.geolocation) {
-    status.textContent = 'Geolocation is not supported by your browser.';
-    return;
-  }
-  status.textContent = 'Getting your location...';
-  navigator.geolocation.getCurrentPosition(
-    function (pos) {
-      status.textContent = '';
-      htmx.ajax('GET',
-        '{{ BASE_PATH }}/hx/stops/nearby?dest=timetable&lat=' + pos.coords.latitude + '&lng=' + pos.coords.longitude,
-        { target: '#tt-nearby-results', swap: 'innerHTML' }
-      );
-    },
-    function (err) {
-      status.textContent = 'Could not get your location: ' + err.message;
-    }
-  );
+document.getElementById('tt-stop-tab').addEventListener('shown.bs.tab', function () {
+  var m = window['tt-stops_leafletMap'];
+  if (m) m.invalidateSize();
 });
 </script>
 {% endblock %}
