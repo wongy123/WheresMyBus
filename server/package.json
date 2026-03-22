@@ -19,7 +19,6 @@
     "express": "^5.1.0",
     "gtfs": "^4.17.7",
     "gtfs-realtime-bindings": "^1.1.1",
-    "ioredis": "^5.6.1",
-    "pg": "^8.16.3"
+    "ioredis": "^5.6.1"
   }
 }

@@ -1,8 +1,0 @@
-# PostgreSQL container data (binary files, WAL logs, etc.)
-data/
-
-# Local environment variables (secrets)
-.env
-
-# Backups (if you later add pg_dump output here)
-backups/

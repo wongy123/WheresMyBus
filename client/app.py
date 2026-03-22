@@ -65,6 +65,11 @@ def create_app():
     def home():
         return render_template("home.html")
 
+    about_rule = f"{BASE_PATH}/about"
+    @app.route(about_rule)
+    def about():
+        return render_template("about.html")
+
     # -------- Blueprints --------
     from route import bp as route_bp
     from stop import bp as stop_bp

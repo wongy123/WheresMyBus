@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    <h1 class="h3 mb-1">About Where's My Bus</h1>
+    <p class="text-muted small mb-4">A Brisbane transit tracker built out of frustration.</p>
+
+    <h2 class="h5 mt-4 mb-2">Why I built this</h2>
+    <p>
+      I am sick of buses that are scheduled to arrive on Google Maps just disappearing out of nowhere.
+      You're standing at the stop, the app says two minutes, and then it's gone. No explanation, no
+      cancellation notice, nothing. It just pretends the bus never existed and shows you the next one.
+    </p>
+    <p>
+      The timetable on Google Maps is very inconsistent, especially when there are a lot of delays.
+      And the new Translink app is rubbish. I just want to know when my bus is actually going to show up.
+    </p>
+
+    <h2 class="h5 mt-4 mb-2">How it started</h2>
+    <p>
+      This started like many of my projects as a university assessment for <strong>CAB432</strong>
+      (Cloud Computing) at QUT. The original version ran on AWS with the whole ecosystem: RDS,
+      ElastiCache, Cognito, S3 etc.
+    </p>
+    <p>
+      After the unit was completed I decided to migrate it off AWS and self-host it on an old office PC running
+      <a href="https://www.proxmox.com" class="text-decoration-none" target="_blank" rel="noopener">Proxmox</a>
+      at home. PostgreSQL, Redis, and the Node.js API all run in containers, with the Flask frontend
+      sitting alongside them.
+    </p>
+
+    <h2 class="h5 mt-4 mb-2">How it works</h2>
+    <p>
+      The backend is a <strong>Node.js/Express</strong> API pulling from two sources:
+    </p>
+    <ul>
+      <li>
+        <strong>GTFS static data</strong> — Translink's published timetables (stops, routes, trips,
+        shapes) loaded into SQLite.
+      </li>
+      <li>
+        <strong>GTFS-RT feeds</strong> — Translink's real-time trip updates and vehicle positions,
+        polled every 10 seconds and cached in Redis. Delay data is kept for up to 5 minutes so a
+        brief GPS dropout doesn't throw away a known delay. Vehicle positions expire after 60 seconds.
+      </li>
+    </ul>
+    <p>
+      The frontend is <strong>Python/Flask</strong> with
+      <a href="https://htmx.org" class="text-decoration-none" target="_blank" rel="noopener">HTMX</a>
+      for live updates and
+      <a href="https://leafletjs.com" class="text-decoration-none" target="_blank" rel="noopener">Leaflet</a>
+      for maps. Timetable and diagram views refresh every few seconds in the background.
+    </p>
+    <p>
+      I went with Flask and server-side rendering for a couple of reasons. First, I want every stop,
+      route and timetable to have its own URL you can actually navigate to, bookmark, or share.
+      Second, there is a lot of logic involved in processing and displaying the data, and it is just
+      more efficient to do that on the server rather than shipping it all to the browser.
+      HTMX handles the partial page updates without needing a full SPA framework on top of that.
+    </p>
+    <p>
+      Each row in the timetable shows a colour-coded indicator for how fresh the real-time data is.
+      Green means it just updated, amber means a couple of minutes old, red means it is getting stale.
+      Tap it to see exactly when it was last updated.
+    </p>
+
+    <h2 class="h5 mt-4 mb-2">Coverage</h2>
+    <p>
+      I originally built this with buses in mind since that is what I use every day, but because it
+      uses the Translink GTFS API it actually works for the whole SEQ network. Trains, ferries, and
+      the G:link light rail on the Gold Coast all show up with real-time data too, which was a nice bonus.
+    </p>
+    <p class="text-muted small">
+      Not affiliated with or endorsed by Translink or the Queensland Department of Transport and Main Roads.
+    </p>
+
+  </div>
+</div>
+{% endblock %}

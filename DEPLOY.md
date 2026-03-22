@@ -7,21 +7,19 @@ Internet
    │
    ▼
 duanduanshome.ddns.net  (Nginx Proxy Manager LXC)
-   ├── /wheresmybus          → client-lxc:80   (nginx → Flask/gunicorn  OR  nginx static)
+   ├── /wheresmybus          → client-lxc:80   (nginx → Flask/gunicorn)
    └── /wheresmybus-api/     → api-lxc:3000    (Node.js/Express, strips prefix)
-                                  ├── postgres-lxc:5432
                                   └── redis-lxc:6379
 ```
 
 ### LXC Summary
 
-| Container    | Role             | CPU | RAM   | Disk |
-|-------------|------------------|-----|-------|------|
-| postgres-lxc | PostgreSQL 18   | 1   | 512 MB | 8 GB |
-| redis-lxc    | Redis 7         | 1   | 256 MB | 2 GB |
-| api-lxc      | Node.js/PM2     | 1   | 512 MB | 4 GB |
-| client-lxc   | Flask or React  | 1   | 256 MB | 2 GB |
-| npm-lxc      | Nginx Proxy Mgr | —   | —     | —    |
+| Container  | Role             | CPU | RAM    | Disk |
+|-----------|------------------|-----|--------|------|
+| redis-lxc  | Redis 7         | 1   | 256 MB | 2 GB |
+| api-lxc    | Node.js/PM2     | 1   | 512 MB | 4 GB |
+| client-lxc | Flask/gunicorn  | 1   | 256 MB | 2 GB |
+| npm-lxc    | Nginx Proxy Mgr | —   | —      | —    |
 
 All LXCs are on the `192.168.3.0/24` bridge network.
 
@@ -32,9 +30,6 @@ All LXCs are on the `192.168.3.0/24` bridge network.
 All LXCs are deployed using [Proxmox Community Scripts](https://community-scripts.github.io/ProxmoxVE/). Run these from the Proxmox host shell:
 
 ```bash
-# PostgreSQL
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/postgresql.sh)"
-
 # Redis
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/redis.sh)"
 
@@ -45,7 +40,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/Proxmo
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/debian.sh)"
 ```
 
-After creating the api-lxc and client-lxc, install Node.js on the api-lxc:
+After creating the api-lxc, install Node.js:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
@@ -55,45 +50,7 @@ npm install -g pm2
 
 ---
 
-## 2. PostgreSQL LXC
-
-The community script installs PostgreSQL and starts the service. You only need to configure network access and create the app database.
-
-### Allow LAN connections
-
-```bash
-# Find the installed version
-pg_lsclusters
-
-# Edit postgresql.conf — set listen_addresses
-nano /etc/postgresql/<version>/main/postgresql.conf
-# listen_addresses = '192.168.3.6'   ← postgres-lxc IP
-
-# Edit pg_hba.conf — add a line for the app user
-nano /etc/postgresql/<version>/main/pg_hba.conf
-# host    wheresmybus     wmbuser     192.168.3.0/24    scram-sha-256
-```
-
-### Create database and user
-
-```bash
-sudo -u postgres psql <<'SQL'
-CREATE USER wmbuser WITH PASSWORD 'changeme';
-CREATE DATABASE wheresmybus OWNER wmbuser;
-SQL
-```
-
-```bash
-systemctl restart postgresql
-```
-
-### Schema
-
-The Express app creates the `stop_reviews` table on first startup — no manual schema migration needed.
-
----
-
-## 3. Redis LXC
+## 2. Redis LXC
 
 The community script uses an Alpine container with OpenRC (not systemd). Config is at `/etc/redis.conf`.
 
@@ -140,8 +97,6 @@ npm install -g pm2
 
 ### Deploy the API
 
-Clone the repo directly on the LXC and install dependencies:
-
 ```bash
 git clone -b local https://github.com/wongy123/WheresMyBus /opt/wheresmybus
 cd /opt/wheresmybus/server
@@ -150,11 +105,10 @@ npm install
 
 ### GTFS Static Data
 
-The API uses a SQLite GTFS database. Import it on the API LXC before starting:
+Import GTFS data before starting the API:
 
 ```bash
 cd /opt/wheresmybus/server
-npm install
 node --input-type=module --eval "
 import { importGtfs } from 'gtfs';
 import config from './config.json' with { type: 'json' };
@@ -177,13 +131,6 @@ Both steps only need to be re-run when the GTFS feed is updated.
 
 ```bash
 cat > /opt/wheresmybus/server/.env <<'EOF'
-# PostgreSQL
-PGHOST=192.168.3.6
-PGPORT=5432
-PGUSER=wmbuser
-PGPASSWORD=changeme
-PGDATABASE=wheresmybus
-
 # Redis
 REDIS_URL=redis://192.168.3.5:6379
 
@@ -214,25 +161,11 @@ Test: `curl http://192.168.3.7:3000/api/stops/search?q=central`
 
 ## 5. Client LXC (192.168.3.8)
 
-Choose **Option A** (Flask/HTMX) or **Option B** (React SPA). Both use the same Debian base LXC.
-
-### Initial setup (both options)
-
 ```bash
-apt update && apt install -y ca-certificates git nginx
+apt update && apt install -y ca-certificates git nginx python3 python3-venv
 ```
 
----
-
-### Option A — Flask/HTMX
-
-#### Install Python
-
-```bash
-apt install -y python3 python3-venv
-```
-
-#### Clone and install dependencies
+### Clone and install dependencies
 
 ```bash
 git clone -b local https://github.com/wongy123/WheresMyBus /opt/wheresmybus
@@ -241,7 +174,7 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt gunicorn
 ```
 
-#### Environment file
+### Environment file
 
 ```bash
 cat > /opt/wheresmybus/client/.env <<'EOF'
@@ -251,7 +184,7 @@ FLASK_SECRET_KEY=change-this-to-a-long-random-string
 EOF
 ```
 
-#### systemd service
+### systemd service
 
 ```bash
 cat > /etc/systemd/system/wheresmybus-client.service <<'EOF'
@@ -278,7 +211,7 @@ systemctl enable --now wheresmybus-client
 
 Test: `curl http://127.0.0.1:5000/wheresmybus/` should return HTML.
 
-#### nginx configuration
+### nginx configuration
 
 ```bash
 cat > /etc/nginx/sites-available/wheresmybus <<'EOF'
@@ -301,61 +234,6 @@ nginx -t && systemctl reload nginx
 ```
 
 Test: `curl http://192.168.3.8/wheresmybus/` should return HTML.
-
----
-
-### Option B — React SPA (static nginx)
-
-No Python needed — nginx serves the pre-built static files directly.
-
-#### Build on dev machine
-
-```bash
-cd /d/Users/AngusWong/WheresMyBus/client-react
-
-cat > .env.production <<'EOF'
-VITE_API_BASE_URL=https://duanduanshome.ddns.net/wheresmybus-api/api
-VITE_BASE_PATH=/wheresmybus
-EOF
-
-npm run build
-```
-
-#### Copy dist/ to the LXC
-
-```bash
-# From Git Bash / WSL on dev machine:
-scp -r /d/Users/AngusWong/WheresMyBus/client-react/dist/* root@192.168.3.8:/var/www/wheresmybus/
-```
-
-#### nginx configuration
-
-```bash
-mkdir -p /var/www/wheresmybus
-
-cat > /etc/nginx/sites-available/wheresmybus <<'EOF'
-server {
-    listen 80;
-
-    root /var/www;
-    index index.html;
-
-    location /wheresmybus {
-        try_files $uri $uri/ @spa;
-    }
-
-    location @spa {
-        rewrite .* /wheresmybus/index.html break;
-    }
-}
-EOF
-
-ln -s /etc/nginx/sites-available/wheresmybus /etc/nginx/sites-enabled/
-rm /etc/nginx/sites-enabled/default
-nginx -t && systemctl reload nginx
-```
-
-Test: `curl http://192.168.3.8/wheresmybus/` should return `index.html`.
 
 ---
 
@@ -412,7 +290,7 @@ cd server && npm install   # if dependencies changed
 pm2 restart wheresmybus-api
 ```
 
-When you update the Flask client (Option A):
+When you update the client:
 
 ```bash
 # On client-lxc
@@ -420,15 +298,6 @@ cd /opt/wheresmybus
 git pull origin local
 client/.venv/bin/pip install -r client/requirements.txt  # if deps changed
 systemctl restart wheresmybus-client
-```
-
-When you update the React app (Option B):
-
-```bash
-# On dev machine
-cd client-react
-npm run build     # uses .env.production
-scp -r dist/* root@192.168.3.8:/var/www/wheresmybus/
 ```
 
 ---
@@ -439,6 +308,5 @@ scp -r dist/* root@192.168.3.8:/var/www/wheresmybus/
 |---|---|
 | npm-lxc | 192.168.3.4 |
 | redis-lxc | 192.168.3.5 |
-| postgres-lxc | 192.168.3.6 |
 | api-lxc | 192.168.3.7 |
 | client-lxc | 192.168.3.8 |

@@ -1,24 +1,20 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: wheresmybus-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
   api:
     build: .
     container_name: wheresmybus-api
-    restart: always
+    restart: unless-stopped
     env_file: .env
     environment:
-      - PORT=${PORT}
-      - RT_UPDATE_INTERVAL_MS=${RT_UPDATE_INTERVAL_MS}
-      - JWT_SECRET=${JWT_SECRET}
-      - ACCESS_TOKEN_TTL=${ACCESS_TOKEN_TTL}
-      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS}
-      - PGHOST=wheresmybus-db
+      - REDIS_URL=redis://redis:6379
       - TZ=Australia/Brisbane
     ports:
-      - "${PORT}:${PORT}"
-    volumes:
-      - ./uploads:/app/uploads
-    networks:
-      - wmb-net
-
-networks:
-  wmb-net:
-    external: true
+      - "${PORT:-3000}:${PORT:-3000}"
+    depends_on:
+      - redis
