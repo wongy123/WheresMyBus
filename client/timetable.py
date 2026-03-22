@@ -126,6 +126,9 @@ def hx_timetable_route_diagram(route_id: str):
     if direction not in (0, 1):
         direction = 0
 
+    route = api_get(f"routes/{route_id}") or {}
+    route_type = route.get("route_type", 3)
+
     stops_resp = api_get(f"routes/{route_id}/stops", {"direction": direction}) or {}
     stops = stops_resp.get("data", [])
 
@@ -164,4 +167,5 @@ def hx_timetable_route_diagram(route_id: str):
         "timetable/_route_diagram.html",
         stops=stops, vehicles_by_seq=vehicles_by_seq,
         route_id=route_id, direction=direction, updated_at=updated_at,
+        route_type=route_type,
     )
