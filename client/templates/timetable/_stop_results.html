@@ -42,10 +42,17 @@
             </td>
             <td>{{ it.trip_headsign }}</td>
             <td>
-              <span class="badge {{ info.cls }}">{{ info.label }}</span>
-              {% if it.real_time_data and info.status in ['late','early','ontime'] %}
-                <span class="badge text-bg-success ms-1">Realtime</span>
-              {% endif %}
+              <div class="d-flex align-items-center justify-content-between">
+                <span class="badge {{ info.cls }}">{{ info.label }}</span>
+                {% if it.real_time_data and info.status in ['late','early','ontime'] %}
+                  <span class="rt-icon ms-2" tabindex="0"
+                        data-bs-toggle="popover" data-bs-trigger="click" data-bs-placement="top"
+                        data-updated-at="{{ it.realtime_updated_at or '' }}"
+                        style="cursor:pointer; display:inline-flex; align-items:center;">
+                    <span class="material-symbols-outlined" style="font-size:1rem; line-height:1; color:#198754;">sensors</span>
+                  </span>
+                {% endif %}
+              </div>
             </td>
           </tr>
         {% endfor %}
@@ -120,6 +127,20 @@
     var h = Math.floor(m / 60), r = m % 60;
     return h + 'h' + (r ? ' ' + r + 'm' : '');
   }
+  var _rtNow = Date.now();
+  document.querySelectorAll('.rt-icon').forEach(function(el) {
+    var updatedAt = parseInt(el.dataset.updatedAt, 10);
+    var ageSec = (updatedAt && !isNaN(updatedAt)) ? Math.round((_rtNow - updatedAt) / 1000) : null;
+    var color, label;
+    if (ageSec === null) {
+      color = '#198754'; label = 'Real-time data';
+    } else {
+      label = ageSec < 60 ? 'Updated just now' : 'Updated ' + Math.round(ageSec / 60) + ' min ago';
+      color = ageSec < 120 ? '#198754' : ageSec < 180 ? '#fd7e14' : '#dc3545';
+    }
+    el.querySelector('.material-symbols-outlined').style.color = color;
+    new bootstrap.Popover(el, { content: label, trigger: 'focus', placement: 'top' });
+  });
   document.querySelectorAll('.tt-time').forEach(function (el) {
     var minEl = el.querySelector('.tt-min');
     var absEl = el.querySelector('.tt-abs');
@@ -130,4 +151,15 @@
     });
   });
 }());
+</script>
+{% set _seen = namespace(ids=[]) %}
+{% set _veh = namespace(list=[]) %}
+{% for it in rows %}
+  {% if it.vehicle_latitude and it.vehicle_longitude and it.trip_id not in _seen.ids %}
+    {% set _seen.ids = _seen.ids + [it.trip_id] %}
+    {% set _veh.list = _veh.list + [{'trip_id': it.trip_id, 'route_id': it.route_id, 'route_short_name': it.route_short_name, 'trip_headsign': it.trip_headsign, 'direction_id': it.direction_id, 'lat': it.vehicle_latitude, 'lon': it.vehicle_longitude, 'label': it.vehicle_label or '', 'eta': it.estimated_arrival_time or it.scheduled_arrival_time or ''}] %}
+  {% endif %}
+{% endfor %}
+<script>
+typeof window.stopMapAddVehicles === 'function' && window.stopMapAddVehicles({{ _veh.list | tojson }});
 </script>

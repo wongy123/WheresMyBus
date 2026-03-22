@@ -51,6 +51,14 @@
               {% elif eta %}{{ eta[:5] }}{% endif %}
             </span>
             {% if eta and v.minutes_away %}<span class="text-muted">{{ eta[:5] }}</span>{% endif %}
+            {% if v.realtime_updated_at %}
+              <span class="rt-icon" tabindex="0"
+                    data-bs-toggle="popover" data-bs-trigger="click" data-bs-placement="top"
+                    data-updated-at="{{ v.realtime_updated_at }}"
+                    style="cursor:pointer; display:inline-flex; align-items:center;">
+                <span class="material-symbols-outlined" style="font-size:.95rem; line-height:1; color:#198754;">sensors</span>
+              </span>
+            {% endif %}
           </div>
         </div>
       {% endfor %}
@@ -100,6 +108,22 @@
   </div>
 {% endif %}
 <script>
+(function() {
+  var now = Date.now();
+  document.querySelectorAll('#route-diagram .rt-icon').forEach(function(el) {
+    var updatedAt = parseInt(el.dataset.updatedAt, 10);
+    var ageSec = (updatedAt && !isNaN(updatedAt)) ? Math.round((now - updatedAt) / 1000) : null;
+    var color, label;
+    if (ageSec === null) {
+      color = '#198754'; label = 'Real-time data';
+    } else {
+      label = ageSec < 60 ? 'Updated just now' : 'Updated ' + Math.round(ageSec / 60) + ' min ago';
+      color = ageSec < 120 ? '#198754' : ageSec < 180 ? '#fd7e14' : '#dc3545';
+    }
+    el.querySelector('.material-symbols-outlined').style.color = color;
+    new bootstrap.Popover(el, { content: label, trigger: 'focus', placement: 'top' });
+  });
+}());
 window._diagRoute = {
   stops: {{ stops | tojson }},
   color: {{ vehicle_color | tojson }},

@@ -71,12 +71,29 @@ function epochMsToLocalHms(epochMs, tzOffsetHours = 10) {
 }
 
 
-function applyRealtimeToRow(row, rt) {
-  if (!rt) return row;
+function applyRealtimeToRow(row, rt, vpos) {
+  if (!rt && !vpos) return row;
 
-  // Try to match the correct stop update by stop_sequence first, else stop_id
+  const enriched = { ...row };
+
+  // Vehicle position — short TTL key; only present if vehicle was recently seen
+  if (vpos) {
+    enriched.vehicle_latitude = vpos.latitude ?? null;
+    enriched.vehicle_longitude = vpos.longitude ?? null;
+    enriched.vehicle_id = vpos.vehicleId ?? null;
+    enriched.vehicle_label = vpos.vehicleLabel ?? null;
+    enriched.vehicle_current_stop_sequence = vpos.currentStopSequence ?? null;
+    enriched.vehicle_timestamp = vpos.timestamp ?? null;
+    enriched.vehicle_time_local = epochToLocalHms(vpos.timestamp);
+  }
+
+  if (!rt) {
+    if (vpos) enriched.real_time_data = 1;
+    return enriched;
+  }
+
+  // Delay / stop-update data — long TTL key; persists after position expires
   const seq = row.stop_sequence ?? row.stopSequence ?? null;
-
   let su = null;
   if (seq != null) {
     su = (rt.stopUpdates || []).find(u => Number(u.stopSequence) === Number(seq));
@@ -85,24 +102,9 @@ function applyRealtimeToRow(row, rt) {
     su = (rt.stopUpdates || []).find(u => String(u.stopId) === String(row.stop_id));
   }
 
-  const enriched = { ...row };
-
-  // Vehicle position/identity (if available)
-  if (rt.vehicle) {
-    enriched.vehicle_latitude = rt.vehicle.latitude ?? null;
-    enriched.vehicle_longitude = rt.vehicle.longitude ?? null;
-    enriched.vehicle_id = rt.vehicle.vehicleId ?? null;
-    enriched.vehicle_label = rt.vehicle.vehicleLabel ?? null;
-    enriched.vehicle_current_stop_sequence = rt.vehicle.currentStopSequence ?? null;
-    enriched.vehicle_timestamp = rt.vehicle.timestamp ?? null;
-    enriched.vehicle_time_local = epochToLocalHms(rt.vehicle.timestamp);
-  }
-
-  // If we have any RT for this stop/trip, set the flag
   let appliedRT = false;
 
   if (su) {
-    // delays
     if (su.arrivalDelay != null) {
       enriched.arrival_delay = su.arrivalDelay;
       appliedRT = true;
@@ -112,7 +114,6 @@ function applyRealtimeToRow(row, rt) {
       appliedRT = true;
     }
 
-    // Override "estimated_*" using delay or absolute time, preferring delay when present.
     // ARRIVAL
     if (su.arrivalDelay != null) {
       const schedSec = hmsToSec(enriched.scheduled_arrival_time);
@@ -122,10 +123,7 @@ function applyRealtimeToRow(row, rt) {
       }
     } else if (su.arrivalTime != null) {
       const hms = epochToHms(su.arrivalTime);
-      if (hms) {
-        enriched.estimated_arrival_time = hms;
-        appliedRT = true;
-      }
+      if (hms) { enriched.estimated_arrival_time = hms; appliedRT = true; }
     }
 
     // DEPARTURE
@@ -137,19 +135,14 @@ function applyRealtimeToRow(row, rt) {
       }
     } else if (su.departureTime != null) {
       const hms = epochToHms(su.departureTime);
-      if (hms) {
-        enriched.estimated_departure_time = hms;
-        appliedRT = true;
-      }
+      if (hms) { enriched.estimated_departure_time = hms; appliedRT = true; }
     }
   }
 
-  // Mark real_time_data if we applied any RT, or we at least had vehicle data
-  if (appliedRT || rt.vehicle) {
+  if (appliedRT || vpos) {
     enriched.real_time_data = 1;
   }
 
-  // No predicted_* fields — we intentionally omit them
   enriched.realtime_updated_at = rt.updatedAt ?? null;
   enriched.realtime_updated_local = epochMsToLocalHms(rt.updatedAt);
   return enriched;
@@ -158,7 +151,6 @@ function applyRealtimeToRow(row, rt) {
 async function enrichRowsWithRealtime(rows) {
   if (!rows?.length) return rows;
 
-  // Group rows by trip_id to reduce cache lookups
   const byTrip = new Map();
   for (const r of rows) {
     const tripId = r.trip_id || r.tripId;
@@ -168,16 +160,17 @@ async function enrichRowsWithRealtime(rows) {
   }
 
   const tripIds = [...byTrip.keys()];
-  // IMPORTANT: use the same key function you used in the writer
-  // If you already added tripKey(...) earlier in this file, keep using it.
-  const lookups = await Promise.all(tripIds.map(id => cacheGet(tripKey(id))));
-  const rtMap = new Map(tripIds.map((id, i) => [id, lookups[i]]));
+  const [rtLookups, vposLookups] = await Promise.all([
+    Promise.all(tripIds.map(id => cacheGet(tripKey(id)))),
+    Promise.all(tripIds.map(id => cacheGet(vposKey(id)))),
+  ]);
+  const rtMap   = new Map(tripIds.map((id, i) => [id, rtLookups[i]]));
+  const vposMap = new Map(tripIds.map((id, i) => [id, vposLookups[i]]));
 
   const out = [];
   for (const r of rows) {
     const t = r.trip_id || r.tripId;
-    const rt = t ? rtMap.get(t) : null;
-    out.push(applyRealtimeToRow(r, rt));
+    out.push(applyRealtimeToRow(r, t ? rtMap.get(t) : null, t ? vposMap.get(t) : null));
   }
   return out;
 }
@@ -190,6 +183,16 @@ function tripKey(tripId) {
     enc = `h${h}`;
   }
   return `rt:trip:${enc}`;
+}
+
+function vposKey(tripId) {
+  const raw = String(tripId);
+  let enc = encodeURIComponent(raw);
+  if (enc.length > 240) {
+    const h = crypto.createHash('sha1').update(raw).digest('hex');
+    enc = `h${h}`;
+  }
+  return `rt:vpos:${enc}`;
 }
 
 /* --------------------------------- routes ---------------------------------- */

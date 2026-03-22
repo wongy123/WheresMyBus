@@ -4,7 +4,8 @@ import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-const RT_TTL_SEC = Number(process.env.GTFS_RT_TTL_SECONDS || 30);
+const RT_VPOS_TTL_SEC  = Number(process.env.GTFS_RT_TTL_SECONDS       || 60);   // vehicle positions
+const RT_TRIP_TTL_SEC  = Number(process.env.GTFS_RT_TRIP_TTL_SECONDS  || 300);  // delay / stop-update data
 
 function readConfig() {
   try {
@@ -91,20 +92,21 @@ async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl }) {
     console.warn('[gtfsrt] both feeds empty or failed – check URLs/permissions');
   }
 
-  const keys = new Set([...tuMap.keys(), ...vpMap.keys()]);
   const writes = [];
   const now = Date.now();
 
-  let wrote = 0;
-  for (const tripId of keys) {
-    const a = tuMap.get(tripId) || { updatedAt: now, stopUpdates: [] };
-    const b = vpMap.get(tripId) || {};
-    const merged = { tripId, ...a, vehicle: b };
-    writes.push(cacheSet(tripKey(tripId), merged, RT_TTL_SEC).then(() => { wrote++; }));
+  let wroteTrip = 0, wroteVpos = 0;
+  for (const tripId of tuMap.keys()) {
+    const a = tuMap.get(tripId);
+    writes.push(cacheSet(tripKey(tripId), { tripId, ...a }, RT_TRIP_TTL_SEC).then(() => { wroteTrip++; }));
   }
-  writes.push(cacheSet('rt:feed:ts', { ts: now }, RT_TTL_SEC));
+  for (const tripId of vpMap.keys()) {
+    const b = vpMap.get(tripId);
+    writes.push(cacheSet(vposKey(tripId), { tripId, ...b }, RT_VPOS_TTL_SEC).then(() => { wroteVpos++; }));
+  }
+  writes.push(cacheSet('rt:feed:ts', { ts: now }, RT_VPOS_TTL_SEC));
   await Promise.all(writes);
-  console.log(`[gtfsrt] wrote rt:trip:* keys=${wrote}`);
+  console.log(`[gtfsrt] wrote rt:trip:* keys=${wroteTrip} rt:vpos:* keys=${wroteVpos}`);
 }
 
 function tripKey(tripId) {
@@ -115,6 +117,16 @@ function tripKey(tripId) {
     enc = `h${h}`;
   }
   return `rt:trip:${enc}`;
+}
+
+function vposKey(tripId) {
+  const raw = String(tripId);
+  let enc = encodeURIComponent(raw);
+  if (enc.length > 240) {
+    const h = crypto.createHash('sha1').update(raw).digest('hex');
+    enc = `h${h}`;
+  }
+  return `rt:vpos:${enc}`;
 }
 
 
