@@ -4,6 +4,7 @@ import {
   getNearbyStops,
   getOneStop as getOneStopService,
   getUpcomingByStop,
+  getUpcomingByStation,
   getRoutesByStop,
   getStopPlatforms as getStopPlatformsService,
 } from "../services/gtfsQueries.service.js";
@@ -109,7 +110,7 @@ export async function getStopTimetable(req, res, next) {
     const startTime = Number.isFinite(parseInt(startTimeQ, 10)) ? parseInt(startTimeQ, 10) : undefined;
     const duration = Number.isFinite(parseInt(durationQ, 10)) ? parseInt(durationQ, 10) : undefined;
 
-    const rows = await getUpcomingByStop(stopId, startTime, duration);
+    const rows = await getUpcomingByStation(stopId, startTime, duration);
 
     const body = paginateResponse({
       data: rows,

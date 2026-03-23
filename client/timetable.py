@@ -75,10 +75,11 @@ def hx_timetable_stop(stop_id: str):
     elif isinstance(resp, list):
         rows = resp
 
+    hx_target = request.args.get("hx_target", "#tt-stop-results")
     return render_template("timetable/_stop_results.html",
                            rows=rows, pagination=pagination,
                            stop_id=stop_id, duration=duration, page=page, limit=limit,
-                           hx_target="#tt-stop-results")
+                           hx_target=hx_target)
 
 @bp.get("/hx/timetable/route/<route_id>/upcoming")
 def hx_timetable_route(route_id: str):

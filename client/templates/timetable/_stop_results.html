@@ -6,9 +6,10 @@
 {% set page_count = pg.get('pageCount', 1) %}
 {% set total = pg.get('total', 0) %}
 
+{% set has_platforms = rows | selectattr('platform_code', 'defined') | selectattr('platform_code') | list | length > 0 %}
 {% if rows %}
   <style>
-    .tt-headsign { overflow-x: auto; white-space: nowrap; max-width: 38vw; }
+    .tt-headsign { overflow-x: auto; white-space: nowrap; max-width: {{ '24vw' if has_platforms else '38vw' }}; }
     @media (min-width: 768px) { .tt-headsign { max-width: none; white-space: normal; overflow-x: visible; } }
   </style>
   <div class="table-responsive">
@@ -18,6 +19,7 @@
           <th scope="col">Time</th>
           <th scope="col">Route</th>
           <th scope="col">Headsign</th>
+          {% if has_platforms %}<th scope="col" class="text-nowrap">Plat.</th>{% endif %}
           <th scope="col">Status</th>
         </tr>
       </thead>
@@ -43,6 +45,13 @@
               </a>
             </td>
             <td><div class="tt-headsign">{{ it.trip_headsign }}</div></td>
+            {% if has_platforms %}
+            <td class="text-nowrap">
+              {% if it.platform_code %}
+                <span class="badge text-bg-secondary">{{ it.platform_code }}</span>
+              {% endif %}
+            </td>
+            {% endif %}
             <td>
               <div class="d-flex align-items-center justify-content-between w-100">
                 <span class="badge {{ info.cls }} status-badge" tabindex="0"
@@ -67,7 +76,7 @@
 
   {% if page_count > 1 %}
     {% set use_htmx = hx_target is defined and hx_target %}
-    {% set page_base = (BASE_PATH ~ '/hx/timetable/stop/' ~ stop_id ~ '?duration=' ~ duration ~ '&limit=' ~ limit) if use_htmx else ('?duration=' ~ duration ~ '&limit=' ~ limit) %}
+    {% set page_base = (BASE_PATH ~ '/hx/timetable/stop/' ~ stop_id ~ '?duration=' ~ duration ~ '&limit=' ~ limit ~ '&hx_target=' ~ (hx_target | urlencode)) if use_htmx else ('?duration=' ~ duration ~ '&limit=' ~ limit) %}
     {% set prev_page = page - 1 %}
     {% set next_page = page + 1 %}
     <nav class="d-flex justify-content-between align-items-center mt-2">
@@ -178,6 +187,18 @@
       absEl.classList.toggle('d-none');
     });
   });
+
+  // Re-sort table rows by computed arrival time so the display order
+  // always matches the shown time, regardless of server-side sort quirks.
+  var tbody = document.querySelector('#stop-timetable table tbody, #tt-stop-results table tbody');
+  if (tbody) {
+    Array.from(tbody.querySelectorAll('tr')).sort(function (a, b) {
+      var aEl = a.querySelector('.tt-time');
+      var bEl = b.querySelector('.tt-time');
+      return (aEl ? minsFromNow(aEl.dataset.time) : Infinity) -
+             (bEl ? minsFromNow(bEl.dataset.time) : Infinity);
+    }).forEach(function (tr) { tbody.appendChild(tr); });
+  }
 }());
 </script>
 {% set _seen = namespace(ids=[]) %}

@@ -757,3 +757,88 @@ export async function getUpcomingByStop(
   );
   return visible;
 }
+
+export async function getUpcomingByStation(
+  stationId,
+  startTime = Math.floor(Date.now() / 1000),
+  duration = 7200,
+  configPath = defaultConfigPath
+) {
+  const platforms = await getStopPlatforms(stationId, configPath);
+
+  // Not a station (no child platforms) — fall back to regular stop query
+  if (!platforms.length) {
+    return getUpcomingByStop(stationId, startTime, duration, configPath);
+  }
+
+  const config = await loadConfig(configPath);
+  const db = openDb(config);
+
+  const date = new Date(startTime * 1000);
+  const midnight = new Date(date);
+  midnight.setHours(0, 0, 0, 0);
+  const startSec = Math.floor((date - midnight) / 1000);
+  const endSec = startSec + duration;
+
+  const platformIds = platforms.map(p => String(p.stop_id));
+  const platformCodeMap = Object.fromEntries(platforms.map(p => [String(p.stop_id), p.platform_code]));
+  const placeholders = platformIds.map(() => '?').join(', ');
+
+  const sql = `
+    SELECT
+      se.route_id,
+      se.route_short_name,
+      se.route_color,
+      se.route_text_color,
+      se.service_id,
+      se.trip_id,
+      se.trip_headsign,
+      se.direction_id,
+      se.stop_id,
+      se.stop_code,
+      se.stop_name,
+      se.stop_sequence,
+      se.win_sec,
+      se.arrival_time   AS scheduled_arrival_time,
+      se.departure_time AS scheduled_departure_time,
+      se.estimated_arrival_time,
+      se.estimated_departure_time,
+      se.arrival_delay,
+      se.departure_delay,
+      se.real_time_data
+    FROM stop_events_3day se
+    WHERE se.stop_id IN (${placeholders})
+      AND se.win_sec BETWEEN ? AND ?
+    ORDER BY se.win_sec, se.route_short_name, se.trip_id, se.stop_sequence
+  `;
+
+  const rows = db.prepare(sql).all(...platformIds, startSec, endSec);
+  await closeDb(db);
+
+  rows.forEach(r => {
+    r.platform_code = platformCodeMap[String(r.stop_id)] ?? null;
+    // Clear view-precomputed estimated times so stale SQLite RT data doesn't
+    // bleed through. enrichRowsWithRealtime will re-apply fresh Redis values;
+    // trips with no current Redis entry fall back to scheduled times.
+    r.estimated_arrival_time = null;
+    r.estimated_departure_time = null;
+    r.arrival_delay = null;
+    r.departure_delay = null;
+    r.real_time_data = 0;
+  });
+
+  const enriched = await enrichRowsWithRealtime(rows);
+  const visible = enriched.filter(r => {
+    // Position ghost filter: vehicle has already passed this stop
+    if (r.vehicle_current_stop_sequence !== null &&
+        r.vehicle_current_stop_sequence > r.stop_sequence) return false;
+    // Time ghost filter: effective arrival is more than 60s in the past
+    const effectiveSec = r.win_sec + (r.arrival_delay || 0);
+    if (effectiveSec < startSec - 60) return false;
+    return true;
+  });
+  visible.sort((a, b) =>
+    (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
+  );
+  return visible;
+}
