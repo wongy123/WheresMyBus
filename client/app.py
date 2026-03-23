@@ -15,7 +15,7 @@ FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev-secret")  # set a rea
 BRISBANE_TZ = pytz.timezone("Australia/Brisbane")
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path=f'{BASE_PATH}/static')
     app.secret_key = FLASK_SECRET_KEY
     # If you want the session cookie scoped to the subpath only, uncomment:
     # app.config["SESSION_COOKIE_PATH"] = BASE_PATH or "/"
