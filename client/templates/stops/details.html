@@ -53,7 +53,7 @@
 <h2 class="h5 mb-2">Upcoming Services</h2>
 <div id="stop-timetable"
      hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&page=1&limit=10"
-     hx-trigger="load, every 30s"
+     hx-trigger="load, every 5s"
      hx-target="this"
      hx-swap="innerHTML"
      aria-live="polite">
@@ -124,10 +124,10 @@ function makeNearbyIcon(s) {
   var rt = s.primary_route_type;
   var isStation = s.location_type === 1;
   var color, label;
-  if (rt === 2 || rt === 1 || rt === 12)  { color = '#6f42c1'; label = 'T'; } // heavy rail / metro / monorail
-  else if (rt === 0)                       { color = '#e6a817'; label = 'L'; } // light rail / tram
-  else if (rt === 4)                       { color = '#0dcaf0'; label = 'F'; } // ferry
-  else                                     { color = '#0d6efd'; label = 'B'; } // bus (default)
+  if (rt === 2 || rt === 1 || rt === 12)  { color = isStation ? '#8a65b8' : '#6f42c1'; label = 'T'; } // heavy rail / metro / monorail
+  else if (rt === 0)                       { color = isStation ? '#cc9a20' : '#e6a817'; label = 'L'; } // light rail / tram
+  else if (rt === 4)                       { color = isStation ? '#16b8d8' : '#0dcaf0'; label = 'F'; } // ferry
+  else                                     { color = isStation ? '#5b8ecf' : '#0d6efd'; label = 'B'; } // bus (default)
   var size   = isStation ? 22 : 18;
   var radius = isStation ? '4px' : '50%';
   var html =

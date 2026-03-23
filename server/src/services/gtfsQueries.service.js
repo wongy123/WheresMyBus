@@ -743,9 +743,17 @@ export async function getUpcomingByStop(
   // Enrich with realtime (cache)
   const enriched = await enrichRowsWithRealtime(rows);
 
+  // Remove ghost entries for early-running buses: if the vpos feed shows the
+  // vehicle is already past this stop (currentStopSequence > stop_sequence),
+  // the bus has departed even though its scheduled time is still in the window.
+  const visible = enriched.filter(r =>
+    r.vehicle_current_stop_sequence === null ||
+    r.vehicle_current_stop_sequence <= r.stop_sequence
+  );
+
   // Re-sort by effective arrival time (estimated if available, otherwise scheduled)
-  enriched.sort((a, b) =>
+  visible.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
-  return enriched;
+  return visible;
 }
