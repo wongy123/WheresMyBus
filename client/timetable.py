@@ -157,9 +157,14 @@ def hx_timetable_route_diagram(route_id: str):
         None
     )
 
-    # Build stop_sequence → stop_name and stop_sequence → coords lookups.
+    # Build canonical lookups from the representative stop list.
+    # stop_id_to_seq lets us map a physical stop (identified by stop_id in the
+    # trip row) to its canonical sequence number, regardless of how the trip
+    # itself numbers its stops.  This is essential because different trips on
+    # the same route can have different stop_sequence values for the same stops.
     seq_to_stop_name = {}
     seq_to_stop_coords = {}
+    stop_id_to_seq = {}
     for s in stops:
         seq = s.get("stop_sequence")
         if seq is None:
@@ -168,6 +173,8 @@ def hx_timetable_route_diagram(route_id: str):
             seq_to_stop_name[seq] = s["stop_name"]
         if s.get("stop_lat") is not None and s.get("stop_lon") is not None:
             seq_to_stop_coords[seq] = (float(s["stop_lat"]), float(s["stop_lon"]))
+        if s.get("stop_id") is not None:
+            stop_id_to_seq[str(s["stop_id"])] = seq
     sorted_seqs = sorted(seq_to_stop_name)
 
     def _advance_seq(trip_row, veh_seq):
@@ -223,10 +230,17 @@ def hx_timetable_route_diagram(route_id: str):
 
         return veh_seq, False
 
-    # Group active vehicles by stop sequence, correcting for stale RT data.
+    # Group active vehicles by canonical stop sequence for diagram positioning.
+    # Use the trip row's stop_id to resolve the canonical sequence, so that
+    # buses on trips with different stop_sequence numbering still land at the
+    # correct position on the diagram.  Fall back to the trip's own
+    # stop_sequence only when the stop isn't in the canonical list.
     vehicles_by_seq = {}
     for t in trips:
-        seq = t.get("vehicle_current_stop_sequence") if t.get("vehicle_current_stop_sequence") is not None else t.get("stop_sequence")
+        stop_id = str(t.get("stop_id") or "")
+        seq = stop_id_to_seq.get(stop_id) if stop_id else None
+        if seq is None:
+            seq = t.get("stop_sequence")
         if seq is None:
             continue
         seq, _ = _advance_seq(t, seq)
