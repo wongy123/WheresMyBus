@@ -10,16 +10,16 @@
 </style>
 {% if route_type in [1, 2, 12] %}
   {% set vehicle_icon = 'train' %}
-  {% set vehicle_color = '#6f42c1' %}
+  {% set vehicle_cls = 'transit-rail-color' %}
 {% elif route_type == 0 %}
   {% set vehicle_icon = 'tram' %}
-  {% set vehicle_color = '#e6a817' %}
+  {% set vehicle_cls = 'transit-tram-color' %}
 {% elif route_type == 4 %}
   {% set vehicle_icon = 'directions_ferry' %}
-  {% set vehicle_color = '#0dcaf0' %}
+  {% set vehicle_cls = 'transit-ferry-color' %}
 {% else %}
   {% set vehicle_icon = 'directions_bus' %}
-  {% set vehicle_color = '#0d6efd' %}
+  {% set vehicle_cls = 'transit-bus-color' %}
 {% endif %}
 
 {% if not stops %}
@@ -41,7 +41,7 @@
 
         <div class="d-flex align-items-center" style="min-height: 44px; position: relative; z-index: 1;">
           <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
-            <span class="material-symbols-outlined" style="font-size: 1.4rem; color: {{ vehicle_color }}; line-height: 1;">{{ vehicle_icon }}</span>
+            <span class="material-symbols-outlined {{ vehicle_cls }}" style="font-size: 1.4rem; line-height: 1;">{{ vehicle_icon }}</span>
           </div>
           <div class="ms-1 d-flex align-items-center gap-2 py-1 px-2 rounded border bg-white shadow-sm" style="font-size: .82rem;">
             <span class="badge {{ info.cls }}">{{ info.label }}</span>
@@ -126,8 +126,8 @@
 }());
 window._diagRoute = {
   stops: {{ stops | tojson }},
-  color: {{ vehicle_color | tojson }},
-  vehicleIcon: {{ vehicle_icon | tojson }},
+  color: {{ ('#' + route_color) | tojson if route_color else 'window.TRANSIT.vehicleColor(' + route_type|string + ')' }},
+  vehicleIcon: window.TRANSIT.vehicleIcon({{ route_type }}),
   routeId: {{ route_id | tojson }},
   direction: {{ direction }},
   vehicles: {{ vehicle_positions | tojson }}

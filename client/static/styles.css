@@ -1,9 +1,58 @@
 /* static/styles.css */
+
+/* Transit type colours — sourced from Translink/Queensland Rail official branding.
+   Three tiers per mode:
+     color   = brand colour, used for CSS text classes and vehicle markers
+     stop    = light pastel, used for individual platform/stop map markers
+     station = rich/dark shade, used for interchange/station map markers        */
+:root {
+  --transit-rail-color:    #C4262E;  /* Queensland Rail red */
+  --transit-rail-stop:     #eb9ea2;
+  --transit-rail-station:  #8b1217;
+
+  --transit-tram-color:    #FFD200;  /* Translink G:link yellow */
+  --transit-tram-stop:     #fff2a8;
+  --transit-tram-station:  #c8a400;
+
+  --transit-ferry-color:   #00447C;  /* Translink ferry navy */
+  --transit-ferry-stop:    #6aace0;
+  --transit-ferry-station: #002b52;
+
+  --transit-bus-color:     #E463A4;  /* Translink bus pink */
+  --transit-bus-stop:      #f5b8d8;
+  --transit-bus-station:   #b5186b;
+}
+.transit-rail-color  { color: var(--transit-rail-color); }
+.transit-tram-color  { color: var(--transit-tram-station); }  /* #FFD200 is unreadable on white */
+.transit-ferry-color { color: var(--transit-ferry-color); }
+.transit-bus-color   { color: var(--transit-bus-color); }
 .typeahead-list {
   display: block;
   background: #fff;
   border: 1px solid rgba(0,0,0,.125);
   border-radius: .5rem;
+  z-index: 1000;
+}
+
+.map-container {
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.map-popup-link {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 10px;
+  font-size: .8rem;
+  background: #0d6efd;
+  color: #fff !important;
+  border-radius: 4px;
+  text-decoration: none !important;
+}
+
+.map-popup-meta {
+  font-size: .8em;
+  color: #6c757d;
 }
 
 .z-10 { z-index: 10; }

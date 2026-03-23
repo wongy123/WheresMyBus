@@ -67,7 +67,7 @@
 {% if stop.stop_lat and stop.stop_lon %}
 <div class="row g-3 mb-4 mt-2">
   <div class="col-lg-8">
-    <div id="stop-map" style="height: 340px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
+    <div id="stop-map" class="map-container" style="height: 340px;"></div>
   </div>
   <div class="col-lg-4">
     <h2 class="h6 mb-2">Nearby Stops</h2>
@@ -114,28 +114,14 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 // Current stop marker
 L.marker([stopLat, stopLon]).addTo(map)
-  .bindPopup('<b>' + stopName + '</b><br><span style="font-size:.8em;color:#6c757d;">Current stop</span>')
+  .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Current stop</span>')
   .openPopup();
 
 // Icon: color+label from route_type, shape from location_type
 // route_type: 2=rail/metro/tram → purple T; 4=ferry → cyan F; else → blue B
 // location_type: 1=station → square; else → circle
 function makeNearbyIcon(s) {
-  var rt = s.primary_route_type;
-  var isStation = s.location_type === 1;
-  var color, label;
-  if (rt === 2 || rt === 1 || rt === 12)  { color = isStation ? '#8a65b8' : '#6f42c1'; label = 'T'; } // heavy rail / metro / monorail
-  else if (rt === 0)                       { color = isStation ? '#cc9a20' : '#e6a817'; label = 'L'; } // light rail / tram
-  else if (rt === 4)                       { color = isStation ? '#16b8d8' : '#0dcaf0'; label = 'F'; } // ferry
-  else                                     { color = isStation ? '#5b8ecf' : '#0d6efd'; label = 'B'; } // bus (default)
-  var size   = isStation ? 22 : 18;
-  var radius = isStation ? '4px' : '50%';
-  var html =
-    '<div style="width:' + size + 'px;height:' + size + 'px;background:' + color + ';' +
-    'border-radius:' + radius + ';border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.45);' +
-    'display:flex;align-items:center;justify-content:center;' +
-    'color:white;font-weight:700;font-size:10px;font-family:sans-serif;">' + label + '</div>';
-  return L.divIcon({ className: '', html: html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+  return window.TRANSIT.makeStopIcon(s);
 }
 
 var nearbyMarkerMap = {};
@@ -143,9 +129,7 @@ nearby.forEach(function(s) {
   if (!s.stop_lat || !s.stop_lon) return;
   var popup =
     '<b>' + s.stop_name + '</b>' +
-    '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" ' +
-    'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
-    'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View stop</a>';
+    '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
   var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) }).addTo(map).bindPopup(popup);
   nearbyMarkerMap[s.stop_id] = m;
 });
@@ -176,9 +160,7 @@ function loadStopsNearCenter() {
         if (nearbyMarkerMap[s.stop_id]) return;
         var popup =
           '<b>' + s.stop_name + '</b>' +
-          '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" ' +
-          'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
-          'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View stop</a>';
+          '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
         var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) }).addTo(map).bindPopup(popup);
         dynamicMarkerMap[s.stop_id] = m;
       });
@@ -195,28 +177,6 @@ map.on('moveend', function() {
 var vehicleMarkerMap = {};
 var activeRoutePolyline = null;
 
-function _vehColor(rt) {
-  if (rt === 1 || rt === 2 || rt === 12) return '#6f42c1';
-  if (rt === 0) return '#e6a817';
-  if (rt === 4) return '#0dcaf0';
-  return '#0d6efd';
-}
-function _vehIconName(rt) {
-  if (rt === 1 || rt === 2 || rt === 12) return 'train';
-  if (rt === 0) return 'tram';
-  if (rt === 4) return 'directions_ferry';
-  return 'directions_bus';
-}
-function _makeBusMarkerIcon(color, iconName) {
-  return L.divIcon({
-    className: '',
-    html: '<div style="width:28px;height:28px;background:' + color + ';border-radius:50%;' +
-          'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
-          'display:flex;align-items:center;justify-content:center;">' +
-          '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' + iconName + '</span></div>',
-    iconSize: [28, 28], iconAnchor: [14, 14]
-  });
-}
 
 window.stopMapAddVehicles = function(vehicles) {
   var seen = {};
@@ -224,7 +184,7 @@ window.stopMapAddVehicles = function(vehicles) {
     if (!v.lat || !v.lon) return;
     seen[v.trip_id] = true;
     var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
-    var color = _vehColor(rt);
+    var color = v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
 
     var etaStr = '';
     if (v.eta) {
@@ -240,17 +200,15 @@ window.stopMapAddVehicles = function(vehicles) {
     var label = v.label ? ' · ' + v.label : '';
     var popup = '<b>' + v.route_short_name + '</b>' + label +
       (v.trip_headsign ? ' — ' + v.trip_headsign : '') +
-      (etaStr ? '<br><span style="font-size:.8em;color:#6c757d;">' + etaStr + '</span>' : '') +
-      '<br><a href="' + BASE_PATH + '/routes/' + encodeURIComponent(v.route_id) + '" ' +
-      'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
-      'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View Route</a>';
+      (etaStr ? '<br><span class="map-popup-meta">' + etaStr + '</span>' : '') +
+      '<br><a href="' + BASE_PATH + '/routes/' + encodeURIComponent(v.route_id) + '" class="map-popup-link">View Route</a>';
 
     if (vehicleMarkerMap[v.trip_id]) {
       vehicleMarkerMap[v.trip_id].setLatLng([v.lat, v.lon]);
       vehicleMarkerMap[v.trip_id].setPopupContent(popup);
     } else {
       var marker = L.marker([v.lat, v.lon], {
-        icon: _makeBusMarkerIcon(color, _vehIconName(rt)),
+        icon: window.TRANSIT.makeVehicleIcon(color, window.TRANSIT.vehicleIcon(rt)),
         zIndexOffset: 1000
       }).addTo(map).bindPopup(popup);
 

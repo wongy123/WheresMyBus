@@ -18,7 +18,7 @@
         hx-swap="innerHTML"
         hx-include="this"
       />
-      <div id="{{ uid }}-suggest" class="typeahead-list shadow-sm" style="z-index:1000;"></div>
+      <div id="{{ uid }}-suggest" class="typeahead-list shadow-sm"></div>
     </div>
 
     <div class="mt-3 d-flex align-items-center gap-2">
@@ -39,7 +39,7 @@
 
   {# ── Right: map ── #}
   <div class="col-lg-7 order-1 order-lg-2" style="position:relative; z-index:1;">
-    <div id="{{ uid }}-map" style="height: 350px; border-radius: 8px; border: 1px solid #dee2e6;"></div>
+    <div id="{{ uid }}-map" class="map-container" style="height: 350px;"></div>
   </div>
 </div>
 
@@ -58,38 +58,28 @@
   }).addTo(map);
 
   function makeIcon(s) {
-    var rt = s.primary_route_type;
-    var isStation = s.location_type === 1;
-    var color, label;
-    if      (rt === 2 || rt === 1 || rt === 12) { color = '#6f42c1'; label = 'T'; }
-    else if (rt === 0)                           { color = '#e6a817'; label = 'L'; }
-    else if (rt === 4)                           { color = '#0dcaf0'; label = 'F'; }
-    else                                         { color = '#0d6efd'; label = 'B'; }
-    var size = isStation ? 22 : 18, radius = isStation ? '4px' : '50%';
-    return L.divIcon({
-      className: '',
-      html: '<div style="width:' + size + 'px;height:' + size + 'px;background:' + color +
-            ';border-radius:' + radius + ';border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.45);' +
-            'display:flex;align-items:center;justify-content:center;' +
-            'color:white;font-weight:700;font-size:10px;font-family:sans-serif;">' + label + '</div>',
-      iconSize: [size, size], iconAnchor: [size / 2, size / 2]
-    });
+    return window.TRANSIT.makeStopIcon(s);
   }
 
-  var markerByStopId = {};
+  var searchMarkerMap = {};
+  var dynamicMarkerMap = {};
+
+  function addStopMarker(s, targetMap) {
+    var popup = '<b>' + s.stop_name + '</b>' +
+      '<br><a href="' + hrefBase + '/' + s.stop_id + '" class="map-popup-link">Select</a>';
+    var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s) }).addTo(map).bindPopup(popup);
+    targetMap[s.stop_id] = m;
+  }
 
   window.stopSearchUpdateMap = function (stops) {
-    Object.values(markerByStopId).forEach(function (m) { map.removeLayer(m); });
-    markerByStopId = {};
+    Object.values(searchMarkerMap).forEach(function (m) { map.removeLayer(m); });
+    Object.values(dynamicMarkerMap).forEach(function (m) { map.removeLayer(m); });
+    searchMarkerMap = {};
+    dynamicMarkerMap = {};
     var valid = (stops || []).filter(function (s) { return s.stop_lat && s.stop_lon; });
+    lastSearchAt = Date.now();
     if (!valid.length) return;
-    valid.forEach(function (s) {
-      var popup = '<b>' + s.stop_name + '</b>' +
-        '<br><a href="' + hrefBase + '/' + s.stop_id + '" ' +
-        'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
-        'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">Select</a>';
-      markerByStopId[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s) }).addTo(map).bindPopup(popup);
-    });
+    valid.forEach(function (s) { addStopMarker(s, searchMarkerMap); });
     if (valid.length === 1) {
       map.setView([valid[0].stop_lat, valid[0].stop_lon], 16);
     } else {
@@ -99,11 +89,37 @@
   };
 
   window.stopSearchFocusStop = function (stopId) {
-    var m = markerByStopId[stopId];
+    var m = searchMarkerMap[stopId] || dynamicMarkerMap[stopId];
     if (!m) return;
+    lastSearchAt = Date.now();
     map.flyTo(m.getLatLng(), 16);
     m.openPopup();
   };
+
+  // Dynamic stop loading on pan/zoom
+  var moveTimer = null;
+  var lastSearchAt = 0;
+  function loadStopsNearCenter() {
+    if (Date.now() - lastSearchAt < 1000) return;
+    if (map.getZoom() < 14) return;
+    var center = map.getCenter();
+    fetch(window.API_BASE_URL + '/stops/nearby?lat=' + center.lat + '&lng=' + center.lng + '&limit=40')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        Object.values(dynamicMarkerMap).forEach(function (m) { map.removeLayer(m); });
+        dynamicMarkerMap = {};
+        (data.data || []).forEach(function (s) {
+          if (!s.stop_lat || !s.stop_lon) return;
+          if (searchMarkerMap[s.stop_id]) return;
+          addStopMarker(s, dynamicMarkerMap);
+        });
+      })
+      .catch(function () {});
+  }
+  map.on('moveend', function () {
+    clearTimeout(moveTimer);
+    moveTimer = setTimeout(loadStopsNearCenter, 400);
+  });
 
   // Geolocation button
   document.getElementById({{ (uid ~ '-nearby-btn') | tojson }}).addEventListener('click', function () {
