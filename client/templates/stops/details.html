@@ -5,9 +5,7 @@
 {% block content %}
 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-1">
   <h1 class="h4 mb-0">{{ stop.stop_name }}</h1>
-  {% if stop.location_type != 1 %}
-    <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">View Full Timetable</a>
-  {% endif %}
+  <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">View Full Timetable</a>
 </div>
 <div class="text-muted small mb-3">
   Stop ID: <code>{{ stop.stop_id }}</code>

@@ -1,22 +1,11 @@
 // src/services/gtfsQueries.service.js
-import { closeDb, openDb, getStops, getStopTimeUpdates } from 'gtfs';
-import { readFile } from 'fs/promises';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+import { getStops, getStopTimeUpdates } from 'gtfs';
 import { cacheGet } from './cache.service.js';
 import crypto from 'node:crypto';
 import { getLineNames } from '../utils/routeNames.js';
-
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { withDb } from '../utils/dbQuery.js';
 
 const defaultConfigPath = '../../config.json';
-
-async function loadConfig(configPath = defaultConfigPath) {
-  const full = path.join(__dirname, configPath);
-  return JSON.parse(await readFile(full, 'utf8'));
-}
 
 /* ----------------------------- helpers: RT merge ---------------------------- */
 
@@ -27,6 +16,13 @@ function hmsToSec(hms) {
   if (!m) return null;
   const h = Number(m[1]), mi = Number(m[2]), s = Number(m[3]);
   return h * 3600 + mi * 60 + s;
+}
+
+function normalizeHms(hms) {
+  // Normalize GTFS overflow times (e.g. "24:50:00" → "00:50:00") for display.
+  // Times within 0–23h are returned unchanged.
+  const s = hmsToSec(hms);
+  return (s != null && s >= 86400) ? secToHms(s) : hms;
 }
 
 function secToHms(sec) {
@@ -206,9 +202,6 @@ function vposKey(tripId) {
 /* --------------------------------- routes ---------------------------------- */
 
 export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   // Fetch all deduplicated routes — only ~80 unique routes, fast enough to filter in JS
   const sql = `
     SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color
@@ -220,8 +213,7 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
     ) dedup ON r.route_id = dedup.min_id
   `;
 
-  const rows = db.prepare(sql).all();
-  await closeDb(db);
+  const rows = await withDb(db => db.prepare(sql).all(), configPath);
 
   // Enrich with marketing line name
   const routes = rows.map(r => ({
@@ -264,9 +256,6 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
 }
 
 export async function getOneRoute(identifier, configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   const sql = `
     SELECT route_id, route_short_name, route_long_name, route_type, route_color, route_text_color
     FROM routes
@@ -274,8 +263,7 @@ export async function getOneRoute(identifier, configPath = defaultConfigPath) {
     LIMIT 1
   `;
 
-  const route = db.prepare(sql).get({ id: identifier });
-  await closeDb(db);
+  const route = await withDb(db => db.prepare(sql).get({ id: identifier }), configPath);
   if (!route) return null;
   return { ...route, line_name: getLineNames(route.route_short_name).join(' / ') || null };
 }
@@ -283,9 +271,6 @@ export async function getOneRoute(identifier, configPath = defaultConfigPath) {
 /* ---------------------------------- stops ---------------------------------- */
 
 export async function getAllStops(searchTerm = '', configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   let sql, params;
 
   if (searchTerm) {
@@ -319,9 +304,7 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
     params = {};
   }
 
-  const stops = db.prepare(sql).all(params);
-  await closeDb(db);
-  return stops;
+  return withDb(db => db.prepare(sql).all(params), configPath);
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -334,80 +317,69 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 export async function getNearbyStops(lat, lng, limit = 5, configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
+  return withDb(db => {
+    const rows = db.prepare(`
+      SELECT stop_id, stop_name, stop_lat, stop_lon, location_type
+      FROM stops
+      WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
+        AND (location_type IS NULL OR location_type IN (0, 1))
+    `).all();
 
-  const rows = db.prepare(`
-    SELECT stop_id, stop_name, stop_lat, stop_lon, location_type
-    FROM stops
-    WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
-      AND (location_type IS NULL OR location_type IN (0, 1))
-  `).all();
+    const topN = rows
+      .map(s => ({ ...s, distance_km: haversineKm(lat, lng, s.stop_lat, s.stop_lon) }))
+      .sort((a, b) => a.distance_km - b.distance_km)
+      .slice(0, limit);
 
-  const topN = rows
-    .map(s => ({ ...s, distance_km: haversineKm(lat, lng, s.stop_lat, s.stop_lon) }))
-    .sort((a, b) => a.distance_km - b.distance_km)
-    .slice(0, limit);
+    // Batch-resolve the dominant route_type for each nearby stop.
+    // Regular stops: direct stop_times lookup.
+    // Stations (location_type=1): no direct stop_times, so resolve via child stops.
+    // Priority: rail/metro/tram (2) > ferry (4) > bus (3).
+    if (topN.length > 0) {
+      const ids = topN.map(s => s.stop_id);
+      const placeholders = ids.map(() => '?').join(',');
+      const rtRows = db.prepare(`
+        WITH candidates(stop_id, route_id) AS (
+          SELECT st.stop_id, t.route_id
+          FROM stop_times st
+          JOIN trips t ON st.trip_id = t.trip_id
+          WHERE st.stop_id IN (${placeholders})
+          UNION ALL
+          SELECT s.stop_id, t.route_id
+          FROM stops s
+          JOIN stops child ON child.parent_station = s.stop_id
+          JOIN stop_times st ON st.stop_id = child.stop_id
+          JOIN trips t ON st.trip_id = t.trip_id
+          WHERE s.stop_id IN (${placeholders})
+        )
+        SELECT c.stop_id,
+          CASE
+            WHEN SUM(CASE WHEN r.route_type IN (1,2,12) THEN 1 ELSE 0 END) > 0 THEN 2
+            WHEN SUM(CASE WHEN r.route_type = 0          THEN 1 ELSE 0 END) > 0 THEN 0
+            WHEN SUM(CASE WHEN r.route_type = 4          THEN 1 ELSE 0 END) > 0 THEN 4
+            ELSE 3
+          END AS primary_route_type
+        FROM candidates c
+        JOIN routes r ON c.route_id = r.route_id
+        GROUP BY c.stop_id
+      `).all(...ids, ...ids);
+      const rtMap = new Map(rtRows.map(r => [r.stop_id, r.primary_route_type]));
+      topN.forEach(s => { s.primary_route_type = rtMap.get(s.stop_id) ?? null; });
+    }
 
-  // Batch-resolve the dominant route_type for each nearby stop.
-  // Regular stops: direct stop_times lookup.
-  // Stations (location_type=1): no direct stop_times, so resolve via child stops.
-  // Priority: rail/metro/tram (2) > ferry (4) > bus (3).
-  if (topN.length > 0) {
-    const ids = topN.map(s => s.stop_id);
-    const placeholders = ids.map(() => '?').join(',');
-    const rtRows = db.prepare(`
-      WITH candidates(stop_id, route_id) AS (
-        SELECT st.stop_id, t.route_id
-        FROM stop_times st
-        JOIN trips t ON st.trip_id = t.trip_id
-        WHERE st.stop_id IN (${placeholders})
-        UNION ALL
-        SELECT s.stop_id, t.route_id
-        FROM stops s
-        JOIN stops child ON child.parent_station = s.stop_id
-        JOIN stop_times st ON st.stop_id = child.stop_id
-        JOIN trips t ON st.trip_id = t.trip_id
-        WHERE s.stop_id IN (${placeholders})
-      )
-      SELECT c.stop_id,
-        CASE
-          WHEN SUM(CASE WHEN r.route_type IN (1,2,12) THEN 1 ELSE 0 END) > 0 THEN 2
-          WHEN SUM(CASE WHEN r.route_type = 0          THEN 1 ELSE 0 END) > 0 THEN 0
-          WHEN SUM(CASE WHEN r.route_type = 4          THEN 1 ELSE 0 END) > 0 THEN 4
-          ELSE 3
-        END AS primary_route_type
-      FROM candidates c
-      JOIN routes r ON c.route_id = r.route_id
-      GROUP BY c.stop_id
-    `).all(...ids, ...ids);
-    const rtMap = new Map(rtRows.map(r => [r.stop_id, r.primary_route_type]));
-    topN.forEach(s => { s.primary_route_type = rtMap.get(s.stop_id) ?? null; });
-  }
-
-  await closeDb(db);
-  return topN;
+    return topN;
+  }, configPath);
 }
 
 export async function getStopPlatforms(stationId, configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
-  const platforms = db.prepare(`
+  return withDb(db => db.prepare(`
     SELECT stop_id, stop_name, stop_code, stop_lat, stop_lon, platform_code
     FROM stops
     WHERE parent_station = $stationId
     ORDER BY stop_name
-  `).all({ stationId });
-
-  await closeDb(db);
-  return platforms;
+  `).all({ stationId }), configPath);
 }
 
 export async function getStopsByRoute(routeId, direction = 0, configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   const sql = `
     SELECT st.stop_sequence, st.stop_id, s.stop_name, s.stop_code, s.stop_lat, s.stop_lon
     FROM stop_times st
@@ -424,15 +396,10 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
     ORDER BY st.stop_sequence
   `;
 
-  const stops = db.prepare(sql).all({ routeId, direction });
-  await closeDb(db);
-  return stops;
+  return withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
 }
 
 export async function getRouteShape(routeId, direction = 0, configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   const sql = `
     SELECT sh.shape_pt_lat AS lat, sh.shape_pt_lon AS lon
     FROM shapes sh
@@ -449,15 +416,10 @@ export async function getRouteShape(routeId, direction = 0, configPath = default
     ORDER BY sh.shape_pt_sequence
   `;
 
-  const points = db.prepare(sql).all({ routeId, direction });
-  await closeDb(db);
-  return points;
+  return withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
 }
 
 export async function getRouteSchedule(routeId, direction = 0, configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   const sql = `
     SELECT
       st.trip_id,
@@ -477,8 +439,7 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
     ORDER BY st.trip_id, st.stop_sequence
   `;
 
-  const rows = db.prepare(sql).all({ routeId, direction });
-  await closeDb(db);
+  const rows = await withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
 
   if (!rows.length) return { stops: [], trips: [] };
 
@@ -517,9 +478,6 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
 }
 
 export async function getRoutesByStop(stopId, configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   // One row per route_short_name; only routes that actually serve this stop
   const sql = `
     SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color
@@ -538,30 +496,19 @@ export async function getRoutesByStop(stopId, configPath = defaultConfigPath) {
     ORDER BY r.route_short_name
   `;
 
-  const rows = db.prepare(sql).all({ stopId });
-  await closeDb(db);
-  return rows;
+  return withDb(db => db.prepare(sql).all({ stopId }), configPath);
 }
 
 export async function getOneStop(stopId, configPath = defaultConfigPath) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
-  const stop = getStops({ stop_id: stopId });
-
-  await closeDb(db);
-  return stop[0];
+  return withDb(_db => {
+    const stop = getStops({ stop_id: stopId });
+    return stop[0];
+  }, configPath);
 }
 
 export async function getAllStopTimeUpdates(configPath = defaultConfigPath) {
   // NOTE: With stateless RT (cache-backed), this will usually be empty/unused.
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
-  const stopTimeUpdates = getStopTimeUpdates();
-
-  await closeDb(db);
-  return stopTimeUpdates;
+  return withDb(_db => getStopTimeUpdates(), configPath);
 }
 
 /* ------------------------ upcoming (with RT enrichment) --------------------- */
@@ -573,9 +520,6 @@ export async function getUpcomingByRoute(
   duration = 7200,                           // 2 hours
   configPath = defaultConfigPath
 ) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   // Convert startTime (epoch seconds) to seconds since local midnight
   const date = new Date(startTime * 1000);
   const midnight = new Date(date);
@@ -626,7 +570,7 @@ ORDER BY f.win_sec ASC;
     endSec: secEnd,
   };
 
-  const rows = db.prepare(sql).all(params);
+  const rows = await withDb(db => db.prepare(sql).all(params), configPath);
 
   // Enrich with realtime (cache) then re-sort by effective time
   const enriched = await enrichRowsWithRealtime(rows);
@@ -664,13 +608,15 @@ ORDER BY f.win_sec ASC;
       ORDER BY stop_sequence ASC
       LIMIT 1
     `;
-    const replacements = [];
-    for (const [tripId, currentSeq] of staleByTrip) {
-      const next = db.prepare(nextStopSql).get({ tripId, currentSeq, startSec: secNow, endSec: secEnd });
-      if (next) replacements.push(next);
-    }
 
-    await closeDb(db);
+    const replacements = await withDb(db => {
+      const out = [];
+      for (const [tripId, currentSeq] of staleByTrip) {
+        const next = db.prepare(nextStopSql).get({ tripId, currentSeq, startSec: secNow, endSec: secEnd });
+        if (next) out.push(next);
+      }
+      return out;
+    }, configPath);
 
     const replacementsEnriched = await enrichRowsWithRealtime(replacements);
     const result = [
@@ -683,7 +629,6 @@ ORDER BY f.win_sec ASC;
     return result;
   }
 
-  await closeDb(db);
   return enriched;
 }
 
@@ -693,9 +638,6 @@ export async function getUpcomingByStop(
   duration = 7200,                           // 2 hours
   configPath = defaultConfigPath
 ) {
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
-
   // Convert startTime (epoch seconds) -> seconds since local midnight
   const date = new Date(startTime * 1000);
   const midnight = new Date(date);
@@ -737,8 +679,7 @@ export async function getUpcomingByStop(
     endSec
   };
 
-  const rows = db.prepare(sql).all(params);
-  await closeDb(db);
+  const rows = await withDb(db => db.prepare(sql).all(params), configPath);
 
   // Enrich with realtime (cache)
   const enriched = await enrichRowsWithRealtime(rows);
@@ -747,7 +688,7 @@ export async function getUpcomingByStop(
   // vehicle is already past this stop (currentStopSequence > stop_sequence),
   // the bus has departed even though its scheduled time is still in the window.
   const visible = enriched.filter(r =>
-    r.vehicle_current_stop_sequence === null ||
+    r.vehicle_current_stop_sequence == null ||
     r.vehicle_current_stop_sequence <= r.stop_sequence
   );
 
@@ -755,6 +696,11 @@ export async function getUpcomingByStop(
   visible.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
+  // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
+  for (const r of visible) {
+    r.scheduled_arrival_time   = normalizeHms(r.scheduled_arrival_time);
+    r.scheduled_departure_time = normalizeHms(r.scheduled_departure_time);
+  }
   return visible;
 }
 
@@ -770,9 +716,6 @@ export async function getUpcomingByStation(
   if (!platforms.length) {
     return getUpcomingByStop(stationId, startTime, duration, configPath);
   }
-
-  const config = await loadConfig(configPath);
-  const db = openDb(config);
 
   const date = new Date(startTime * 1000);
   const midnight = new Date(date);
@@ -812,8 +755,7 @@ export async function getUpcomingByStation(
     ORDER BY se.win_sec, se.route_short_name, se.trip_id, se.stop_sequence
   `;
 
-  const rows = db.prepare(sql).all(...platformIds, startSec, endSec);
-  await closeDb(db);
+  const rows = await withDb(db => db.prepare(sql).all(...platformIds, startSec, endSec), configPath);
 
   rows.forEach(r => {
     r.platform_code = platformCodeMap[String(r.stop_id)] ?? null;
@@ -840,5 +782,10 @@ export async function getUpcomingByStation(
   visible.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
+  // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
+  for (const r of visible) {
+    r.scheduled_arrival_time   = normalizeHms(r.scheduled_arrival_time);
+    r.scheduled_departure_time = normalizeHms(r.scheduled_departure_time);
+  }
   return visible;
 }

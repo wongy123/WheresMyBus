@@ -1,20 +1,11 @@
 # route.py
 import os
 from flask import Blueprint, render_template, request, abort
-import requests
+from api import api_get
 
 bp = Blueprint("route", __name__)
-API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
 BASE_PATH = os.environ.get("BASE_PATH", "")  # for subpath setups
 SUGGEST_LIMIT_DEFAULT = int(os.environ.get("SUGGEST_LIMIT", "5"))
-
-def api_get(path, params=None):
-    url = f"{API_BASE.rstrip('/')}/{path.lstrip('/')}"
-    resp = requests.get(url, params=params or {}, timeout=10)
-    if resp.status_code == 404:
-        return None
-    resp.raise_for_status()
-    return resp.json()
 
 @bp.route("/routes")
 def routes_index():

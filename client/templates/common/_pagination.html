@@ -1,0 +1,135 @@
+{# Reusable pagination macros.
+   Import in a template with:
+     {% from 'common/_pagination.html' import timetable_pagination, suggest_pagination %}
+#}
+
+{# ---------- Timetable results pagination ----------
+   page_base : URL with all fixed params except &page= (e.g. "?duration=3600&limit=10"
+               or "/wheresmybus/hx/timetable/stop/123?duration=3600&limit=10&hx_target=...")
+   hx_target : CSS selector string for HTMX innerHTML swap, or None for plain href links
+#}
+{% macro timetable_pagination(page, page_count, limit, page_base, total=0, hx_target=None) %}
+  {% if page_count > 1 %}
+    {% set prev_page = page - 1 %}
+    {% set next_page = page + 1 %}
+    {% set start = (page - 2) if page > 3 else 1 %}
+    {% set start = 1 if start < 1 else start %}
+    {% set end = start + 4 %}
+    {% if end > page_count %}{% set end = page_count %}{% endif %}
+    {% if (end - start) < 4 and page_count >= 5 %}
+      {% set start = end - 4 %}
+      {% if start < 1 %}{% set start = 1 %}{% endif %}
+    {% endif %}
+    <nav class="d-flex justify-content-between align-items-center mt-2">
+      <div class="small text-muted">
+        Page {{ page }} of {{ page_count }}{% if total %} • {{ total }} results{% endif %}
+      </div>
+      <ul class="pagination pagination-sm mb-0 flex-nowrap">
+
+        <li class="page-item d-none d-sm-flex {{ 'disabled' if page <= 1 else '' }}">
+          {% if hx_target and page > 1 %}
+          <a class="page-link text-nowrap" href="#" hx-get="{{ page_base }}&page=1" hx-target="{{ hx_target }}" hx-swap="innerHTML" aria-label="First">« First</a>
+          {% else %}
+          <a class="page-link text-nowrap" href="{{ page_base }}&page=1" aria-label="First">« First</a>
+          {% endif %}
+        </li>
+
+        <li class="page-item {{ 'disabled' if page <= 1 else '' }}">
+          {% if hx_target and page > 1 %}
+          <a class="page-link text-nowrap" href="#" hx-get="{{ page_base }}&page={{ prev_page }}" hx-target="{{ hx_target }}" hx-swap="innerHTML" aria-label="Previous">‹ Prev</a>
+          {% else %}
+          <a class="page-link text-nowrap" href="{{ page_base }}&page={{ prev_page }}" aria-label="Previous">‹ Prev</a>
+          {% endif %}
+        </li>
+
+        {% for p in range(start, end + 1) %}
+          <li class="page-item d-none d-sm-flex {{ 'active' if p == page else '' }}">
+            {% if p == page %}
+              <span class="page-link text-nowrap" aria-current="page">{{ p }}</span>
+            {% elif hx_target %}
+              <a class="page-link text-nowrap" href="#" hx-get="{{ page_base }}&page={{ p }}" hx-target="{{ hx_target }}" hx-swap="innerHTML">{{ p }}</a>
+            {% else %}
+              <a class="page-link text-nowrap" href="{{ page_base }}&page={{ p }}">{{ p }}</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+
+        <li class="page-item {{ 'disabled' if page >= page_count else '' }}">
+          {% if hx_target and page < page_count %}
+          <a class="page-link text-nowrap" href="#" hx-get="{{ page_base }}&page={{ next_page }}" hx-target="{{ hx_target }}" hx-swap="innerHTML" aria-label="Next">Next ›</a>
+          {% else %}
+          <a class="page-link text-nowrap" href="{{ page_base }}&page={{ next_page }}" aria-label="Next">Next ›</a>
+          {% endif %}
+        </li>
+
+        <li class="page-item d-none d-sm-flex {{ 'disabled' if page >= page_count else '' }}">
+          {% if hx_target and page < page_count %}
+          <a class="page-link text-nowrap" href="#" hx-get="{{ page_base }}&page={{ page_count }}" hx-target="{{ hx_target }}" hx-swap="innerHTML" aria-label="Last">Last »</a>
+          {% else %}
+          <a class="page-link text-nowrap" href="{{ page_base }}&page={{ page_count }}" aria-label="Last">Last »</a>
+          {% endif %}
+        </li>
+
+      </ul>
+    </nav>
+  {% endif %}
+{% endmacro %}
+
+
+{# ---------- Suggest dropdown pagination ----------
+   Used by stops/_suggest.html and routes/_suggest.html.
+#}
+{% macro suggest_pagination(page, page_count, limit, q, suggest_url, target_id, has_prev, has_next, total=0) %}
+  <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div class="small text-muted">
+      Page {{ page }} of {{ page_count }}{% if total %} • {{ total }} results{% endif %}
+      <span class="htmx-indicator ms-2 align-middle">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+      </span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {{ 'disabled' if not has_prev }}">
+          <a class="page-link" hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page=1&limit={{ limit }}" hx-target="#{{ target_id }}" hx-swap="outerHTML" aria-label="First">«</a>
+        </li>
+        <li class="page-item {{ 'disabled' if not has_prev }}">
+          <a class="page-link" hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page - 1 }}&limit={{ limit }}" hx-target="#{{ target_id }}" hx-swap="outerHTML" aria-label="Previous">‹</a>
+        </li>
+
+        {% set start = (page - 1) if page_count <= 5 else (page - 2) %}
+        {% if start < 1 %}{% set start = 1 %}{% endif %}
+        {% set end = start + 4 %}
+        {% if end > page_count %}{% set end = page_count %}{% endif %}
+        {% if (end - start) < 4 and page_count >= 5 %}
+          {% set start = end - 4 %}
+          {% if start < 1 %}{% set start = 1 %}{% endif %}
+        {% endif %}
+
+        {% for p in range(start, end + 1) %}
+          <li class="page-item {{ 'active' if p == page else '' }}">
+            <a class="page-link" hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ p }}&limit={{ limit }}" hx-target="#{{ target_id }}" hx-swap="outerHTML">{{ p }}</a>
+          </li>
+        {% endfor %}
+
+        <li class="page-item {{ 'disabled' if not has_next }}">
+          <a class="page-link" hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page + 1 }}&limit={{ limit }}" hx-target="#{{ target_id }}" hx-swap="outerHTML" aria-label="Next">›</a>
+        </li>
+        <li class="page-item {{ 'disabled' if not has_next }}">
+          <a class="page-link" hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page_count }}&limit={{ limit }}" hx-target="#{{ target_id }}" hx-swap="outerHTML" aria-label="Last">»</a>
+        </li>
+      </ul>
+
+      <div class="d-flex align-items-center gap-2">
+        <span class="small text-muted text-nowrap">Per page:</span>
+        <select name="limit" class="form-select form-select-sm"
+                hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page=1"
+                hx-target="#{{ target_id }}"
+                hx-swap="outerHTML">
+          {% for opt in [5,10,15] %}
+            <option value="{{ opt }}" {{ 'selected' if limit == opt else '' }}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+{% endmacro %}

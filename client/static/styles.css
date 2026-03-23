@@ -7,7 +7,7 @@
      station = rich/dark shade, used for interchange/station map markers        */
 :root {
   --transit-rail-color:    #C4262E;  /* Queensland Rail red */
-  --transit-rail-stop:     #eb9ea2;
+  --transit-rail-stop:     #f0a0a0;  /* neutral light red — distinct from bus pink */
   --transit-rail-station:  #8b1217;
 
   --transit-tram-color:    #FFD200;  /* Translink G:link yellow */
@@ -19,8 +19,13 @@
   --transit-ferry-station: #002b52;
 
   --transit-bus-color:     #E463A4;  /* Translink bus pink */
-  --transit-bus-stop:      #f5b8d8;
+  --transit-bus-stop:      #f5b0e8;  /* light magenta — distinct from rail red */
   --transit-bus-station:   #b5186b;
+
+  /* Real-time data freshness indicator colours */
+  --rt-color-fresh:        #198754;  /* on-time / just updated */
+  --rt-color-warning:      #fd7e14;  /* updated 2–3 min ago */
+  --rt-color-stale:        #dc3545;  /* updated >3 min ago */
 }
 .transit-rail-color  { color: var(--transit-rail-color); }
 .transit-tram-color  { color: var(--transit-tram-station); }  /* #FFD200 is unreadable on white */

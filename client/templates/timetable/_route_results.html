@@ -1,4 +1,6 @@
 <!-- templates/timetable/_route_results.html -->
+{% from 'common/_timetable_row.html' import route_row %}
+{% from 'common/_pagination.html' import timetable_pagination %}
 {% set rows = rows or payload.get('data', []) if payload is defined else rows %}
 {% set pg = pagination or payload.get('pagination', {}) if payload is defined else pagination %}
 {% set page = page or pg.get('page', 1) %}
@@ -23,143 +25,18 @@
         </tr>
       </thead>
       <tbody>
-        {% for it in rows %}
-          {% set dly = it.departure_delay if it.departure_delay is not none else (it.arrival_delay if it.arrival_delay is not none else none) %}
-          {% set info = dly | delay_info %}
-          {% set est = it.estimated_departure_time or it.estimated_arrival_time %}
-          {% set sch = it.scheduled_departure_time or it.scheduled_arrival_time %}
-          {% set main_time = est or sch %}
-          {% set badge_popup = ('est ' ~ est[:5] ~ ' · sched ' ~ sch[:5]) if (est and sch and est[:5] != sch[:5]) else (sch[:5] if sch else '') %}
-          {% set seq = it.stop_sequence %}
-          {% set totstops = it.total_stops or it.stop_count or it.last_stop_sequence %}
-
-          <tr>
-            <td class="text-nowrap">
-              <span class="tt-time" data-time="{{ main_time[:5] }}" title="Click to toggle" style="cursor:pointer;">
-                <span class="tt-min fw-semibold"></span><span class="tt-abs d-none text-body-secondary">{{ main_time }}</span>
-              </span>
-            </td>
-            <td><div class="rr-stop"><a href="{{ BASE_PATH }}/stops/{{ it.stop_id }}" class="text-decoration-none text-body">{{ it.stop_name }}</a></div></td>
-            <td><div class="rr-headsign">{{ it.trip_headsign }}</div></td>
-            <td class="text-nowrap d-none d-sm-table-cell">{% if totstops %}{{ seq }} / {{ totstops }}{% else %}#{{ seq }}{% endif %}</td>
-            <td>
-              <div class="d-flex align-items-center justify-content-between w-100">
-                <span class="badge {{ info.cls }} status-badge" tabindex="0"
-                      data-bs-toggle="popover" data-bs-placement="top"
-                      data-bs-content="{{ badge_popup }}"
-                      style="cursor:pointer;">{{ info.label }}</span>
-                {% if it.real_time_data and info.status in ['late','early','ontime'] %}
-                  <span class="rt-icon ms-2" tabindex="0"
-                        data-bs-toggle="popover" data-bs-placement="top"
-                        data-updated-at="{{ it.realtime_updated_at or '' }}"
-                        style="cursor:pointer; display:inline-flex; align-items:center;">
-                    <span class="material-symbols-outlined" style="font-size:1rem; line-height:1; color:#198754;">sensors</span>
-                  </span>
-                {% endif %}
-              </div>
-            </td>
-          </tr>
-        {% endfor %}
+        {% for it in rows %}{{ route_row(it, BASE_PATH) }}{% endfor %}
       </tbody>
     </table>
   </div>
 
-  {% if page_count > 1 %}
-    {% set prev_page = page - 1 %}
-    {% set next_page = page + 1 %}
-    <nav class="d-flex justify-content-between align-items-center mt-2">
-      <div class="small text-muted">
-        Page {{ page }} of {{ page_count }}{% if total %} • {{ total }} results{% endif %}
-      </div>
-      <ul class="pagination pagination-sm mb-0 flex-nowrap">
-
-        <!-- First (hidden on mobile) -->
-        <li class="page-item d-none d-sm-flex {{ 'disabled' if page <= 1 else '' }}">
-          <a class="page-link text-nowrap" href="?direction={{ direction }}&duration={{ duration }}&page=1&limit={{ limit }}" aria-label="First">« First</a>
-        </li>
-
-        <!-- Prev -->
-        <li class="page-item {{ 'disabled' if page <= 1 else '' }}">
-          <a class="page-link text-nowrap" href="?direction={{ direction }}&duration={{ duration }}&page={{ prev_page }}&limit={{ limit }}" aria-label="Previous">‹ Prev</a>
-        </li>
-
-        {# window of pages — hidden on mobile #}
-        {% set start = (page - 2) if page > 3 else 1 %}
-        {% set start = 1 if start < 1 else start %}
-        {% set end = start + 4 %}
-        {% if end > page_count %}{% set end = page_count %}{% endif %}
-        {% if (end - start) < 4 and page_count >= 5 %}
-          {% set start = end - 4 %}
-          {% if start < 1 %}{% set start = 1 %}{% endif %}
-        {% endif %}
-        {% for p in range(start, end + 1) %}
-          <li class="page-item d-none d-sm-flex {{ 'active' if p == page else '' }}">
-            {% if p == page %}
-              <span class="page-link text-nowrap" aria-current="page">{{ p }}</span>
-            {% else %}
-              <a class="page-link text-nowrap" href="?direction={{ direction }}&duration={{ duration }}&page={{ p }}&limit={{ limit }}">{{ p }}</a>
-            {% endif %}
-          </li>
-        {% endfor %}
-
-        <!-- Next -->
-        <li class="page-item {{ 'disabled' if page >= page_count else '' }}">
-          <a class="page-link text-nowrap" href="?direction={{ direction }}&duration={{ duration }}&page={{ next_page }}&limit={{ limit }}" aria-label="Next">Next ›</a>
-        </li>
-
-        <!-- Last (hidden on mobile) -->
-        <li class="page-item d-none d-sm-flex {{ 'disabled' if page >= page_count else '' }}">
-          <a class="page-link text-nowrap" href="?direction={{ direction }}&duration={{ duration }}&page={{ page_count }}&limit={{ limit }}" aria-label="Last">Last »</a>
-        </li>
-
-      </ul>
-    </nav>
-  {% endif %}
+  {% set page_base = '?direction=' ~ direction ~ '&duration=' ~ duration ~ '&limit=' ~ limit %}
+  {{ timetable_pagination(page, page_count, limit, page_base, total=total) }}
 {% else %}
   <div class="alert alert-light border">No upcoming services in this window.</div>
 {% endif %}
 <script>
 (function () {
-  function minsFromNow(hhmm) {
-    var p = hhmm.split(':');
-    var target = parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60;
-    var now = new Date();
-    var nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-    var diff = target - nowSec;
-    if (diff < -3600) diff += 86400;
-    return Math.round(diff / 60);
-  }
-  function fmtMins(m) {
-    if (m <= 0) return 'now';
-    if (m < 60) return m + ' min';
-    var h = Math.floor(m / 60), r = m % 60;
-    return h + 'h' + (r ? ' ' + r + 'm' : '');
-  }
-  var _rtNow = Date.now();
-  document.querySelectorAll('.status-badge').forEach(function(el) {
-    new bootstrap.Popover(el, { trigger: 'focus', placement: 'top' });
-  });
-  document.querySelectorAll('.rt-icon').forEach(function(el) {
-    var updatedAt = parseInt(el.dataset.updatedAt, 10);
-    var ageSec = (updatedAt && !isNaN(updatedAt)) ? Math.round((_rtNow - updatedAt) / 1000) : null;
-    var color, label;
-    if (ageSec === null) {
-      color = '#198754'; label = 'Real-time data';
-    } else {
-      label = ageSec < 60 ? 'Updated just now' : 'Updated ' + Math.round(ageSec / 60) + ' min ago';
-      color = ageSec < 120 ? '#198754' : ageSec < 180 ? '#fd7e14' : '#dc3545';
-    }
-    el.querySelector('.material-symbols-outlined').style.color = color;
-    new bootstrap.Popover(el, { content: label, trigger: 'focus', placement: 'top' });
-  });
-  document.querySelectorAll('.tt-time').forEach(function (el) {
-    var minEl = el.querySelector('.tt-min');
-    var absEl = el.querySelector('.tt-abs');
-    minEl.textContent = fmtMins(minsFromNow(el.dataset.time));
-    el.addEventListener('click', function () {
-      minEl.classList.toggle('d-none');
-      absEl.classList.toggle('d-none');
-    });
-  });
+  window.initTimetableFragment && window.initTimetableFragment();
 }());
 </script>
