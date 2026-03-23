@@ -1,68 +1,32 @@
 services:
-  db:
-    image: postgres:16
-    container_name: wheresmybus-db
-    restart: always
-    shm_size: 128mb
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: wheresmybus
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./postgres/data:/var/lib/postgresql/data
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
-      - ./postgres/gtfs:/gtfs:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d wheresmybus"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - wmb-net
-
   redis:
     image: redis:7-alpine
     container_name: wheresmybus-redis
-    restart: always
+    restart: unless-stopped
     ports:
       - "6379:6379"
-    networks:
-      - wmb-net
-
-  adminer:
-    image: adminer:latest
-    container_name: wheresmybus-adminer
-    restart: always
-    ports:
-      - "8080:8080"
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - wmb-net
 
   api:
-    build:
-      context: ./server
+    build: ./server
     container_name: wheresmybus-api
-    restart: always
-    env_file:
-      - path: ./server/.env
-        required: false
+    restart: unless-stopped
+    env_file: ./server/.env
     environment:
-      PGHOST: db
-      REDIS_URL: redis://redis:6379
+      - REDIS_URL=redis://redis:6379
+      - TZ=Australia/Brisbane
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    networks:
-      - wmb-net
+      - redis
 
-networks:
-  wmb-net:
+  client:
+    build: ./client
+    container_name: wheresmybus-client
+    restart: unless-stopped
+    env_file: ./client/.env
+    environment:
+      - TZ=Australia/Brisbane
+    ports:
+      - "5000:5000"
+    depends_on:
+      - api

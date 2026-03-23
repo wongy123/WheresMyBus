@@ -101,6 +101,14 @@ function applyRealtimeToRow(row, rt, vpos) {
   if (!su && row.stop_id) {
     su = (rt.stopUpdates || []).find(u => String(u.stopId) === String(row.stop_id));
   }
+  // GTFS-RT incremental feeds only include stops from the vehicle's current position onwards.
+  // If no exact match, propagate delay from the closest preceding stop update.
+  if (!su && seq != null && rt.stopUpdates?.length) {
+    const preceding = rt.stopUpdates
+      .filter(u => u.stopSequence != null && Number(u.stopSequence) < Number(seq))
+      .sort((a, b) => Number(b.stopSequence) - Number(a.stopSequence));
+    if (preceding.length) su = preceding[0];
+  }
 
   let appliedRT = false;
 
@@ -410,6 +418,7 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
       JOIN routes r ON t.route_id = r.route_id
       WHERE (t.route_id = $routeId OR r.route_short_name = $routeId)
         AND t.direction_id = $direction
+      ORDER BY (SELECT COUNT(*) FROM stop_times WHERE trip_id = t.trip_id) DESC
       LIMIT 1
     )
     ORDER BY st.stop_sequence
@@ -434,6 +443,7 @@ export async function getRouteShape(routeId, direction = 0, configPath = default
       WHERE (t.route_id = $routeId OR r.route_short_name = $routeId)
         AND t.direction_id = $direction
         AND t.shape_id IS NOT NULL
+      ORDER BY (SELECT COUNT(*) FROM stop_times WHERE trip_id = t.trip_id) DESC
       LIMIT 1
     )
     ORDER BY sh.shape_pt_sequence
@@ -619,8 +629,12 @@ ORDER BY f.win_sec ASC;
   const rows = db.prepare(sql).all(params);
   await closeDb(db);
 
-  // Enrich with realtime (cache)
-  return enrichRowsWithRealtime(rows);
+  // Enrich with realtime (cache) then re-sort by effective time
+  const enriched = await enrichRowsWithRealtime(rows);
+  enriched.sort((a, b) =>
+    (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
+  );
+  return enriched;
 }
 
 export async function getUpcomingByStop(
@@ -653,6 +667,7 @@ export async function getUpcomingByStop(
       se.stop_code,
       se.stop_name,
       se.stop_sequence,
+      se.win_sec,
       se.arrival_time   AS scheduled_arrival_time,
       se.departure_time AS scheduled_departure_time,
       se.estimated_arrival_time,
@@ -676,5 +691,11 @@ export async function getUpcomingByStop(
   await closeDb(db);
 
   // Enrich with realtime (cache)
-  return enrichRowsWithRealtime(rows);
+  const enriched = await enrichRowsWithRealtime(rows);
+
+  // Re-sort by effective arrival time (estimated if available, otherwise scheduled)
+  enriched.sort((a, b) =>
+    (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
+  );
+  return enriched;
 }

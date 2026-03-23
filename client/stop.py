@@ -73,6 +73,40 @@ def stops_nearby_json():
     data = api_get("stops/nearby", {"lat": lat, "lng": lng, "limit": limit}) or {}
     return jsonify(data)
 
+@bp.get("/hx/stops/<stop_id>/vehicles")
+def hx_stop_vehicles(stop_id: str):
+    duration = request.args.get("duration", 3600, type=int)
+    resp = api_get(f"stops/{stop_id}/timetable", {"page": 1, "limit": 50, "duration": duration})
+
+    rows = []
+    if isinstance(resp, dict):
+        rows = resp.get("data") or []
+    elif isinstance(resp, list):
+        rows = resp
+
+    seen = set()
+    vehicles = []
+    for row in rows:
+        tid = row.get("trip_id")
+        if not tid or tid in seen:
+            continue
+        seen.add(tid)
+        if row.get("vehicle_latitude") and row.get("vehicle_longitude"):
+            vehicles.append({
+                "trip_id": tid,
+                "route_id": row.get("route_id"),
+                "route_short_name": row.get("route_short_name"),
+                "trip_headsign": row.get("trip_headsign"),
+                "direction_id": row.get("direction_id"),
+                "lat": row["vehicle_latitude"],
+                "lon": row["vehicle_longitude"],
+                "label": row.get("vehicle_label") or "",
+                "eta": row.get("estimated_arrival_time") or row.get("scheduled_arrival_time") or "",
+            })
+
+    return render_template("stops/_vehicle_positions.html", vehicles=vehicles)
+
+
 @bp.route("/stops/<stop_id>")
 def stop_details(stop_id: str):
     details = api_get(f"stops/{stop_id}")

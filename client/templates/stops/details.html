@@ -78,9 +78,11 @@
             <a href="{{ BASE_PATH }}/stops/{{ s.stop_id }}" class="text-decoration-none text-body small">
               {{ s.stop_name }}
             </a>
-            <button class="btn btn-link btn-sm p-0 flex-shrink-0"
-                    style="font-size:.75rem; white-space:nowrap;"
-                    onclick="focusStop('{{ s.stop_id }}')">on map</button>
+            <button class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center flex-shrink-0 py-0 ps-1 pe-2"
+                    style="font-size:.72rem; gap:.2rem;"
+                    onclick="focusStop('{{ s.stop_id }}')">
+              <span class="material-symbols-outlined" style="font-size:.85rem; line-height:1; width:.85rem; height:.85rem; overflow:hidden; display:inline-block;">location_on</span>Map
+            </button>
           </li>
         {% endfor %}
       </ul>
@@ -300,5 +302,11 @@ if (navigator.geolocation) {
   });
 }
 </script>
+<div id="stop-vehicle-poll"
+     hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/vehicles?duration=3600"
+     hx-trigger="every 5s"
+     hx-target="this"
+     hx-swap="innerHTML"
+     style="display:none;" aria-hidden="true"></div>
 {% endif %}
 {% endblock %}
