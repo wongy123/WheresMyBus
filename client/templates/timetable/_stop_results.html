@@ -103,9 +103,13 @@
         {% endif %}
         {% for p in range(start, end + 1) %}
           <li class="page-item d-none d-sm-flex {{ 'active' if p == page else '' }}">
-            <a class="page-link text-nowrap"
-               {% if use_htmx and p != page %}href="#" hx-get="{{ page_base }}&page={{ p }}" hx-target="{{ hx_target }}" hx-swap="innerHTML"
-               {% else %}href="{{ page_base }}&page={{ p }}"{% endif %}>{{ p }}</a>
+            {% if p == page %}
+              <span class="page-link text-nowrap" aria-current="page">{{ p }}</span>
+            {% elif use_htmx %}
+              <a class="page-link text-nowrap" href="#" hx-get="{{ page_base }}&page={{ p }}" hx-target="{{ hx_target }}" hx-swap="innerHTML">{{ p }}</a>
+            {% else %}
+              <a class="page-link text-nowrap" href="{{ page_base }}&page={{ p }}">{{ p }}</a>
+            {% endif %}
           </li>
         {% endfor %}
 
