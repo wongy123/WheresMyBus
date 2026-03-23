@@ -62,12 +62,14 @@ Client (`client/.env`):
 ```bash
 cat > client/.env <<'EOF'
 API_BASE_URL=http://<HOST_IP>:3000/api
+API_BASE_URL_PUBLIC=https://<YOUR_DOMAIN>/api
 BASE_PATH=
 FLASK_SECRET_KEY=<long-random-string>
 EOF
 ```
 
-`API_BASE_URL` must be reachable from the browser, so use the host's IP or public domain rather than `localhost`.
+- `API_BASE_URL` — used server-side (Flask → API). Can be the internal IP/port.
+- `API_BASE_URL_PUBLIC` — used by the **browser** for map fetches. Must be the public HTTPS URL the browser can reach. If unset, falls back to `API_BASE_URL`, which will fail if that's an internal address.
 
 ### 3. Build and start
 
@@ -228,6 +230,7 @@ Environment file:
 ```bash
 cat > /opt/wheresmybus/client/.env <<'EOF'
 API_BASE_URL=http://<API_LXC_IP>:3000/api
+API_BASE_URL_PUBLIC=https://<YOUR_DOMAIN>/api
 BASE_PATH=
 FLASK_SECRET_KEY=<long-random-string>
 EOF
