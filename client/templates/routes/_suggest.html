@@ -1,3 +1,4 @@
+{% from 'common/_pagination.html' import suggest_pagination %}
 {% set has_items   = items|length > 0 %}
 {% set q           = q or '' %}
 {% set href_prefix = href_prefix
@@ -44,78 +45,7 @@
     {% endfor %}
 
     {# footer: pagination + per-page + spinner #}
-    <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
-      <div class="small text-muted">
-        Page {{ page }} of {{ page_count }}{% if total %} • {{ total }} results{% endif %}
-        <span class="htmx-indicator ms-2 align-middle">
-          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-        </span>
-      </div>
-      <div class="d-flex align-items-center gap-2">
-        <ul class="pagination pagination-sm mb-0">
-          <li class="page-item {{ 'disabled' if not has_prev }}">
-            <a class="page-link"
-               hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page=1&limit={{ limit }}"
-               hx-target="#{{ target_id }}"
-               hx-swap="outerHTML"
-               aria-label="First">«</a>
-          </li>
-          <li class="page-item {{ 'disabled' if not has_prev }}">
-            <a class="page-link"
-               hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page - 1 }}&limit={{ limit }}"
-               hx-target="#{{ target_id }}"
-               hx-swap="outerHTML"
-               aria-label="Previous">‹</a>
-          </li>
-
-          {# narrow window of numbers #}
-          {% set start = (page - 1) if page_count <= 5 else (page - 2) %}
-          {% if start < 1 %}{% set start = 1 %}{% endif %}
-          {% set end = start + 4 %}
-          {% if end > page_count %}{% set end = page_count %}{% endif %}
-          {% if (end - start) < 4 and page_count >= 5 %}
-            {% set start = end - 4 %}
-            {% if start < 1 %}{% set start = 1 %}{% endif %}
-          {% endif %}
-
-          {% for p in range(start, end + 1) %}
-            <li class="page-item {{ 'active' if p == page else '' }}">
-              <a class="page-link"
-                 hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ p }}&limit={{ limit }}"
-                 hx-target="#{{ target_id }}"
-                 hx-swap="outerHTML">{{ p }}</a>
-            </li>
-          {% endfor %}
-
-          <li class="page-item {{ 'disabled' if not has_next }}">
-            <a class="page-link"
-               hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page + 1 }}&limit={{ limit }}"
-               hx-target="#{{ target_id }}"
-               hx-swap="outerHTML"
-               aria-label="Next">›</a>
-          </li>
-          <li class="page-item {{ 'disabled' if not has_next }}">
-            <a class="page-link"
-               hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page={{ page_count }}&limit={{ limit }}"
-               hx-target="#{{ target_id }}"
-               hx-swap="outerHTML"
-               aria-label="Last">»</a>
-          </li>
-        </ul>
-
-        <div class="d-flex align-items-center gap-2">
-          <span class="small text-muted text-nowrap">Per page:</span>
-            <select name="limit" class="form-select form-select-sm"
-                    hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page=1"
-                    hx-target="#{{ target_id }}"
-                    hx-swap="outerHTML">
-              {% for opt in [5,10,15] %}
-                <option value="{{ opt }}" {{ 'selected' if limit == opt else '' }}>{{ opt }}</option>
-              {% endfor %}
-            </select>
-        </div>
-      </div>
-    </div>
+    {{ suggest_pagination(page, page_count, limit, q, suggest_url, target_id, has_prev, has_next, total=total) }}
   {% else %}
     <div class="list-group-item text-muted">
       {% if q %}

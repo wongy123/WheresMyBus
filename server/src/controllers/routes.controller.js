@@ -7,6 +7,7 @@ import {
   getRouteSchedule as getRouteScheduleService,
 } from '../services/gtfsQueries.service.js';
 import { paginateResponse } from '../utils/paginate.js';
+import { parseIntParam, parseDirection } from '../utils/params.js';
 
 /**
  * GET /api/routes/search?searchTerm=...&page=1&limit=20
@@ -58,8 +59,7 @@ export async function getOneRoute(req, res, next) {
 export async function getRouteStops(req, res, next) {
   try {
     const routeId = req.params.routeId;
-    const dirQ = Number.parseInt(req.query.direction, 10);
-    const direction = dirQ === 0 || dirQ === 1 ? dirQ : 0;
+    const direction = parseDirection(req.query.direction);
 
     const stops = await getStopsByRoute(routeId, direction);
     res.json({ data: stops });
@@ -74,8 +74,7 @@ export async function getRouteStops(req, res, next) {
 export async function getRouteShape(req, res, next) {
   try {
     const routeId = req.params.routeId;
-    const dirQ = Number.parseInt(req.query.direction, 10);
-    const direction = dirQ === 0 || dirQ === 1 ? dirQ : 0;
+    const direction = parseDirection(req.query.direction);
 
     const points = await getRouteShapeService(routeId, direction);
     res.json({ data: points });
@@ -90,8 +89,7 @@ export async function getRouteShape(req, res, next) {
 export async function getRouteSchedule(req, res, next) {
   try {
     const routeId = req.params.routeId;
-    const dirQ = Number.parseInt(req.query.direction, 10);
-    const direction = dirQ === 0 || dirQ === 1 ? dirQ : 0;
+    const direction = parseDirection(req.query.direction);
 
     const data = await getRouteScheduleService(routeId, direction);
     res.json(data);
@@ -113,15 +111,9 @@ export async function getRouteUpcoming(req, res, next) {
       return res.status(400).json({ error: 'routeId is required' });
     }
 
-    // Parse optional params
-    const dirQ = Number.parseInt(req.query.direction, 10);
-    const direction = dirQ === 0 || dirQ === 1 ? dirQ : undefined;
-
-    const startTimeQ = Number.parseInt(req.query.startTime, 10);
-    const startTime = Number.isFinite(startTimeQ) ? startTimeQ : undefined;
-
-    const durationQ = Number.parseInt(req.query.duration, 10);
-    const duration = Number.isFinite(durationQ) ? durationQ : undefined;
+    const direction = parseDirection(req.query.direction, undefined);
+    const startTime = parseIntParam(req.query.startTime);
+    const duration = parseIntParam(req.query.duration);
 
     const rows = await getUpcomingByRoute(routeId, direction, startTime, duration);
 

@@ -11,6 +11,23 @@
   {% if stop.zone_id %} • Zone: {{ stop.zone_id }}{% endif %}
 </div>
 
+{% if platforms %}
+<div class="mb-4">
+  <h2 class="h6 mb-2">Platforms</h2>
+  <div class="list-group list-group-flush">
+    {% for p in platforms %}
+      <a href="{{ BASE_PATH }}/timetable/stop/{{ p.stop_id }}"
+         class="list-group-item list-group-item-action py-2 px-0 border-0 border-bottom">
+        <span class="small">{{ p.stop_name }}</span>
+        {% if p.platform_code %}
+          <span class="badge text-bg-secondary ms-1" style="font-size:.75rem;">Platform {{ p.platform_code }}</span>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
   <div class="d-flex align-items-center gap-2">
     <span class="text-muted">Window:</span>

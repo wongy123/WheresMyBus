@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 import pytz
 from flask import Blueprint, render_template, request, abort
-import requests
+from api import api_get
 
 _BRISBANE_TZ = pytz.timezone("Australia/Brisbane")
 
@@ -17,17 +17,11 @@ def _hms_to_sec(hms):
     except Exception:
         return None
 
-bp = Blueprint("timetable", __name__)
-API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
-DEFAULT_DURATION = int(os.environ.get("DURATION_SECONDS", "7200"))  # 2h
+def _validate_direction(val):
+    return val if val in (0, 1) else 0
 
-def api_get(path, params=None):
-    url = f"{API_BASE.rstrip('/')}/{path.lstrip('/')}"
-    resp = requests.get(url, params=params or {}, timeout=15)
-    if resp.status_code == 404:
-        return None
-    resp.raise_for_status()
-    return resp.json()
+bp = Blueprint("timetable", __name__)
+DEFAULT_DURATION = int(os.environ.get("DURATION_SECONDS", "7200"))  # 2h
 
 # ---------- Entry ----------
 @bp.route("/timetable")
@@ -43,7 +37,11 @@ def timetable_by_stop(stop_id: str):
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 10, type=int)
-    return render_template("timetable/stop.html", stop=stop, duration=duration, page=page, limit=limit)
+    platforms = []
+    if stop.get("location_type") == 1:
+        platforms_data = api_get(f"stops/{stop_id}/platforms") or {}
+        platforms = platforms_data.get("data", [])
+    return render_template("timetable/stop.html", stop=stop, duration=duration, page=page, limit=limit, platforms=platforms)
 
 @bp.route("/timetable/route/<route_id>")
 def timetable_by_route(route_id: str):
@@ -54,8 +52,7 @@ def timetable_by_route(route_id: str):
     duration = request.args.get("duration", type=int) or 3600
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 10, type=int)
-    if direction not in (0, 1):
-        direction = 0
+    direction = _validate_direction(direction)
     return render_template("timetable/route.html",
                            route=route, direction=direction, duration=duration,
                            page=page, limit=limit)
@@ -86,9 +83,7 @@ def hx_timetable_route(route_id: str):
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 10, type=int)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
-    direction = request.args.get("direction", default=0, type=int)
-    if direction not in (0, 1):
-        direction = 0
+    direction = _validate_direction(request.args.get("direction", default=0, type=int))
 
     resp = api_get(f"routes/{route_id}/upcoming",
                    {"page": page, "limit": limit, "duration": duration, "direction": direction})
@@ -107,9 +102,7 @@ def hx_timetable_route(route_id: str):
 
 @bp.get("/hx/timetable/route/<route_id>/schedule")
 def hx_timetable_route_schedule(route_id: str):
-    direction = request.args.get("direction", 0, type=int)
-    if direction not in (0, 1):
-        direction = 0
+    direction = _validate_direction(request.args.get("direction", 0, type=int))
 
     data = api_get(f"routes/{route_id}/schedule", {"direction": direction}) or {}
     stops = data.get("stops", [])
@@ -123,10 +116,8 @@ def hx_timetable_route_schedule(route_id: str):
 
 @bp.get("/hx/timetable/route/<route_id>/diagram")
 def hx_timetable_route_diagram(route_id: str):
-    direction = request.args.get("direction", 0, type=int)
+    direction = _validate_direction(request.args.get("direction", 0, type=int))
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
-    if direction not in (0, 1):
-        direction = 0
 
     route = api_get(f"routes/{route_id}") or {}
     route_type = route.get("route_type", 3)

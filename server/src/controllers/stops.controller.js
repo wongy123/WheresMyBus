@@ -12,6 +12,7 @@ import {
   paginateResponse,
   buildPaginationAndLinks,
 } from "../utils/paginate.js";
+import { parseIntParam } from "../utils/params.js";
 
 /**
  * GET /api/stops/search?q=...&page=1&limit=20
@@ -104,11 +105,8 @@ export async function getStopTimetable(req, res, next) {
     const stopId = req.params.stopId ?? req.query.stopId;
     if (!stopId) return res.status(400).json({ error: "stopId is required" });
 
-    const startTimeQ = req.query.startTime;
-    const durationQ = req.query.duration;
-
-    const startTime = Number.isFinite(parseInt(startTimeQ, 10)) ? parseInt(startTimeQ, 10) : undefined;
-    const duration = Number.isFinite(parseInt(durationQ, 10)) ? parseInt(durationQ, 10) : undefined;
+    const startTime = parseIntParam(req.query.startTime);
+    const duration = parseIntParam(req.query.duration);
 
     const rows = await getUpcomingByStation(stopId, startTime, duration);
 
