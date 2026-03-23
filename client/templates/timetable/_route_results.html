@@ -94,7 +94,11 @@
         {% endif %}
         {% for p in range(start, end + 1) %}
           <li class="page-item d-none d-sm-flex {{ 'active' if p == page else '' }}">
-            <a class="page-link text-nowrap" href="?direction={{ direction }}&duration={{ duration }}&page={{ p }}&limit={{ limit }}">{{ p }}</a>
+            {% if p == page %}
+              <span class="page-link text-nowrap" aria-current="page">{{ p }}</span>
+            {% else %}
+              <a class="page-link text-nowrap" href="?direction={{ direction }}&duration={{ duration }}&page={{ p }}&limit={{ limit }}">{{ p }}</a>
+            {% endif %}
           </li>
         {% endfor %}
 

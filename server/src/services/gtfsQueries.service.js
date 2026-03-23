@@ -627,13 +627,63 @@ ORDER BY f.win_sec ASC;
   };
 
   const rows = db.prepare(sql).all(params);
-  await closeDb(db);
 
   // Enrich with realtime (cache) then re-sort by effective time
   const enriched = await enrichRowsWithRealtime(rows);
   enriched.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
+
+  // Find trips where the vehicle has already physically passed the displayed stop.
+  // vehicle_current_stop_sequence comes from the vpos feed (60 s TTL) and reflects
+  // the stop the bus is currently in transit to.  If it is greater than the stop
+  // we are about to display, that stop is already behind the bus.
+  const staleByTrip = new Map();
+  for (const r of enriched) {
+    if (r.vehicle_current_stop_sequence != null && r.vehicle_current_stop_sequence > r.stop_sequence) {
+      staleByTrip.set(r.trip_id, r.vehicle_current_stop_sequence);
+    }
+  }
+
+  if (staleByTrip.size > 0) {
+    // Re-query SQLite for the actual next stop for each stale trip.
+    const nextStopSql = `
+      SELECT
+        route_id, route_short_name, route_color, route_text_color,
+        service_id, trip_id, trip_headsign, direction_id,
+        stop_id, stop_code, stop_name, stop_sequence,
+        arrival_time   AS scheduled_arrival_time,
+        departure_time AS scheduled_departure_time,
+        estimated_arrival_time, estimated_departure_time,
+        arrival_delay, departure_delay, real_time_data,
+        event_sec, win_sec
+      FROM stop_events_3day
+      WHERE trip_id = $tripId
+        AND stop_sequence >= $currentSeq
+        AND win_sec BETWEEN $startSec AND $endSec
+      ORDER BY stop_sequence ASC
+      LIMIT 1
+    `;
+    const replacements = [];
+    for (const [tripId, currentSeq] of staleByTrip) {
+      const next = db.prepare(nextStopSql).get({ tripId, currentSeq, startSec: secNow, endSec: secEnd });
+      if (next) replacements.push(next);
+    }
+
+    await closeDb(db);
+
+    const replacementsEnriched = await enrichRowsWithRealtime(replacements);
+    const result = [
+      ...enriched.filter(r => !staleByTrip.has(r.trip_id)),
+      ...replacementsEnriched,
+    ];
+    result.sort((a, b) =>
+      (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
+    );
+    return result;
+  }
+
+  await closeDb(db);
   return enriched;
 }
 

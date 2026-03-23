@@ -78,7 +78,7 @@ def hx_timetable_stop(stop_id: str):
     return render_template("timetable/_stop_results.html",
                            rows=rows, pagination=pagination,
                            stop_id=stop_id, duration=duration, page=page, limit=limit,
-                           hx_target="#stop-timetable")
+                           hx_target="#tt-stop-results")
 
 @bp.get("/hx/timetable/route/<route_id>/upcoming")
 def hx_timetable_route(route_id: str):
@@ -151,28 +151,94 @@ def hx_timetable_route_diagram(route_id: str):
         else:
             t["minutes_away"] = None
 
-    # Group active vehicles by their actual current stop sequence (from RT feed),
-    # falling back to the scheduled stop_sequence when live data is unavailable.
-    vehicles_by_seq = {}
-    for t in trips:
-        seq = t.get("vehicle_current_stop_sequence") if t.get("vehicle_current_stop_sequence") is not None else t.get("stop_sequence")
-        if seq is not None:
-            vehicles_by_seq.setdefault(seq, []).append(t)
-
     # Pick most recent RT update timestamp for the "updated at" footer
     updated_at = next(
         (t.get("realtime_updated_local") for t in trips if t.get("realtime_updated_local")),
         None
     )
 
-    # Build stop_sequence → stop_name lookup from the canonical stop list
-    seq_to_stop_name = {
-        s["stop_sequence"]: s["stop_name"]
-        for s in stops
-        if "stop_sequence" in s and "stop_name" in s
-    }
+    # Build stop_sequence → stop_name and stop_sequence → coords lookups.
+    seq_to_stop_name = {}
+    seq_to_stop_coords = {}
+    for s in stops:
+        seq = s.get("stop_sequence")
+        if seq is None:
+            continue
+        if "stop_name" in s:
+            seq_to_stop_name[seq] = s["stop_name"]
+        if s.get("stop_lat") is not None and s.get("stop_lon") is not None:
+            seq_to_stop_coords[seq] = (float(s["stop_lat"]), float(s["stop_lon"]))
+    sorted_seqs = sorted(seq_to_stop_name)
 
-    # Collect vehicles that have GPS positions for the map
+    def _advance_seq(trip_row, veh_seq):
+        """Return (adjusted_seq, was_advanced).
+
+        Advances to the next stop when either:
+        1. The departure time for the reported stop has already passed (RT data
+           is current), OR
+        2. The bus's GPS position projects past the reported stop toward the
+           next one (catches stale RT data even right after departure).
+        Only advances by one position.
+        """
+        try:
+            idx = sorted_seqs.index(veh_seq)
+        except ValueError:
+            return veh_seq, False
+        if idx + 1 >= len(sorted_seqs):
+            return veh_seq, False  # already at last stop
+        nxt = sorted_seqs[idx + 1]
+
+        # Check 1: departure time has passed
+        dep_sec = _hms_to_sec(
+            trip_row.get("estimated_departure_time") or trip_row.get("scheduled_departure_time")
+        )
+        if dep_sec is not None:
+            diff = dep_sec - now_sec
+            if diff < -86400 + 3600:  # handle rollover past midnight
+                diff += 86400
+            if diff < 0:
+                return nxt, True
+
+        # Check 2: GPS vector projection — bus is past the reported stop in the
+        # direction of the next stop.  We normalise the projection so the
+        # threshold is in degrees regardless of stop spacing, and require at
+        # least ~15 m (≈ 0.00015°) to avoid triggering on GPS noise when the
+        # bus is merely parked at or approaching the stop.
+        veh_lat = trip_row.get("vehicle_latitude")
+        veh_lon = trip_row.get("vehicle_longitude")
+        if (veh_lat and veh_lon
+                and veh_seq in seq_to_stop_coords
+                and nxt in seq_to_stop_coords):
+            cur_lat, cur_lon = seq_to_stop_coords[veh_seq]
+            nxt_lat, nxt_lon = seq_to_stop_coords[nxt]
+            d_lat, d_lon = nxt_lat - cur_lat, nxt_lon - cur_lon
+            d_mag = (d_lat ** 2 + d_lon ** 2) ** 0.5
+            if d_mag > 0:
+                b_lat = float(veh_lat) - cur_lat
+                b_lon = float(veh_lon) - cur_lon
+                # Normalised projection in degrees along the route direction
+                proj = (b_lat * d_lat + b_lon * d_lon) / d_mag
+                if proj > 0.00015:  # ~16 m minimum past the stop
+                    return nxt, True
+
+        return veh_seq, False
+
+    # Group active vehicles by stop sequence, correcting for stale RT data.
+    vehicles_by_seq = {}
+    for t in trips:
+        seq = t.get("vehicle_current_stop_sequence") if t.get("vehicle_current_stop_sequence") is not None else t.get("stop_sequence")
+        if seq is None:
+            continue
+        seq, _ = _advance_seq(t, seq)
+        vehicles_by_seq.setdefault(seq, []).append(t)
+
+    # Collect vehicles that have GPS positions for the map.
+    # Use the trip row's stop_name and minutes_away directly — these already
+    # reflect the correct next stop (the server-side getUpcomingByRoute fix
+    # handles advancement when the vpos feed has moved ahead).  Client-side
+    # sequence guessing via the canonical stop list is unreliable because
+    # different trips on the same route can have different stop_sequence
+    # numbering, so seq_to_stop_coords coordinates don't match.
     seen_trips = set()
     vehicle_positions = []
     for t in trips:
@@ -181,10 +247,6 @@ def hx_timetable_route_diagram(route_id: str):
             continue
         seen_trips.add(tid)
         if t.get("vehicle_latitude") and t.get("vehicle_longitude"):
-            # Use vehicle_current_stop_sequence from the RT feed for the actual next stop;
-            # fall back to the timetable row's stop_name if not available or not found.
-            cur_seq = t.get("vehicle_current_stop_sequence")
-            next_stop = seq_to_stop_name.get(cur_seq) if cur_seq is not None else None
             vehicle_positions.append({
                 "trip_id": tid,
                 "headsign": t.get("trip_headsign", ""),
@@ -192,7 +254,7 @@ def hx_timetable_route_diagram(route_id: str):
                 "lon": t["vehicle_longitude"],
                 "label": t.get("vehicle_label") or t.get("vehicle_id") or "",
                 "minutes_away": t.get("minutes_away"),
-                "stop_name": next_stop or t.get("stop_name", ""),
+                "stop_name": t.get("stop_name", ""),
             })
 
     return render_template(
