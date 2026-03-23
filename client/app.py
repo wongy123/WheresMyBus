@@ -7,6 +7,9 @@ from flask_htmx import HTMX
 
 # Config from env
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
+# Browser-facing API URL — set this to the LAN/public URL when accessing from other devices.
+# Defaults to API_BASE_URL so single-machine setups need no change.
+API_BASE_PUBLIC = os.environ.get("API_BASE_URL_PUBLIC", API_BASE)
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")  # e.g. "/wheresmybus" or ""
 FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev-secret")  # set a real secret in prod
 BRISBANE_TZ = pytz.timezone("Australia/Brisbane")
@@ -53,7 +56,7 @@ def create_app():
     @app.context_processor
     def inject_globals():
         return {
-            "API_BASE_URL": API_BASE,
+            "API_BASE_URL": API_BASE_PUBLIC,
             "BASE_PATH": BASE_PATH,
         }
 

@@ -418,6 +418,7 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
       JOIN routes r ON t.route_id = r.route_id
       WHERE (t.route_id = $routeId OR r.route_short_name = $routeId)
         AND t.direction_id = $direction
+      ORDER BY (SELECT COUNT(*) FROM stop_times WHERE trip_id = t.trip_id) DESC
       LIMIT 1
     )
     ORDER BY st.stop_sequence
@@ -442,6 +443,7 @@ export async function getRouteShape(routeId, direction = 0, configPath = default
       WHERE (t.route_id = $routeId OR r.route_short_name = $routeId)
         AND t.direction_id = $direction
         AND t.shape_id IS NOT NULL
+      ORDER BY (SELECT COUNT(*) FROM stop_times WHERE trip_id = t.trip_id) DESC
       LIMIT 1
     )
     ORDER BY sh.shape_pt_sequence
