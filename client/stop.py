@@ -96,6 +96,8 @@ def hx_stop_vehicles(stop_id: str):
                 "trip_id": tid,
                 "route_id": row.get("route_id"),
                 "route_short_name": row.get("route_short_name"),
+                "route_color": row.get("route_color") or "",
+                "route_text_color": row.get("route_text_color") or "",
                 "trip_headsign": row.get("trip_headsign"),
                 "direction_id": row.get("direction_id"),
                 "lat": row["vehicle_latitude"],

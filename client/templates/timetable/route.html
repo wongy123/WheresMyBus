@@ -167,22 +167,7 @@ var _diagMoveTimer = null;
 var _diagFocusStopId = null;
 
 function _diagMakeIcon(s) {
-  var rt = s.primary_route_type;
-  var isStation = s.location_type === 1;
-  var color, label;
-  if      (rt === 2 || rt === 1 || rt === 12) { color = '#6f42c1'; label = 'T'; }
-  else if (rt === 0)                           { color = '#e6a817'; label = 'L'; }
-  else if (rt === 4)                           { color = '#0dcaf0'; label = 'F'; }
-  else                                         { color = '#0d6efd'; label = 'B'; }
-  var size = isStation ? 22 : 18, radius = isStation ? '4px' : '50%';
-  return L.divIcon({
-    className: '',
-    html: '<div style="width:' + size + 'px;height:' + size + 'px;background:' + color +
-          ';border-radius:' + radius + ';border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.45);' +
-          'display:flex;align-items:center;justify-content:center;' +
-          'color:white;font-weight:700;font-size:10px;font-family:sans-serif;">' + label + '</div>',
-    iconSize: [size, size], iconAnchor: [size / 2, size / 2]
-  });
+  return window.TRANSIT.makeStopIcon(s);
 }
 
 function _diagDrawRoute() {
@@ -201,9 +186,7 @@ function _diagDrawRoute() {
     });
     _diagRouteMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: dot })
       .addTo(_diagMap)
-      .bindPopup('<b>' + s.stop_name + '</b><br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" ' +
-        'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
-        'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View Stop</a>');
+      .bindPopup('<b>' + s.stop_name + '</b><br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" class="map-popup-link">View Stop</a>');
   });
   fetch(window.API_BASE_URL + '/routes/' + route.routeId + '/shape?direction=' + route.direction)
     .then(function(r) { return r.json(); })
@@ -230,9 +213,7 @@ function _diagLoadNearby() {
       (data.data || []).forEach(function(s) {
         if (!s.stop_lat || !s.stop_lon || s.stop_id === _diagFocusStopId || _diagRouteMarkers[s.stop_id]) return;
         var popup = '<b>' + s.stop_name + '</b>' +
-          '<br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" ' +
-          'style="display:inline-block;margin-top:4px;padding:2px 10px;font-size:.8rem;' +
-          'background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;">View Stop</a>';
+          '<br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" class="map-popup-link">View Stop</a>';
         _diagNearbyMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: _diagMakeIcon(s) })
           .addTo(_diagMap).bindPopup(popup);
       });
@@ -245,7 +226,7 @@ function _diagSetFocus(stopName, lat, lon) {
   _diagDrawVehicles();
   if (_diagFocusMarker) _diagMap.removeLayer(_diagFocusMarker);
   _diagFocusMarker = L.marker([lat, lon]).addTo(_diagMap)
-    .bindPopup('<b>' + stopName + '</b><br><span style="font-size:.8em;color:#6c757d;">Selected stop</span>')
+    .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Selected stop</span>')
     .openPopup();
   _diagMap.setView([lat, lon], 16);
   _diagLoadNearby();
@@ -264,22 +245,15 @@ function _diagDrawVehicles() {
       ? (v.minutes_away === 0 ? 'now' : 'in ' + v.minutes_away + ' min')
       : '';
     var popup = '<b>' + (v.headsign || 'Service') + '</b>' + label +
-      (v.stop_name ? '<br><span style="font-size:.8em;color:#6c757d;">Next: ' + v.stop_name + (eta ? ' · ' + eta : '') + '</span>' : '');
+      (v.stop_name ? '<br><span class="map-popup-meta">Next: ' + v.stop_name + (eta ? ' · ' + eta : '') + '</span>' : '');
     if (_diagVehicleMarkers[v.trip_id]) {
       _diagVehicleMarkers[v.trip_id].setLatLng([v.lat, v.lon]);
       _diagVehicleMarkers[v.trip_id].setPopupContent(popup);
     } else {
-      var icon = L.divIcon({
-        className: '',
-        html: '<div style="width:28px;height:28px;background:' + route.color + ';border-radius:50%;' +
-              'border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);' +
-              'display:flex;align-items:center;justify-content:center;">' +
-              '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' +
-              route.vehicleIcon + '</span></div>',
-        iconSize: [28, 28], iconAnchor: [14, 14]
-      });
-      _diagVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], { icon: icon, zIndexOffset: 1000 })
-        .addTo(_diagMap).bindPopup(popup);
+      _diagVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], {
+        icon: window.TRANSIT.makeVehicleIcon(route.color, route.vehicleIcon),
+        zIndexOffset: 1000
+      }).addTo(_diagMap).bindPopup(popup);
     }
   });
   Object.keys(_diagVehicleMarkers).forEach(function(tid) {

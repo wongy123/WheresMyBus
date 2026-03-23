@@ -129,6 +129,7 @@ def hx_timetable_route_diagram(route_id: str):
 
     route = api_get(f"routes/{route_id}") or {}
     route_type = route.get("route_type", 3)
+    route_color = route.get("route_color") or ""
 
     stops_resp = api_get(f"routes/{route_id}/stops", {"direction": direction}) or {}
     stops = stops_resp.get("data", [])
@@ -275,5 +276,5 @@ def hx_timetable_route_diagram(route_id: str):
         "timetable/_route_diagram.html",
         stops=stops, vehicles_by_seq=vehicles_by_seq,
         route_id=route_id, direction=direction, updated_at=updated_at,
-        route_type=route_type, vehicle_positions=vehicle_positions,
+        route_type=route_type, route_color=route_color, vehicle_positions=vehicle_positions,
     )
