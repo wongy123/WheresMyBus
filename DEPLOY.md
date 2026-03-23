@@ -179,6 +179,7 @@ python3 -m venv .venv
 ```bash
 cat > /opt/wheresmybus/client/.env <<'EOF'
 API_BASE_URL=http://192.168.3.7:3000/api
+API_BASE_URL_PUBLIC=https://duanduanshome.ddns.net/wheresmybus-api/api
 BASE_PATH=/wheresmybus
 FLASK_SECRET_KEY=change-this-to-a-long-random-string
 EOF
