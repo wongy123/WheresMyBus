@@ -522,7 +522,7 @@
       delayEl.style.color = di.fg;
       btn.appendChild(delayEl);
 
-      var shapeKey = row.route_id + '_' + row.direction_id;
+      var shapeKey = row.route_id + '_' + row.direction_id + '_' + (row.trip_id || '');
       btn.addEventListener('click', function () {
         var wasActive = activeShapeKey === shapeKey;
         clearShape();
@@ -550,7 +550,7 @@
             '" class="map-popup-link">View route</a>'
           : null;
         drawRouteShape(row.route_id, row.direction_id, row.route_color,
-                       row.route_type, row.vehicle_latitude, row.vehicle_longitude, vPopup);
+                       row.route_type, row.vehicle_latitude, row.vehicle_longitude, vPopup, shapeKey);
       });
 
       frag.appendChild(btn);
@@ -585,8 +585,8 @@
   var activeRouteStopMarkers = [];
   var activeRouteStopIds     = new Set();
 
-  function drawRouteShape(routeId, directionId, routeColor, routeType, vLat, vLon, vPopup) {
-    activeShapeKey = routeId + '_' + directionId;
+  function drawRouteShape(routeId, directionId, routeColor, routeType, vLat, vLon, vPopup, shapeKey) {
+    activeShapeKey = shapeKey || (routeId + '_' + directionId);
     var color = routeColor ? '#' + routeColor : '#0d6efd';
 
     var shapeP = fetch(window.API_BASE_URL + '/routes/' + routeId + '/shape?direction=' + (directionId || 0))
