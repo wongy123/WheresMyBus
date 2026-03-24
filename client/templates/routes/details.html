@@ -127,9 +127,9 @@ function _diagDrawRoute() {
   valid.forEach(function(s) {
     var dot = L.divIcon({
       className: '',
-      html: '<div style="width:14px;height:14px;background:white;border-radius:50%;' +
-            'border:3px solid ' + route.color + ';box-shadow:0 1px 4px rgba(0,0,0,.45);"></div>',
-      iconSize: [14, 14], iconAnchor: [7, 7]
+      html: '<div style="width:12px;height:12px;background:#fff;border-radius:50%;' +
+            'border:3px solid ' + route.color + ';box-shadow:0 1px 4px rgba(0,0,0,.35);"></div>',
+      iconSize: [12, 12], iconAnchor: [6, 6]
     });
     _diagRouteMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: dot })
       .addTo(_diagMap)
@@ -343,9 +343,9 @@ function _pageMapLoad(direction) {
         if (!s.stop_lat || !s.stop_lon) return;
         var dot = L.divIcon({
           className: '',
-          html: '<div style="width:14px;height:14px;background:white;border-radius:50%;' +
-                'border:3px solid ' + _pageRouteColor + ';box-shadow:0 1px 4px rgba(0,0,0,.45);"></div>',
-          iconSize: [14, 14], iconAnchor: [7, 7]
+          html: '<div style="width:12px;height:12px;background:#fff;border-radius:50%;' +
+                'border:3px solid ' + _pageRouteColor + ';box-shadow:0 1px 4px rgba(0,0,0,.35);"></div>',
+          iconSize: [12, 12], iconAnchor: [6, 6]
         });
         _pageStopMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: dot })
           .addTo(_pageMap)

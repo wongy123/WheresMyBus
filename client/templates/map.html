@@ -1,0 +1,839 @@
+{% extends "base.html" %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  #map-wrap { position: relative; overflow: hidden; }
+  #map { height: calc(100vh - 56px); width: 100%; }
+
+  #map-search {
+    position: absolute;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    width: min(480px, 90vw);
+  }
+  #map-search-dropdown {
+    max-height: 360px;
+    overflow-y: auto;
+  }
+
+  #map-locate {
+    position: absolute;
+    bottom: 2rem;
+    left: .75rem;
+    z-index: 1000;
+  }
+
+  .map-section-header {
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #6c757d;
+    padding: .35rem .75rem .1rem;
+  }
+
+  /* ── Sidebar ──────────────────────────────────────────────────────────── */
+  #map-sidebar {
+    position: absolute;
+    top: 0; right: 0;
+    width: 320px;
+    height: 100%;
+    background: #fff;
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform .22s ease;
+    box-shadow: -3px 0 12px rgba(0,0,0,.15);
+    display: flex;
+    flex-direction: column;
+  }
+  #map-sidebar.open { transform: translateX(0); }
+
+  #map-sidebar-header {
+    display: flex;
+    align-items: flex-start;
+    gap: .4rem;
+    padding: .75rem .6rem .6rem 1rem;
+    border-bottom: 1px solid #dee2e6;
+    flex-shrink: 0;
+  }
+  .sidebar-header-content {
+    flex: 1;
+    min-width: 0;
+  }
+  .sidebar-header-content .stop-name {
+    font-weight: 600;
+    font-size: .95rem;
+    line-height: 1.3;
+  }
+  .sidebar-header-content .stop-meta {
+    font-size: .75rem;
+    color: #6c757d;
+    margin-top: .1rem;
+  }
+  .sidebar-header-actions {
+    display: flex;
+    gap: .05rem;
+    flex-shrink: 0;
+    margin-top: -.1rem;
+  }
+  .sidebar-header-actions button {
+    background: none;
+    border: none;
+    padding: .2rem;
+    cursor: pointer;
+    color: #6c757d;
+    line-height: 1;
+    display: flex;
+  }
+  .sidebar-header-actions button:hover { color: #212529; }
+
+  #map-sidebar-body { overflow-y: auto; flex: 1; }
+
+  .sidebar-dep-row {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .55rem .85rem;
+    border: none;
+    border-bottom: 1px solid #f0f0f0;
+    width: 100%;
+    text-align: left;
+    background: none;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .sidebar-dep-row:hover  { background: #f8f9fa; }
+  .sidebar-dep-row.active {
+    background: rgba(0,0,0,.04);
+    box-shadow: inset 4px 0 0 var(--row-color, #0d6efd);
+  }
+
+  .sidebar-route-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.3rem;
+    padding: .15rem .4rem;
+    border-radius: .25rem;
+    font-weight: 700;
+    font-size: .75rem;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .sidebar-headsign {
+    flex: 1;
+    font-size: .82rem;
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    color: #212529;
+    min-width: 0;
+  }
+  .sidebar-time {
+    flex-shrink: 0;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #212529;
+  }
+  .sidebar-delay {
+    flex-shrink: 0;
+    font-size: .68rem;
+    padding: .1rem .3rem;
+    border-radius: .2rem;
+    white-space: nowrap;
+  }
+
+  #map-sidebar-footer {
+    padding: .55rem 1rem;
+    border-top: 1px solid #dee2e6;
+    flex-shrink: 0;
+    font-size: .8rem;
+  }
+
+  /* ── Filter bar ──────────────────────────────────────────────────────────── */
+  #map-filter {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    gap: .35rem;
+    background: #fff;
+    border-radius: 2rem;
+    padding: .3rem .4rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  .map-filter-btn {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    border: 2px solid transparent;
+    border-radius: 2rem;
+    padding: .25rem .65rem;
+    font-size: .75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s, filter .15s;
+    white-space: nowrap;
+    line-height: 1;
+  }
+  .map-filter-btn .material-symbols-outlined { font-size: .95rem; }
+  .map-filter-btn.off {
+    background: #f0f0f0 !important;
+    color: #aaa !important;
+    border-color: transparent !important;
+  }
+
+  @media (max-width: 767px) {
+    #map-search { width: calc(100vw - 2rem); }
+    #map-filter { bottom: 1rem; }
+
+    /* Split layout: map top, sidebar bottom */
+    #map-wrap {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 56px);
+    }
+    #map {
+      flex: 1 1 auto;
+      height: auto;
+      min-height: 0;
+    }
+    #map-sidebar {
+      position: relative;
+      top: auto; right: auto;
+      width: 100%;
+      height: 0;
+      transform: none;
+      transition: height .22s ease;
+      box-shadow: 0 -3px 12px rgba(0,0,0,.15);
+    }
+    #map-sidebar.open {
+      height: 50vh;
+      transform: none;
+    }
+
+    /* Hide filter/locate controls when sidebar occupies bottom half */
+    #map-wrap.sidebar-open #map-filter,
+    #map-wrap.sidebar-open #map-locate { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block main %}
+<div id="map-wrap">
+  <div id="map"></div>
+
+  <!-- Sidebar -->
+  <div id="map-sidebar">
+    <div id="map-sidebar-header">
+      <div class="sidebar-header-content">
+        <div class="stop-name" id="sidebar-stop-name"></div>
+        <div class="stop-meta" id="sidebar-stop-meta"></div>
+      </div>
+      <div class="sidebar-header-actions">
+        <button id="map-sidebar-center" title="Centre on stop">
+          <span class="material-symbols-outlined" style="font-size:1.2rem;">my_location</span>
+        </button>
+        <button id="map-sidebar-close" title="Close">
+          <span class="material-symbols-outlined" style="font-size:1.2rem;">close</span>
+        </button>
+      </div>
+    </div>
+    <div id="map-sidebar-body"></div>
+    <div id="map-sidebar-footer">
+      <button id="sidebar-timetable-btn" class="btn btn-sm btn-outline-primary w-100">Full timetable</button>
+    </div>
+  </div>
+
+  <!-- Floating search panel -->
+  <div id="map-search">
+    <div class="card shadow-sm">
+      <div class="card-body p-2">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-white border-end-0">
+            <span class="material-symbols-outlined" style="font-size:1.1rem;line-height:1;">search</span>
+          </span>
+          <input id="map-search-input" type="text" class="form-control border-start-0 ps-0"
+                 placeholder="Search stops, suburbs, landmarks…" autocomplete="off">
+          <button class="btn btn-outline-secondary" id="map-search-clear" type="button" style="display:none;">
+            <span class="material-symbols-outlined" style="font-size:1rem;line-height:1;">close</span>
+          </button>
+        </div>
+      </div>
+      <div id="map-search-dropdown" class="list-group list-group-flush border-top" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Locate me (left side, clear of sidebar) -->
+  <button id="map-locate" class="btn btn-light btn-sm shadow-sm border" title="Find my location">
+    <span class="material-symbols-outlined" style="font-size:1.2rem;line-height:1;display:block;">my_location</span>
+  </button>
+
+  <!-- Transport type filter -->
+  <div id="map-filter">
+    <button class="map-filter-btn" data-type="3"
+            style="background:var(--transit-bus-color);color:#fff;border-color:var(--transit-bus-color);">
+      <span class="material-symbols-outlined">directions_bus</span>Bus
+    </button>
+    <button class="map-filter-btn" data-type="2"
+            style="background:var(--transit-rail-color);color:#fff;border-color:var(--transit-rail-color);">
+      <span class="material-symbols-outlined">train</span>Train
+    </button>
+    <button class="map-filter-btn" data-type="4"
+            style="background:var(--transit-ferry-color);color:#fff;border-color:var(--transit-ferry-color);">
+      <span class="material-symbols-outlined">directions_boat</span>Ferry
+    </button>
+    <button class="map-filter-btn" data-type="0"
+            style="background:var(--transit-tram-color);color:#333;border-color:var(--transit-tram-color);">
+      <span class="material-symbols-outlined">tram</span>Tram
+    </button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  var BASE_PATH = {{ BASE_PATH | tojson }};
+
+  // Default centre: Brisbane CBD
+  var map = L.map('map', { zoomControl: true }).setView([-27.4698, 153.0251], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  // ── Stop markers ──────────────────────────────────────────────────────────
+  var stopMarkerMap  = {};
+  var stopDataMap    = {}; // stop_id → stop object, for highlight icon
+
+  function addStopMarker(s) {
+    if (!s.stop_lat || !s.stop_lon) return;
+    if (stopMarkerMap[s.stop_id]) return;
+    // Keep route dots visible for route stops, but always re-add the currently
+    // selected stop so it survives clearShape() removing the route dot.
+    if (activeRouteStopIds.has(s.stop_id) && s.stop_id !== currentStopId) return;
+    var icon = window.TRANSIT.makeStopIcon(s);
+    var m = L.marker([s.stop_lat, s.stop_lon], { icon: icon }).addTo(map);
+    m.on('click', function () {
+      openSidebar(s.stop_id, s.stop_name, s.stop_code || '', s.stop_lat, s.stop_lon);
+    });
+    stopMarkerMap[s.stop_id] = m;
+    stopDataMap[s.stop_id]   = s;
+  }
+
+  function clearStopMarkers() {
+    Object.values(stopMarkerMap).forEach(function (m) { map.removeLayer(m); });
+    stopMarkerMap = {};
+    stopDataMap   = {};
+  }
+
+  // ── Type filter ───────────────────────────────────────────────────────────
+  var activeTypes = new Set([0, 2, 3, 4]);
+
+  document.querySelectorAll('.map-filter-btn').forEach(function (btn) {
+    var type = parseInt(btn.dataset.type, 10);
+    btn.addEventListener('click', function () {
+      if (activeTypes.has(type)) {
+        activeTypes.delete(type);
+        btn.classList.add('off');
+      } else {
+        activeTypes.add(type);
+        btn.classList.remove('off');
+      }
+      loadBoundsMarkers();
+    });
+  });
+
+  function loadBoundsMarkers() {
+    if (activeTypes.size === 0) { clearStopMarkers(); return; }
+    var b = map.getBounds();
+    var types = Array.from(activeTypes).join(',');
+    var url = window.API_BASE_URL + '/stops/bounds' +
+      '?north=' + b.getNorth().toFixed(6) +
+      '&south=' + b.getSouth().toFixed(6) +
+      '&east='  + b.getEast().toFixed(6) +
+      '&west='  + b.getWest().toFixed(6) +
+      '&types=' + types +
+      '&limit=750';
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var stops = d.data || [];
+        if (stops.length >= 750) { clearStopMarkers(); return; }
+        clearStopMarkers();
+        stops.forEach(addStopMarker);
+      })
+      .catch(function () {});
+  }
+
+  function loadNearby(lat, lon) {
+    clearShape();
+    closeSidebar();
+    map.flyTo([lat, lon], 15);
+    // moveend fires when flyTo completes → loadBoundsMarkers called automatically
+  }
+
+  map.on('moveend', loadBoundsMarkers);
+
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  var sidebar     = document.getElementById('map-sidebar');
+  var sidebarBody = document.getElementById('map-sidebar-body');
+  var mapWrap     = document.getElementById('map-wrap');
+  var currentStopId = null, currentStopLat = null, currentStopLon = null;
+
+  var stopHighlight = null;
+
+  function makeHighlightIcon(s) {
+    var rt        = s ? s.primary_route_type : undefined;
+    var isStation = s && s.location_type === 1;
+    var color     = window.TRANSIT.color(rt, isStation);
+    var label     = window.TRANSIT.label(rt);
+    var size      = (isStation ? 22 : 18) + 10; // noticeably larger than normal
+    var radius    = isStation ? '5px' : '50%';
+    return L.divIcon({
+      className: '',
+      html: '<div style="width:' + size + 'px;height:' + size + 'px;' +
+            'background:#fff;border-radius:' + radius + ';' +
+            'border:3px solid ' + color + ';' +
+            'box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.5);' +
+            'display:flex;align-items:center;justify-content:center;' +
+            'color:' + color + ';font-weight:700;font-size:11px;font-family:sans-serif;">' +
+            label + '</div>',
+      iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+    });
+  }
+
+  function setStopHighlight(stopId, lat, lon) {
+    if (stopHighlight) { map.removeLayer(stopHighlight); stopHighlight = null; }
+    if (!lat || !lon) return;
+    var s    = stopId ? stopDataMap[stopId] : null;
+    var icon = s ? makeHighlightIcon(s) : makeHighlightIcon(null);
+    stopHighlight = L.marker([lat, lon], {
+      icon: icon, zIndexOffset: 500, interactive: false
+    }).addTo(map);
+  }
+
+  function openSidebar(stopId, stopName, stopCode, lat, lon) {
+    currentStopId  = stopId;
+    currentStopLat = lat  || null;
+    currentStopLon = lon  || null;
+    document.getElementById('sidebar-stop-name').textContent = stopName;
+    document.getElementById('sidebar-stop-meta').textContent = stopCode ? 'Stop #' + stopCode : '';
+    sidebarBody.innerHTML =
+      '<div class="text-center text-muted small py-4">' +
+      '<span class="material-symbols-outlined" style="font-size:1.5rem;display:block;opacity:.35;">schedule</span>' +
+      'Loading…</div>';
+    sidebar.classList.add('open');
+    mapWrap.classList.add('sidebar-open');
+    clearShape();
+    setStopHighlight(stopId, lat || null, lon || null);
+    setTimeout(function () { map.invalidateSize(); }, 240);
+
+    fetch(window.API_BASE_URL + '/stops/' + stopId + '/timetable?limit=15&duration=3600')
+      .then(function (r) { return r.json(); })
+      .then(function (d) { renderDepartures(d.data || []); })
+      .catch(function () {
+        sidebarBody.innerHTML =
+          '<div class="text-center text-muted small py-4">Could not load departures.</div>';
+      });
+  }
+
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    mapWrap.classList.remove('sidebar-open');
+    clearShape();
+    setStopHighlight(null, null, null);
+    setTimeout(function () { map.invalidateSize(); }, 240);
+  }
+
+  document.getElementById('map-sidebar-close').addEventListener('click', closeSidebar);
+
+  document.getElementById('map-sidebar-center').addEventListener('click', function () {
+    if (currentStopLat && currentStopLon) {
+      map.flyTo([currentStopLat, currentStopLon], Math.max(map.getZoom(), 15));
+    }
+  });
+
+  document.getElementById('sidebar-timetable-btn').addEventListener('click', function () {
+    if (currentStopId) window.location.href = BASE_PATH + '/timetable/stop/' + currentStopId;
+  });
+
+  function renderDepartures(rows) {
+    if (!rows.length) {
+      sidebarBody.innerHTML =
+        '<div class="text-center text-muted small py-4">No upcoming services in the next 90 minutes.</div>';
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    rows.forEach(function (row) {
+      var btn = document.createElement('button');
+      btn.className = 'sidebar-dep-row';
+      btn.type = 'button';
+      btn.title = 'Click to show route on map';
+
+      // Badge
+      var color     = row.route_color      ? '#' + row.route_color      : '#0d6efd';
+      var textColor = row.route_text_color  ? '#' + row.route_text_color : '#ffffff';
+      var badge = document.createElement('span');
+      badge.className = 'sidebar-route-badge';
+      badge.style.background = color;
+      badge.style.color = textColor;
+      badge.textContent = row.route_short_name || row.route_id;
+      btn.appendChild(badge);
+
+      // Headsign
+      var hs = document.createElement('span');
+      hs.className = 'sidebar-headsign';
+      hs.textContent = row.trip_headsign || '';
+      btn.appendChild(hs);
+
+      // Time + mins away
+      var rawTime = row.estimated_departure_time || row.scheduled_departure_time || '';
+      var timeEl = document.createElement('span');
+      timeEl.className = 'sidebar-time';
+      if (rawTime) {
+        var tp = rawTime.split(':');
+        var tSec = parseInt(tp[0]) * 3600 + parseInt(tp[1]) * 60 + (parseInt(tp[2]) || 0);
+        var now  = new Date();
+        var nSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+        var diff = tSec - nSec;
+        if (diff < -3600) diff += 86400;
+        var mins = Math.round(diff / 60);
+        var minsStr = mins <= 0 ? 'now' : mins + ' min';
+        timeEl.innerHTML =
+          '<span style="font-size:.85em;font-weight:400;color:#6c757d;">' + formatGtfsTime(rawTime) + '</span>' +
+          ' <span>' + minsStr + '</span>';
+      }
+      btn.appendChild(timeEl);
+
+      // Delay badge
+      var di = delayInfo(row.departure_delay);
+      var delayEl = document.createElement('span');
+      delayEl.className = 'sidebar-delay';
+      delayEl.textContent = di.label;
+      delayEl.style.background = di.bg;
+      delayEl.style.color = di.fg;
+      btn.appendChild(delayEl);
+
+      var shapeKey = row.route_id + '_' + row.direction_id;
+      btn.addEventListener('click', function () {
+        var wasActive = activeShapeKey === shapeKey;
+        clearShape();
+        if (wasActive) return;
+        btn.classList.add('active');
+        btn.style.setProperty('--row-color', color);
+        var vLabel = row.vehicle_label ? ' · ' + escHtml(String(row.vehicle_label)) : '';
+        var vEtaStr = '';
+        var vRawTime = row.estimated_departure_time || row.scheduled_departure_time || '';
+        if (vRawTime) {
+          var vp = vRawTime.split(':');
+          var vSec = parseInt(vp[0]) * 3600 + parseInt(vp[1]) * 60 + (parseInt(vp[2]) || 0);
+          var vNow = new Date();
+          var vNowSec = vNow.getHours() * 3600 + vNow.getMinutes() * 60 + vNow.getSeconds();
+          var vDiff = vSec - vNowSec;
+          if (vDiff < -3600) vDiff += 86400;
+          var vMins = Math.round(vDiff / 60);
+          vEtaStr = vMins <= 0 ? 'now' : vMins + ' min';
+        }
+        var vPopup = row.vehicle_latitude && row.vehicle_longitude
+          ? '<b>' + escHtml(row.route_short_name || row.route_id) + '</b>' + vLabel +
+            (row.trip_headsign ? ' — ' + escHtml(row.trip_headsign) : '') +
+            (vEtaStr ? '<br><span class="map-popup-meta">' + vEtaStr + '</span>' : '') +
+            '<br><a href="' + BASE_PATH + '/routes/' + escHtml(row.route_id) +
+            '" class="map-popup-link">View route</a>'
+          : null;
+        drawRouteShape(row.route_id, row.direction_id, row.route_color,
+                       row.route_type, row.vehicle_latitude, row.vehicle_longitude, vPopup);
+      });
+
+      frag.appendChild(btn);
+    });
+    sidebarBody.innerHTML = '';
+    sidebarBody.appendChild(frag);
+  }
+
+  function formatGtfsTime(t) {
+    if (!t) return '';
+    var parts = String(t).split(':');
+    if (parts.length < 2) return t;
+    var h = parseInt(parts[0], 10) % 24;
+    return (h < 10 ? '0' : '') + h + ':' + parts[1];
+  }
+
+  function delayInfo(seconds) {
+    if (seconds === null || seconds === undefined) {
+      return { label: 'Scheduled', bg: '#6c757d', fg: '#fff' };
+    }
+    var s = parseInt(seconds, 10);
+    if (s === 0) return { label: 'On time', bg: '#198754', fg: '#fff' };
+    var mins = Math.floor(Math.abs(s) / 60);
+    if (s > 0) return { label: mins + 'm late', bg: '#ffc107', fg: '#000' };
+    return { label: mins + 'm early', bg: '#0dcaf0', fg: '#000' };
+  }
+
+  // ── Route shape ───────────────────────────────────────────────────────────
+  var activeShapeKey         = null;
+  var activePolyline         = null;
+  var activeVehicleMarker    = null;
+  var activeRouteStopMarkers = [];
+  var activeRouteStopIds     = new Set();
+
+  function drawRouteShape(routeId, directionId, routeColor, routeType, vLat, vLon, vPopup) {
+    activeShapeKey = routeId + '_' + directionId;
+    var color = routeColor ? '#' + routeColor : '#0d6efd';
+
+    var shapeP = fetch(window.API_BASE_URL + '/routes/' + routeId + '/shape?direction=' + (directionId || 0))
+      .then(function (r) { return r.json(); });
+    var stopsP = fetch(window.API_BASE_URL + '/routes/' + routeId + '/stops?direction=' + (directionId || 0))
+      .then(function (r) { return r.json(); });
+
+    Promise.all([shapeP, stopsP]).then(function (results) {
+      var shapeData = results[0];
+      var stopsData = results[1];
+
+      // Draw polyline
+      var coords = (shapeData.data || []).map(function (p) { return [p.lat, p.lon]; });
+      if (coords.length) {
+        activePolyline = L.polyline(coords, { color: color, weight: 5, opacity: 0.8 }).addTo(map);
+      }
+
+      // Draw route stop dots on top of any existing badge markers (zIndexOffset:300).
+      // Remove any pre-existing badge first so clearShape() can restore it cleanly.
+      (stopsData.data || []).forEach(function (s) {
+        if (!s.stop_lat || !s.stop_lon) return;
+        stopDataMap[s.stop_id] = s; // cache for highlight icon
+        activeRouteStopIds.add(s.stop_id);
+        if (stopMarkerMap[s.stop_id]) {
+          map.removeLayer(stopMarkerMap[s.stop_id]);
+          delete stopMarkerMap[s.stop_id];
+        }
+        var dot = L.divIcon({
+          className: '',
+          html: '<div style="width:12px;height:12px;background:#fff;border-radius:50%;border:3px solid ' +
+                color + ';box-shadow:0 1px 4px rgba(0,0,0,.35);"></div>',
+          iconSize: [12, 12], iconAnchor: [6, 6]
+        });
+        var m = L.marker([s.stop_lat, s.stop_lon], { icon: dot, zIndexOffset: 300 }).addTo(map);
+        m.on('click', function () {
+          openSidebar(s.stop_id, s.stop_name, s.stop_code || '', s.stop_lat, s.stop_lon);
+        });
+        activeRouteStopMarkers.push(m);
+      });
+
+      // Vehicle marker
+      if (vLat && vLon) {
+        activeVehicleMarker = L.marker([vLat, vLon], {
+          icon: window.TRANSIT.makeVehicleIcon(color, window.TRANSIT.vehicleIcon(routeType || 3)),
+          zIndexOffset: 1000
+        }).addTo(map);
+        if (vPopup) activeVehicleMarker.bindPopup(vPopup);
+        map.flyTo([vLat, vLon], Math.max(map.getZoom(), 14));
+      }
+    }).catch(function () {});
+  }
+
+  function clearShape() {
+    activeShapeKey = null;
+    if (activePolyline)      { map.removeLayer(activePolyline);      activePolyline = null; }
+    if (activeVehicleMarker) { map.removeLayer(activeVehicleMarker); activeVehicleMarker = null; }
+    activeRouteStopMarkers.forEach(function (m) { map.removeLayer(m); });
+    activeRouteStopMarkers = [];
+
+    // Restore badge markers for any route stop that is currently within the
+    // viewport but has no stopMarkerMap entry (it was either skipped by
+    // addStopMarker due to activeRouteStopIds, or its route dot was just
+    // removed above).  Do this before clearing activeRouteStopIds so the set
+    // is still available to iterate.
+    var bounds = map.getBounds();
+    activeRouteStopIds.forEach(function (stopId) {
+      if (stopMarkerMap[stopId]) return;
+      var s = stopDataMap[stopId];
+      if (!s || !s.stop_lat || !s.stop_lon) return;
+      if (!bounds.contains([s.stop_lat, s.stop_lon])) return;
+      var icon = window.TRANSIT.makeStopIcon(s);
+      var m = L.marker([s.stop_lat, s.stop_lon], { icon: icon }).addTo(map);
+      m.on('click', function () {
+        openSidebar(s.stop_id, s.stop_name, s.stop_code || '', s.stop_lat, s.stop_lon);
+      });
+      stopMarkerMap[stopId] = m;
+    });
+
+    activeRouteStopIds.clear();
+    document.querySelectorAll('.sidebar-dep-row.active').forEach(function (el) {
+      el.classList.remove('active');
+      el.style.removeProperty('--row-color');
+    });
+  }
+
+  // ── Locate me ─────────────────────────────────────────────────────────────
+  var userMarker = null;
+
+  function placeUserLocation(lat, lon, panTo) {
+    if (userMarker) { userMarker.setLatLng([lat, lon]); }
+    else {
+      var icon = L.divIcon({
+        className: '',
+        html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1;">person_pin_circle</span>',
+        iconSize: [32, 32], iconAnchor: [16, 32]
+      });
+      userMarker = L.marker([lat, lon], { icon: icon, zIndexOffset: 800 }).addTo(map)
+        .bindPopup('<b>Your location</b>');
+    }
+    if (panTo) {
+      map.flyTo([lat, lon], 15);
+      loadNearby(lat, lon);
+    }
+  }
+
+  // On load: silently try to centre on the user's position if already permitted.
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+      placeUserLocation(pos.coords.latitude, pos.coords.longitude, false);
+    }, function () { /* permission denied or unavailable — stay on default view */ });
+  }
+
+  document.getElementById('map-locate').addEventListener('click', function () {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      placeUserLocation(pos.coords.latitude, pos.coords.longitude, true);
+    }, function () {
+      alert('Location access was denied or unavailable.');
+    });
+  });
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  var searchInput   = document.getElementById('map-search-input');
+  var searchClear   = document.getElementById('map-search-clear');
+  var dropdown      = document.getElementById('map-search-dropdown');
+  var debounceTimer = null;
+  var placeMarker   = null;
+
+  function showDropdown(stops, places) {
+    dropdown.innerHTML = '';
+    var empty = stops.length === 0 && places.length === 0;
+    if (empty) {
+      dropdown.innerHTML = '<div class="list-group-item text-muted small py-2">No results found.</div>';
+      dropdown.style.display = '';
+      return;
+    }
+
+    if (stops.length) {
+      var hdr = document.createElement('div');
+      hdr.className = 'map-section-header';
+      hdr.textContent = 'Stops';
+      dropdown.appendChild(hdr);
+      stops.slice(0, 5).forEach(function (s) {
+        var a = document.createElement('button');
+        a.type = 'button';
+        a.className = 'list-group-item list-group-item-action py-2 px-3 small';
+        a.innerHTML =
+          '<span class="material-symbols-outlined me-1" style="font-size:.9rem;vertical-align:middle;">directions_bus</span>' +
+          '<span>' + escHtml(s.stop_name) + '</span>' +
+          (s.stop_code ? ' <span class="text-muted">#' + escHtml(s.stop_code) + '</span>' : '');
+        a.addEventListener('click', function () {
+          if (!s.stop_lat || !s.stop_lon) return;
+          clearStopMarkers();
+          addStopMarker(s);
+          map.flyTo([s.stop_lat, s.stop_lon], 17);
+          openSidebar(s.stop_id, s.stop_name, s.stop_code || '', s.stop_lat, s.stop_lon);
+          hideDropdown();
+          searchInput.value = s.stop_name;
+        });
+        dropdown.appendChild(a);
+      });
+    }
+
+    if (places.length) {
+      var hdr2 = document.createElement('div');
+      hdr2.className = 'map-section-header';
+      hdr2.textContent = 'Places';
+      dropdown.appendChild(hdr2);
+      places.slice(0, 5).forEach(function (p) {
+        var a = document.createElement('button');
+        a.type = 'button';
+        a.className = 'list-group-item list-group-item-action py-2 px-3 small';
+        a.innerHTML =
+          '<span class="material-symbols-outlined me-1" style="font-size:.9rem;vertical-align:middle;">location_on</span>' +
+          '<span>' + escHtml(p.display_name) + '</span>';
+        a.addEventListener('click', function () {
+          if (placeMarker) { map.removeLayer(placeMarker); placeMarker = null; }
+          var pinIcon = L.divIcon({
+            className: '',
+            html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#dc3545;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1;">location_on</span>',
+            iconSize: [32, 32], iconAnchor: [16, 32]
+          });
+          placeMarker = L.marker([p.lat, p.lon], { icon: pinIcon }).addTo(map)
+            .bindPopup('<b>' + escHtml(p.display_name) + '</b>').openPopup();
+          clearShape();
+          closeSidebar();
+          map.flyTo([p.lat, p.lon], 15);
+          hideDropdown();
+          searchInput.value = p.display_name;
+        });
+        dropdown.appendChild(a);
+      });
+    }
+
+    dropdown.style.display = '';
+  }
+
+  function hideDropdown() {
+    dropdown.style.display = 'none';
+    dropdown.innerHTML = '';
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  searchInput.addEventListener('input', function () {
+    var q = searchInput.value.trim();
+    searchClear.style.display = q ? '' : 'none';
+    clearTimeout(debounceTimer);
+    if (q.length < 2) { hideDropdown(); return; }
+    debounceTimer = setTimeout(function () {
+      var stopsP = fetch(window.API_BASE_URL + '/stops/search?q=' + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (d) { return d.data || []; })
+        .catch(function () { return []; });
+      var placesP = fetch(window.API_BASE_URL + '/geocode?q=' + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (d) { return d.data || []; })
+        .catch(function () { return []; });
+      Promise.all([stopsP, placesP]).then(function (res) {
+        showDropdown(res[0], res[1]);
+      });
+    }, 400);
+  });
+
+  searchClear.addEventListener('click', function () {
+    searchInput.value = '';
+    searchClear.style.display = 'none';
+    hideDropdown();
+    searchInput.focus();
+  });
+
+  // Hide dropdown on outside click
+  document.addEventListener('click', function (e) {
+    if (!document.getElementById('map-search').contains(e.target)) {
+      hideDropdown();
+    }
+  });
+
+  // Load stops for initial view
+  loadBoundsMarkers();
+}());
+</script>
+{% endblock %}

@@ -9,6 +9,7 @@
 {% set total = pg.get('total', 0) %}
 
 {% set has_platforms = rows | selectattr('platform_code', 'defined') | selectattr('platform_code') | list | length > 0 %}
+<span hidden data-tt-page="{{ page }}" data-tt-page-count="{{ page_count }}"></span>
 {% if rows %}
   <style>
     .tt-headsign { overflow-x: auto; white-space: nowrap; max-width: {{ '24vw' if has_platforms else '38vw' }}; }
@@ -69,15 +70,4 @@
     }).forEach(function (tr) { tbody.appendChild(tr); });
   }
 }());
-</script>
-{% set _seen = namespace(ids=[]) %}
-{% set _veh = namespace(list=[]) %}
-{% for it in rows %}
-  {% if it.vehicle_latitude and it.vehicle_longitude and it.trip_id not in _seen.ids %}
-    {% set _seen.ids = _seen.ids + [it.trip_id] %}
-    {% set _veh.list = _veh.list + [{'trip_id': it.trip_id, 'route_id': it.route_id, 'route_short_name': it.route_short_name, 'route_color': it.route_color or '', 'route_text_color': it.route_text_color or '', 'trip_headsign': it.trip_headsign, 'direction_id': it.direction_id, 'lat': it.vehicle_latitude, 'lon': it.vehicle_longitude, 'label': it.vehicle_label or '', 'eta': it.estimated_arrival_time or it.scheduled_arrival_time or ''}] %}
-  {% endif %}
-{% endfor %}
-<script>
-typeof window.stopMapAddVehicles === 'function' && window.stopMapAddVehicles({{ _veh.list | tojson }});
 </script>

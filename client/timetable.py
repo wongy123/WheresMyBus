@@ -188,16 +188,20 @@ def hx_timetable_route_diagram(route_id: str):
             return veh_seq, False  # already at last stop
         nxt = sorted_seqs[idx + 1]
 
-        # Check 1: departure time has passed
-        dep_sec = _hms_to_sec(
-            trip_row.get("estimated_departure_time") or trip_row.get("scheduled_departure_time")
-        )
-        if dep_sec is not None:
-            diff = dep_sec - now_sec
-            if diff < -86400 + 3600:  # handle rollover past midnight
-                diff += 86400
-            if diff < 0:
-                return nxt, True
+        # Check 1: departure time has passed — only reliable when real-time delay
+        # data is present.  Without it, estimated_departure_time == scheduled, so
+        # a late bus with no trip-update would incorrectly advance past a stop it
+        # hasn't reached yet.
+        if trip_row.get("real_time_data"):
+            dep_sec = _hms_to_sec(
+                trip_row.get("estimated_departure_time") or trip_row.get("scheduled_departure_time")
+            )
+            if dep_sec is not None:
+                diff = dep_sec - now_sec
+                if diff < -86400 + 3600:  # handle rollover past midnight
+                    diff += 86400
+                if diff < 0:
+                    return nxt, True
 
         # Check 2: GPS vector projection — bus is past the reported stop in the
         # direction of the next stop.  We normalise the projection so the
@@ -254,14 +258,20 @@ def hx_timetable_route_diagram(route_id: str):
             continue
         seen_trips.add(tid)
         if t.get("vehicle_latitude") and t.get("vehicle_longitude"):
+            stop_id = str(t.get("stop_id") or "")
+            seq = stop_id_to_seq.get(stop_id) if stop_id else None
+            if seq is None:
+                seq = t.get("stop_sequence")
+            adv_seq, was_advanced = _advance_seq(t, seq) if seq is not None else (seq, False)
+            stop_name = seq_to_stop_name.get(adv_seq, t.get("stop_name", "")) if adv_seq is not None else t.get("stop_name", "")
             vehicle_positions.append({
                 "trip_id": tid,
                 "headsign": t.get("trip_headsign", ""),
                 "lat": t["vehicle_latitude"],
                 "lon": t["vehicle_longitude"],
                 "label": t.get("vehicle_label") or t.get("vehicle_id") or "",
-                "minutes_away": t.get("minutes_away"),
-                "stop_name": t.get("stop_name", ""),
+                "minutes_away": t.get("minutes_away") if not was_advanced else None,
+                "stop_name": stop_name,
             })
 
     return render_template(
