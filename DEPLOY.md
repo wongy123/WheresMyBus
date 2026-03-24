@@ -325,6 +325,17 @@ git pull origin main
 cd server && npm install   # if dependencies changed
 pm2 restart wheresmybus-api
 
+```
+
+If any files under `server/sqlite/sql/` changed in the pull, rebuild the SQLite views before restarting:
+
+```bash
+npm run buildviews
+```
+
+This recreates the views and any pre-computed tables (e.g. `stop_route_type`) in the SQLite database. It is safe to re-run at any time — all statements use `DROP … IF EXISTS` / `CREATE`. You do **not** need to re-run the full GTFS import.
+
+```bash
 # Client LXC
 cd /opt/wheresmybus
 git pull origin main
