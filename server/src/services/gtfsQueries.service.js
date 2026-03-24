@@ -370,6 +370,27 @@ export async function getNearbyStops(lat, lng, limit = 5, configPath = defaultCo
   }, configPath);
 }
 
+export async function getStopsInBounds(north, south, east, west, types = null, limit = 750, configPath = defaultConfigPath) {
+  return withDb(db => {
+    const hasTypes = types && types.length > 0;
+    const typeFilter = hasTypes
+      ? `AND COALESCE(srt.primary_route_type, 3) IN (${types.map(() => '?').join(',')})`
+      : '';
+    return db.prepare(`
+      SELECT s.stop_id, s.stop_name, s.stop_code, s.stop_lat, s.stop_lon, s.location_type,
+        COALESCE(srt.primary_route_type, 3) AS primary_route_type
+      FROM stops s
+      LEFT JOIN stop_route_type srt ON srt.stop_id = s.stop_id
+      WHERE s.stop_lat IS NOT NULL AND s.stop_lon IS NOT NULL
+        AND (s.location_type IS NULL OR s.location_type IN (0, 1))
+        AND s.stop_lat BETWEEN ? AND ?
+        AND s.stop_lon BETWEEN ? AND ?
+        ${typeFilter}
+      LIMIT ?
+    `).all(south, north, west, east, ...(hasTypes ? types : []), limit);
+  }, configPath);
+}
+
 export async function getStopPlatforms(stationId, configPath = defaultConfigPath) {
   return withDb(db => db.prepare(`
     SELECT stop_id, stop_name, stop_code, stop_lat, stop_lon, platform_code
@@ -578,58 +599,83 @@ ORDER BY f.win_sec ASC;
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
 
-  // Find trips where the vehicle has already physically passed the displayed stop.
-  // vehicle_current_stop_sequence comes from the vpos feed (60 s TTL) and reflects
-  // the stop the bus is currently in transit to.  If it is greater than the stop
-  // we are about to display, that stop is already behind the bus.
-  const staleByTrip = new Map();
+  // Find trips where the vehicle position disagrees with the time-window result.
+  //
+  // staleByTrip  (veh_seq > seq): vehicle has physically passed the displayed
+  //   stop — the trip-update was applied but the time window still returned an
+  //   earlier stop.  Advance to veh_seq.
+  //
+  // behindByTrip (veh_seq < seq): the time window has jumped ahead of the
+  //   vehicle — the trip-update delay is stale/underestimated so the estimated
+  //   arrival for intermediate stops has already fallen below secNow even though
+  //   the bus hasn't physically reached them.  Step back to veh_seq, capped at
+  //   MAX_OVERDUE_SEC seconds past secNow to avoid showing very old stops.
+  const MAX_OVERDUE_SEC = 480; // 8 minutes
+  const staleByTrip  = new Map();
+  const behindByTrip = new Map();
   for (const r of enriched) {
-    if (r.vehicle_current_stop_sequence != null && r.vehicle_current_stop_sequence > r.stop_sequence) {
-      staleByTrip.set(r.trip_id, r.vehicle_current_stop_sequence);
+    const vseq = r.vehicle_current_stop_sequence;
+    if (vseq == null) continue;
+    if (vseq > r.stop_sequence) {
+      staleByTrip.set(r.trip_id, vseq);
+    } else if (vseq < r.stop_sequence) {
+      behindByTrip.set(r.trip_id, vseq);
     }
   }
 
-  if (staleByTrip.size > 0) {
-    // Re-query SQLite for the actual next stop for each stale trip.
-    const nextStopSql = `
-      SELECT
-        route_id, route_short_name, route_color, route_text_color,
-        service_id, trip_id, trip_headsign, direction_id,
-        stop_id, stop_code, stop_name, stop_sequence,
-        arrival_time   AS scheduled_arrival_time,
-        departure_time AS scheduled_departure_time,
-        estimated_arrival_time, estimated_departure_time,
-        arrival_delay, departure_delay, real_time_data,
-        event_sec, win_sec
-      FROM stop_events_3day
-      WHERE trip_id = $tripId
-        AND stop_sequence >= $currentSeq
-        AND win_sec BETWEEN $startSec AND $endSec
-      ORDER BY stop_sequence ASC
-      LIMIT 1
-    `;
+  const stopSelectSql = `
+    SELECT
+      route_id, route_short_name, route_color, route_text_color,
+      service_id, trip_id, trip_headsign, direction_id,
+      stop_id, stop_code, stop_name, stop_sequence,
+      arrival_time   AS scheduled_arrival_time,
+      departure_time AS scheduled_departure_time,
+      estimated_arrival_time, estimated_departure_time,
+      arrival_delay, departure_delay, real_time_data,
+      event_sec, win_sec
+    FROM stop_events_3day
+  `;
 
-    const replacements = await withDb(db => {
-      const out = [];
-      for (const [tripId, currentSeq] of staleByTrip) {
-        const next = db.prepare(nextStopSql).get({ tripId, currentSeq, startSec: secNow, endSec: secEnd });
-        if (next) out.push(next);
-      }
-      return out;
-    }, configPath);
+  const needsReplacement = staleByTrip.size > 0 || behindByTrip.size > 0;
+  if (!needsReplacement) return enriched;
 
-    const replacementsEnriched = await enrichRowsWithRealtime(replacements);
-    const result = [
-      ...enriched.filter(r => !staleByTrip.has(r.trip_id)),
-      ...replacementsEnriched,
-    ];
-    result.sort((a, b) =>
-      (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
-    );
-    return result;
-  }
+  const replacements = await withDb(db => {
+    const out = [];
 
-  return enriched;
+    for (const [tripId, currentSeq] of staleByTrip) {
+      const next = db.prepare(stopSelectSql + `
+        WHERE trip_id = $tripId
+          AND stop_sequence >= $currentSeq
+          AND win_sec BETWEEN $startSec AND $endSec
+        ORDER BY stop_sequence ASC
+        LIMIT 1
+      `).get({ tripId, currentSeq, startSec: secNow, endSec: secEnd });
+      if (next) out.push(next);
+    }
+
+    for (const [tripId, currentSeq] of behindByTrip) {
+      const prev = db.prepare(stopSelectSql + `
+        WHERE trip_id = $tripId
+          AND stop_sequence = $currentSeq
+          AND event_sec >= $minSec
+        LIMIT 1
+      `).get({ tripId, currentSeq, minSec: secNow - MAX_OVERDUE_SEC });
+      if (prev) out.push(prev);
+    }
+
+    return out;
+  }, configPath);
+
+  const replacementsEnriched = await enrichRowsWithRealtime(replacements);
+  const replacedTrips = new Set([...staleByTrip.keys(), ...behindByTrip.keys()]);
+  const result = [
+    ...enriched.filter(r => !replacedTrips.has(r.trip_id)),
+    ...replacementsEnriched,
+  ];
+  result.sort((a, b) =>
+    (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
+  );
+  return result;
 }
 
 export async function getUpcomingByStop(
@@ -651,6 +697,7 @@ export async function getUpcomingByStop(
       se.route_short_name,
       se.route_color,
       se.route_text_color,
+      se.route_type,
       se.service_id,
       se.trip_id,
       se.trip_headsign,
@@ -733,6 +780,7 @@ export async function getUpcomingByStation(
       se.route_short_name,
       se.route_color,
       se.route_text_color,
+      se.route_type,
       se.service_id,
       se.trip_id,
       se.trip_headsign,

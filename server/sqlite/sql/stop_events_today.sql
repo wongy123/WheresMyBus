@@ -5,6 +5,7 @@ SELECT
   r.route_short_name,
   r.route_color,
   r.route_text_color,
+  r.route_type,
   st.service_id,
   st.trip_id,
   st.trip_headsign,

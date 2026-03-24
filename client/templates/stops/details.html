@@ -49,8 +49,8 @@
 
 <h2 class="h5 mb-2">Upcoming Services</h2>
 <div id="stop-timetable"
-     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&page=1&limit=10&hx_target=%23stop-timetable"
-     hx-trigger="load, every 5s"
+     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&page=1&hx_target=%23stop-timetable"
+     hx-trigger="load"
      hx-target="this"
      hx-swap="innerHTML"
      aria-live="polite">
@@ -59,6 +59,34 @@
     <span>Loading...</span>
   </div>
 </div>
+<script>(function () {
+  var ttEl = document.getElementById('stop-timetable');
+  if (!ttEl) return;
+  var _pollTimer = null;
+  var _curPage = 1;
+  var _baseUrl = '{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&hx_target=%23stop-timetable';
+
+  function schedulePoll() {
+    clearTimeout(_pollTimer);
+    _pollTimer = setTimeout(function () {
+      htmx.ajax('GET', _baseUrl + '&page=' + _curPage, { target: ttEl, swap: 'innerHTML' });
+    }, 5000);
+  }
+
+  ttEl.addEventListener('htmx:afterSettle', function () {
+    var pgEl = ttEl.querySelector('[data-tt-page]');
+    if (!pgEl) return;
+    var page = parseInt(pgEl.dataset.ttPage, 10) || 1;
+    var pageCount = parseInt(pgEl.dataset.ttPageCount, 10) || 0;
+    _curPage = (pageCount > 0 && page > pageCount) ? pageCount : page;
+    if (pageCount > 0 && page > pageCount) {
+      clearTimeout(_pollTimer);
+      htmx.ajax('GET', _baseUrl + '&page=' + _curPage, { target: ttEl, swap: 'innerHTML' });
+    } else {
+      schedulePoll();
+    }
+  });
+}());</script>
 
 {% if stop.stop_lat and stop.stop_lon %}
 <div class="row g-3 mb-4 mt-2">
@@ -108,8 +136,16 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19
 }).addTo(map);
 
-// Current stop marker
-L.marker([stopLat, stopLon]).addTo(map)
+// Current stop marker — white dot, colour from dominant route type
+var _curTypes = Object.values(routeTypeMap).map(Number);
+var _curPrimary = [2, 0, 4].find(function(t) { return _curTypes.indexOf(t) >= 0; }) || 3;
+var _curDot = L.divIcon({
+  className: '',
+  html: '<div style="width:16px;height:16px;background:#fff;border-radius:50%;border:3px solid ' +
+        window.TRANSIT.color(_curPrimary, false) + ';box-shadow:0 1px 4px rgba(0,0,0,.35);"></div>',
+  iconSize: [16, 16], iconAnchor: [8, 8]
+});
+L.marker([stopLat, stopLon], { icon: _curDot }).addTo(map)
   .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Current stop</span>')
   .openPopup();
 
@@ -258,7 +294,7 @@ if (navigator.geolocation) {
 </script>
 <div id="stop-vehicle-poll"
      hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/vehicles?duration=3600"
-     hx-trigger="every 5s"
+     hx-trigger="load, every 5s"
      hx-target="this"
      hx-swap="innerHTML"
      style="display:none;" aria-hidden="true"></div>

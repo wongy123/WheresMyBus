@@ -2,6 +2,7 @@
 import {
   getAllStops,
   getNearbyStops,
+  getStopsInBounds,
   getOneStop as getOneStopService,
   getUpcomingByStop,
   getUpcomingByStation,
@@ -48,6 +49,29 @@ export async function nearbyStops(req, res, next) {
     }
     const limit = Math.min(parseInt(req.query.limit || "5", 10), 50);
     const stops = await getNearbyStops(lat, lng, limit);
+    res.json({ data: stops });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/stops/bounds?north=&south=&east=&west=&limit=
+ */
+export async function stopsInBounds(req, res, next) {
+  try {
+    const north = parseFloat(req.query.north);
+    const south = parseFloat(req.query.south);
+    const east  = parseFloat(req.query.east);
+    const west  = parseFloat(req.query.west);
+    if ([north, south, east, west].some(v => !Number.isFinite(v))) {
+      return res.status(400).json({ error: "north, south, east, west are required" });
+    }
+    const limit = Math.min(parseInt(req.query.limit || "750", 10), 2000);
+    const types = req.query.types
+      ? req.query.types.split(',').map(Number).filter(n => [0, 2, 3, 4].includes(n))
+      : null;
+    const stops = await getStopsInBounds(north, south, east, west, types, limit);
     res.json({ data: stops });
   } catch (err) {
     next(err);
