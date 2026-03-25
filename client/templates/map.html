@@ -437,6 +437,10 @@
     setStopHighlight(stopId, lat || null, lon || null);
     setTimeout(function () { map.invalidateSize(); }, 240);
 
+    clearSidebarVehicles();
+    if (sidebarPollInterval) clearInterval(sidebarPollInterval);
+    sidebarPollInterval = setInterval(refreshSidebar, 5000);
+
     fetch(window.API_BASE_URL + '/stops/' + stopId + '/timetable?limit=15&duration=3600')
       .then(function (r) { return r.json(); })
       .then(function (d) { renderDepartures(d.data || []); })
@@ -447,6 +451,8 @@
   }
 
   function closeSidebar() {
+    if (sidebarPollInterval) { clearInterval(sidebarPollInterval); sidebarPollInterval = null; }
+    clearSidebarVehicles();
     sidebar.classList.remove('open');
     mapWrap.classList.remove('sidebar-open');
     clearShape();
@@ -495,33 +501,41 @@
       hs.textContent = row.trip_headsign || '';
       btn.appendChild(hs);
 
-      // Time + mins away
-      var rawTime = row.estimated_departure_time || row.scheduled_departure_time || '';
+      // Time (tt-time toggle — initTimetableFragment populates .tt-min and wires click)
+      var rawTime = window.gtfsTime(row);
       var timeEl = document.createElement('span');
       timeEl.className = 'sidebar-time';
       if (rawTime) {
-        var tp = rawTime.split(':');
-        var tSec = parseInt(tp[0]) * 3600 + parseInt(tp[1]) * 60 + (parseInt(tp[2]) || 0);
-        var now  = new Date();
-        var nSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-        var diff = tSec - nSec;
-        if (diff < -3600) diff += 86400;
-        var mins = Math.round(diff / 60);
-        var minsStr = mins <= 0 ? 'now' : mins + ' min';
+        var absTime = window.formatGtfsTime(rawTime);
         timeEl.innerHTML =
-          '<span style="font-size:.85em;font-weight:400;color:#6c757d;">' + formatGtfsTime(rawTime) + '</span>' +
-          ' <span>' + minsStr + '</span>';
+          '<span class="tt-time" data-time="' + absTime + '" title="Click to toggle" style="cursor:pointer;">' +
+          '<span class="tt-min fw-semibold"></span>' +
+          '<span class="tt-abs d-none text-body-secondary">' + absTime + '</span>' +
+          '</span>';
       }
       btn.appendChild(timeEl);
 
       // Delay badge
-      var di = delayInfo(row.departure_delay);
+      var di = window.delayInfo(window.gtfsDelay(row));
       var delayEl = document.createElement('span');
       delayEl.className = 'sidebar-delay';
       delayEl.textContent = di.label;
       delayEl.style.background = di.bg;
       delayEl.style.color = di.fg;
       btn.appendChild(delayEl);
+
+      // RT freshness icon
+      if (row.real_time_data && di.label !== 'Scheduled') {
+        var rtEl = document.createElement('span');
+        rtEl.className = 'rt-icon';
+        rtEl.tabIndex = 0;
+        rtEl.setAttribute('data-bs-toggle', 'popover');
+        rtEl.setAttribute('data-bs-placement', 'top');
+        rtEl.setAttribute('data-updated-at', row.realtime_updated_at || '');
+        rtEl.style.cssText = 'cursor:pointer; display:inline-flex; align-items:center;';
+        rtEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:1rem; line-height:1; color:#198754;">sensors</span>';
+        btn.appendChild(rtEl);
+      }
 
       var shapeKey = row.route_id + '_' + row.direction_id + '_' + (row.trip_id || '');
       btn.addEventListener('click', function () {
@@ -530,54 +544,92 @@
         if (wasActive) return;
         btn.classList.add('active');
         btn.style.setProperty('--row-color', color);
-        var vLabel = row.vehicle_label ? ' · ' + escHtml(String(row.vehicle_label)) : '';
-        var vEtaStr = '';
-        var vRawTime = row.estimated_departure_time || row.scheduled_departure_time || '';
-        if (vRawTime) {
-          var vp = vRawTime.split(':');
-          var vSec = parseInt(vp[0]) * 3600 + parseInt(vp[1]) * 60 + (parseInt(vp[2]) || 0);
-          var vNow = new Date();
-          var vNowSec = vNow.getHours() * 3600 + vNow.getMinutes() * 60 + vNow.getSeconds();
-          var vDiff = vSec - vNowSec;
-          if (vDiff < -3600) vDiff += 86400;
-          var vMins = Math.round(vDiff / 60);
-          vEtaStr = vMins <= 0 ? 'now' : vMins + ' min';
-        }
+        var vRawTime = window.gtfsTime(row);
+        var vEtaStr = vRawTime ? window.fmtMins(window.minsFromNow(vRawTime)) : '';
         var vPopup = row.vehicle_latitude && row.vehicle_longitude
-          ? '<b>' + escHtml(row.route_short_name || row.route_id) + '</b>' + vLabel +
-            (row.trip_headsign ? ' — ' + escHtml(row.trip_headsign) : '') +
-            (vEtaStr ? '<br><span class="map-popup-meta">' + vEtaStr + '</span>' : '') +
-            '<br><a href="' + BASE_PATH + '/routes/' + escHtml(row.route_id) +
-            '" class="map-popup-link">View route</a>'
+          ? window.TRANSIT.stopVehiclePopup({
+              routeShortName: escHtml(row.route_short_name || row.route_id),
+              label: row.vehicle_label ? escHtml(String(row.vehicle_label)) : '',
+              headsign: row.trip_headsign ? escHtml(row.trip_headsign) : '',
+              etaStr: vEtaStr,
+              routeId: escHtml(row.route_id),
+              basePath: BASE_PATH
+            })
           : null;
         drawRouteShape(row.route_id, row.direction_id, row.route_color,
-                       row.route_type, row.vehicle_latitude, row.vehicle_longitude, vPopup, shapeKey);
+                       row.route_type, row.vehicle_latitude, row.vehicle_longitude, vPopup, shapeKey, row.trip_id);
       });
 
       frag.appendChild(btn);
     });
     sidebarBody.innerHTML = '';
     sidebarBody.appendChild(frag);
+    window.initTimetableFragment();
+    updateSidebarVehicles(rows);
   }
 
-  function formatGtfsTime(t) {
-    if (!t) return '';
-    var parts = String(t).split(':');
-    if (parts.length < 2) return t;
-    var h = parseInt(parts[0], 10) % 24;
-    return (h < 10 ? '0' : '') + h + ':' + parts[1];
+  function refreshSidebar() {
+    if (!currentStopId) return;
+    fetch(window.API_BASE_URL + '/stops/' + currentStopId + '/timetable?limit=15&duration=3600')
+      .then(function (r) { return r.json(); })
+      .then(function (d) { renderDepartures(d.data || []); })
+      .catch(function () {});
   }
 
-  function delayInfo(seconds) {
-    if (seconds === null || seconds === undefined) {
-      return { label: 'Scheduled', bg: '#6c757d', fg: '#fff' };
+  function clearSidebarVehicles() {
+    Object.values(sidebarVehicleMarkers).forEach(function (m) { map.removeLayer(m); });
+    sidebarVehicleMarkers = {};
+  }
+
+  function updateSidebarVehicles(rows) {
+    // Update position of the active vehicle marker (from a clicked departure row)
+    if (activeVehicleMarker && activeTripId) {
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].trip_id === activeTripId &&
+            rows[i].vehicle_latitude && rows[i].vehicle_longitude) {
+          activeVehicleMarker.setLatLng([rows[i].vehicle_latitude, rows[i].vehicle_longitude]);
+          break;
+        }
+      }
     }
-    var s = parseInt(seconds, 10);
-    if (s === 0) return { label: 'On time', bg: '#198754', fg: '#fff' };
-    var mins = Math.floor(Math.abs(s) / 60);
-    if (s > 0) return { label: mins + 'm late', bg: '#ffc107', fg: '#000' };
-    return { label: mins + 'm early', bg: '#0dcaf0', fg: '#000' };
+
+    // Build vehicle list for all OTHER vehicles at this stop that have GPS
+    var vehicles = [];
+    rows.forEach(function (r) {
+      if (!r.vehicle_latitude || !r.vehicle_longitude) return;
+      if (r.trip_id === activeTripId) return;
+      vehicles.push({
+        trip_id:        r.trip_id,
+        lat:            r.vehicle_latitude,
+        lon:            r.vehicle_longitude,
+        route_color:    r.route_color,
+        route_type:     r.route_type,
+        route_short_name: r.route_short_name,
+        vehicle_label:  r.vehicle_label,
+        trip_headsign:  r.trip_headsign,
+        _rawTime:       window.gtfsTime(r),
+        _routeId:       r.route_id,
+        _dirId:         r.direction_id,
+      });
+    });
+
+    window.TRANSIT.updateVehicleMarkers(map, sidebarVehicleMarkers, vehicles, {
+      makePopup: function (v) {
+        var etaStr = v._rawTime ? window.fmtMins(window.minsFromNow(v._rawTime)) : '';
+        return window.TRANSIT.stopVehiclePopup({
+          routeShortName: escHtml(v.route_short_name || v._routeId),
+          label:          v.vehicle_label ? escHtml(String(v.vehicle_label)) : '',
+          headsign:       v.trip_headsign ? escHtml(v.trip_headsign) : '',
+          etaStr:         etaStr,
+          routeId:        escHtml(v._routeId),
+          basePath:       BASE_PATH
+        });
+      },
+      getColor:    function (v) { return v.route_color ? '#' + v.route_color : '#0d6efd'; },
+      getIconName: function (v) { return window.TRANSIT.vehicleIcon(v.route_type || 3); }
+    });
   }
+
 
   // ── Route shape ───────────────────────────────────────────────────────────
   var activeShapeKey         = null;
@@ -585,6 +637,9 @@
   var activeVehicleMarker    = null;
   var activeRouteStopMarkers = [];
   var activeRouteStopIds     = new Set();
+  var activeTripId           = null;
+  var sidebarVehicleMarkers  = {};
+  var sidebarPollInterval    = null;
 
   function drawRouteShape(routeId, directionId, routeColor, routeType, vLat, vLon, vPopup, shapeKey) {
     activeShapeKey = shapeKey || (routeId + '_' + directionId);
@@ -615,13 +670,7 @@
           map.removeLayer(stopMarkerMap[s.stop_id]);
           delete stopMarkerMap[s.stop_id];
         }
-        var dot = L.divIcon({
-          className: '',
-          html: '<div style="width:12px;height:12px;background:#fff;border-radius:50%;border:3px solid ' +
-                color + ';box-shadow:0 1px 4px rgba(0,0,0,.35);"></div>',
-          iconSize: [12, 12], iconAnchor: [6, 6]
-        });
-        var m = L.marker([s.stop_lat, s.stop_lon], { icon: dot, zIndexOffset: 300 }).addTo(map);
+        var m = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeRouteDot(color), zIndexOffset: 300 }).addTo(map);
         m.on('click', function () {
           openSidebar(s.stop_id, s.stop_name, s.stop_code || '', s.stop_lat, s.stop_lon);
         });
@@ -635,6 +684,10 @@
           zIndexOffset: 1000
         }).addTo(map);
         if (vPopup) activeVehicleMarker.bindPopup(vPopup);
+        var _markerToOpen = activeVehicleMarker;
+        map.once('moveend', function () {
+          if (_markerToOpen && map.hasLayer(_markerToOpen)) _markerToOpen.openPopup();
+        });
         map.flyTo([vLat, vLon], Math.max(map.getZoom(), 14));
       }
     }).catch(function () {});

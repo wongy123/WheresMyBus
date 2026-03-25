@@ -50,12 +50,6 @@
   // Current page no longer exists — jump to last page.
   htmx.ajax('GET', {{ (_frag_url ~ '&page=' ~ page_count) | tojson }},
     { target: {{ hx_target | tojson }}, swap: 'innerHTML' });
-  {% else %}
-  // Keep the auto-refresh URL on the current page so polling doesn't reset to page 1.
-  var _ttEl = document.querySelector({{ hx_target | tojson }});
-  if (_ttEl && _ttEl.hasAttribute('hx-get')) {
-    _ttEl.setAttribute('hx-get', {{ (_frag_url ~ '&page=' ~ page) | tojson }});
-  }
   {% endif %}
   {% endif %}
 

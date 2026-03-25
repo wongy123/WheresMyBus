@@ -59,6 +59,28 @@
         iconSize: [size, size], iconAnchor: [size / 2, size / 2]
       });
     },
+    // Build a vehicle popup for stop-context maps (stop detail page, main map sidebar).
+    // Shows route name, label, headsign, ETA, and a "View route" link.
+    // opts: { routeShortName, label, headsign, etaStr, routeId, basePath }
+    stopVehiclePopup: function (opts) {
+      var label = opts.label ? ' · ' + opts.label : '';
+      return '<b>' + (opts.routeShortName || '') + '</b>' + label +
+        (opts.headsign ? ' — ' + opts.headsign : '') +
+        (opts.etaStr ? '<br><span class="map-popup-meta">' + opts.etaStr + '</span>' : '') +
+        (opts.basePath && opts.routeId
+          ? '<br><a href="' + opts.basePath + '/routes/' + encodeURIComponent(opts.routeId) + '" class="map-popup-link">View route</a>'
+          : '');
+    },
+    // Build a vehicle popup for route-context maps (route diagram / details page).
+    // Shows headsign, label, and next stop with ETA.
+    // opts: { headsign, label, stopName, etaStr }
+    routeVehiclePopup: function (opts) {
+      var label = opts.label ? ' · ' + opts.label : '';
+      return '<b>' + (opts.headsign || 'Service') + '</b>' + label +
+        (opts.stopName
+          ? '<br><span class="map-popup-meta">Next: ' + opts.stopName + (opts.etaStr ? ' · ' + opts.etaStr : '') + '</span>'
+          : '');
+    },
     makeVehicleIcon: function (color, iconName) {
       return L.divIcon({
         className: '',
@@ -68,6 +90,57 @@
               '<span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">' +
               iconName + '</span></div>',
         iconSize: [28, 28], iconAnchor: [14, 14]
+      });
+    },
+    // Build a stop marker popup: bold stop name + "View Stop" link.
+    // s: object with stop_name and stop_id. basePath: app base path string.
+    makeStopPopup: function (s, basePath) {
+      return '<b>' + s.stop_name + '</b>' +
+        '<br><a href="' + basePath + '/stops/' + s.stop_id + '" class="map-popup-link">View Stop</a>';
+    },
+    // Create a route stop dot divIcon.
+    // color: css color string for the border. size: diameter in px (default 12).
+    makeRouteDot: function (color, size) {
+      size = size || 12;
+      return L.divIcon({
+        className: '',
+        html: '<div style="width:' + size + 'px;height:' + size + 'px;background:#fff;border-radius:50%;' +
+              'border:3px solid ' + color + ';box-shadow:0 1px 4px rgba(0,0,0,.35);"></div>',
+        iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+      });
+    },
+    // Synchronise a map's vehicle markers with a fresh vehicles array.
+    // theMap:    Leaflet map instance
+    // markerMap: { [trip_id]: L.Marker } — mutated in place (add/update/remove)
+    // vehicles:  array with .trip_id, .lat, .lon
+    // opts: {
+    //   makePopup:   function(v) → html string
+    //   getColor:    function(v) → css color  (new markers only; default: vehicleColor(3))
+    //   getIconName: function(v) → icon name  (new markers only; default: vehicleIcon(3))
+    //   onNewMarker: function(marker, v)       (optional, called after marker added)
+    // }
+    updateVehicleMarkers: function (theMap, markerMap, vehicles, opts) {
+      var seen = {};
+      vehicles.forEach(function (v) {
+        if (!v.lat || !v.lon) return;
+        seen[v.trip_id] = true;
+        var popup = opts.makePopup(v);
+        if (markerMap[v.trip_id]) {
+          markerMap[v.trip_id].setLatLng([v.lat, v.lon]);
+          markerMap[v.trip_id].setPopupContent(popup);
+        } else {
+          var color    = opts.getColor    ? opts.getColor(v)    : window.TRANSIT.vehicleColor(3);
+          var iconName = opts.getIconName ? opts.getIconName(v) : window.TRANSIT.vehicleIcon(3);
+          var marker = L.marker([v.lat, v.lon], {
+            icon: window.TRANSIT.makeVehicleIcon(color, iconName),
+            zIndexOffset: 1000
+          }).addTo(theMap).bindPopup(popup);
+          if (opts.onNewMarker) opts.onNewMarker(marker, v);
+          markerMap[v.trip_id] = marker;
+        }
+      });
+      Object.keys(markerMap).forEach(function (tid) {
+        if (!seen[tid]) { theMap.removeLayer(markerMap[tid]); delete markerMap[tid]; }
       });
     }
   };

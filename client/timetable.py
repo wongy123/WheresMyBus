@@ -134,7 +134,8 @@ def hx_timetable_route_diagram(route_id: str):
     now_bne = datetime.now(_BRISBANE_TZ)
     now_sec = now_bne.hour * 3600 + now_bne.minute * 60 + now_bne.second
     for t in trips:
-        eta_str = t.get("estimated_arrival_time") or t.get("scheduled_arrival_time")
+        eta_str = (t.get("estimated_departure_time") or t.get("scheduled_departure_time") or
+                   t.get("estimated_arrival_time")   or t.get("scheduled_arrival_time"))
         eta_sec = _hms_to_sec(eta_str)
         if eta_sec is not None:
             diff = eta_sec - now_sec
@@ -173,11 +174,11 @@ def hx_timetable_route_diagram(route_id: str):
     def _advance_seq(trip_row, veh_seq):
         """Return (adjusted_seq, was_advanced).
 
-        Advances to the next stop when either:
-        1. The departure time for the reported stop has already passed (RT data
-           is current), OR
-        2. The bus's GPS position projects past the reported stop toward the
-           next one (catches stale RT data even right after departure).
+        Advances to the next stop when the estimated departure time for the
+        reported stop has already passed and real-time trip data is present.
+        vehicle_current_stop_sequence is authoritative for which stop the
+        vehicle is heading to; the server already corrects the schedule row
+        when it disagrees, so no GPS projection is needed here.
         Only advances by one position.
         """
         try:
@@ -188,10 +189,10 @@ def hx_timetable_route_diagram(route_id: str):
             return veh_seq, False  # already at last stop
         nxt = sorted_seqs[idx + 1]
 
-        # Check 1: departure time has passed — only reliable when real-time delay
-        # data is present.  Without it, estimated_departure_time == scheduled, so
-        # a late bus with no trip-update would incorrectly advance past a stop it
-        # hasn't reached yet.
+        # Advance only when real-time trip data is present and the estimated
+        # departure time has passed.  Without real_time_data the estimated time
+        # equals the schedule, so a late bus would incorrectly advance past a
+        # stop it hasn't reached yet.
         if trip_row.get("real_time_data"):
             dep_sec = _hms_to_sec(
                 trip_row.get("estimated_departure_time") or trip_row.get("scheduled_departure_time")
@@ -201,28 +202,6 @@ def hx_timetable_route_diagram(route_id: str):
                 if diff < -86400 + 3600:  # handle rollover past midnight
                     diff += 86400
                 if diff < 0:
-                    return nxt, True
-
-        # Check 2: GPS vector projection — bus is past the reported stop in the
-        # direction of the next stop.  We normalise the projection so the
-        # threshold is in degrees regardless of stop spacing, and require at
-        # least ~15 m (≈ 0.00015°) to avoid triggering on GPS noise when the
-        # bus is merely parked at or approaching the stop.
-        veh_lat = trip_row.get("vehicle_latitude")
-        veh_lon = trip_row.get("vehicle_longitude")
-        if (veh_lat and veh_lon
-                and veh_seq in seq_to_stop_coords
-                and nxt in seq_to_stop_coords):
-            cur_lat, cur_lon = seq_to_stop_coords[veh_seq]
-            nxt_lat, nxt_lon = seq_to_stop_coords[nxt]
-            d_lat, d_lon = nxt_lat - cur_lat, nxt_lon - cur_lon
-            d_mag = (d_lat ** 2 + d_lon ** 2) ** 0.5
-            if d_mag > 0:
-                b_lat = float(veh_lat) - cur_lat
-                b_lon = float(veh_lon) - cur_lon
-                # Normalised projection in degrees along the route direction
-                proj = (b_lat * d_lat + b_lon * d_lon) / d_mag
-                if proj > 0.00015:  # ~16 m minimum past the stop
                     return nxt, True
 
         return veh_seq, False

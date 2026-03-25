@@ -91,7 +91,7 @@
 var tableInterval = null;
 var diagramInterval = setInterval(function () {
   htmx.trigger(document.getElementById('tt-route-diagram'), 'refresh');
-}, 30000);
+}, 5000);
 
 function showView(view) {
   var tableDiv = document.getElementById('tt-route-results');
@@ -109,7 +109,7 @@ function showView(view) {
     if (!diagramInterval) {
       diagramInterval = setInterval(function () {
         htmx.trigger(diagramDiv, 'refresh');
-      }, 30000);
+      }, 5000);
     }
   } else {
     diagramDiv.classList.add('d-none');
@@ -123,7 +123,7 @@ function showView(view) {
       htmx.trigger(tableDiv, 'refresh');
       tableInterval = setInterval(function () {
         htmx.trigger(tableDiv, 'refresh');
-      }, 30000);
+      }, 5000);
     }
   }
 
@@ -155,148 +155,13 @@ function showView(view) {
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>var _diagBasePath = {{ BASE_PATH | tojson }};</script>
+<script src="{{ url_for('static', filename='diagmap.js') }}"></script>
 <script>
-var _diagBasePath = {{ BASE_PATH | tojson }};
-var _diagMap = null;
-var _diagFocusMarker = null;
-var _diagNearbyMarkers = {};
-var _diagRouteMarkers = {};
-var _diagVehicleMarkers = {};
-var _diagPolyline = null;
-var _diagMoveTimer = null;
-var _diagFocusStopId = null;
-
-function _diagMakeIcon(s) {
-  return window.TRANSIT.makeStopIcon(s);
-}
-
-function _diagDrawRoute() {
-  if (_diagPolyline) { _diagMap.removeLayer(_diagPolyline); _diagPolyline = null; }
-  Object.values(_diagRouteMarkers).forEach(function(m) { _diagMap.removeLayer(m); });
-  _diagRouteMarkers = {};
-  var route = window._diagRoute;
-  if (!route || !route.stops) return;
-  var valid = route.stops.filter(function(s) { return s.stop_lat && s.stop_lon; });
-  valid.forEach(function(s) {
-    var dot = L.divIcon({
-      className: '',
-      html: '<div style="width:14px;height:14px;background:white;border-radius:50%;' +
-            'border:3px solid ' + route.color + ';box-shadow:0 1px 4px rgba(0,0,0,.45);"></div>',
-      iconSize: [14, 14], iconAnchor: [7, 7]
-    });
-    _diagRouteMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: dot })
-      .addTo(_diagMap)
-      .bindPopup('<b>' + s.stop_name + '</b><br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" class="map-popup-link">View Stop</a>');
-  });
-  fetch(window.API_BASE_URL + '/routes/' + route.routeId + '/shape?direction=' + route.direction)
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var coords = (data.data || []).map(function(p) { return [p.lat, p.lon]; });
-      if (coords.length < 2) coords = valid.map(function(s) { return [s.stop_lat, s.stop_lon]; });
-      if (_diagPolyline) _diagMap.removeLayer(_diagPolyline);
-      _diagPolyline = L.polyline(coords, { color: route.color, weight: 4, opacity: 0.75, lineJoin: 'round' }).addTo(_diagMap);
-    })
-    .catch(function() {
-      if (valid.length >= 2 && !_diagPolyline)
-        _diagPolyline = L.polyline(valid.map(function(s) { return [s.stop_lat, s.stop_lon]; }),
-          { color: route.color, weight: 4, opacity: 0.75 }).addTo(_diagMap);
-    });
-}
-
-function _diagLoadNearby() {
-  var center = _diagMap.getCenter();
-  fetch(window.API_BASE_URL + '/stops/nearby?lat=' + center.lat + '&lng=' + center.lng + '&limit=30')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      Object.values(_diagNearbyMarkers).forEach(function(m) { _diagMap.removeLayer(m); });
-      _diagNearbyMarkers = {};
-      (data.data || []).forEach(function(s) {
-        if (!s.stop_lat || !s.stop_lon || s.stop_id === _diagFocusStopId || _diagRouteMarkers[s.stop_id]) return;
-        var popup = '<b>' + s.stop_name + '</b>' +
-          '<br><a href="' + _diagBasePath + '/stops/' + s.stop_id + '" class="map-popup-link">View Stop</a>';
-        _diagNearbyMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: _diagMakeIcon(s) })
-          .addTo(_diagMap).bindPopup(popup);
-      });
-    })
-    .catch(function() {});
-}
-
-function _diagSetFocus(stopName, lat, lon) {
-  _diagDrawRoute();
-  _diagDrawVehicles();
-  if (_diagFocusMarker) _diagMap.removeLayer(_diagFocusMarker);
-  _diagFocusMarker = L.marker([lat, lon]).addTo(_diagMap)
-    .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Selected stop</span>')
-    .openPopup();
-  _diagMap.setView([lat, lon], 16);
-  _diagLoadNearby();
-}
-
-function _diagDrawVehicles() {
-  if (!_diagMap) return;
-  var route = window._diagRoute;
-  if (!route || !route.vehicles) return;
-  var seen = {};
-  route.vehicles.forEach(function(v) {
-    if (!v.lat || !v.lon) return;
-    seen[v.trip_id] = true;
-    var label = v.label ? ' · ' + v.label : '';
-    var eta = v.minutes_away != null
-      ? (v.minutes_away === 0 ? 'now' : 'in ' + v.minutes_away + ' min')
-      : '';
-    var popup = '<b>' + (v.headsign || 'Service') + '</b>' + label +
-      (v.stop_name ? '<br><span class="map-popup-meta">Next: ' + v.stop_name + (eta ? ' · ' + eta : '') + '</span>' : '');
-    if (_diagVehicleMarkers[v.trip_id]) {
-      _diagVehicleMarkers[v.trip_id].setLatLng([v.lat, v.lon]);
-      _diagVehicleMarkers[v.trip_id].setPopupContent(popup);
-    } else {
-      _diagVehicleMarkers[v.trip_id] = L.marker([v.lat, v.lon], {
-        icon: window.TRANSIT.makeVehicleIcon(route.color, route.vehicleIcon),
-        zIndexOffset: 1000
-      }).addTo(_diagMap).bindPopup(popup);
-    }
-  });
-  Object.keys(_diagVehicleMarkers).forEach(function(tid) {
-    if (!seen[tid]) { _diagMap.removeLayer(_diagVehicleMarkers[tid]); delete _diagVehicleMarkers[tid]; }
-  });
-}
-
-function _diagFitRoute() {
-  if (_diagPolyline) _diagMap.fitBounds(_diagPolyline.getBounds(), { padding: [20, 20] });
-}
-
-document.addEventListener('htmx:afterSettle', function(e) {
+document.addEventListener('htmx:afterSettle', function (e) {
   if (e.detail.target && e.detail.target.id === 'tt-route-diagram') {
     _diagDrawVehicles();
   }
 });
-
-function showStopMap(stopId, stopName, lat, lon) {
-  _diagFocusStopId = stopId;
-  document.getElementById('stopMapModalLabel').textContent = stopName;
-  document.getElementById('diagram-stop-link').href = _diagBasePath + '/stops/' + stopId;
-  var modalEl = document.getElementById('stopMapModal');
-  if (_diagMap && modalEl.classList.contains('show')) {
-    _diagSetFocus(stopName, lat, lon);
-    return;
-  }
-  modalEl.addEventListener('shown.bs.modal', function() {
-    if (!_diagMap) {
-      _diagMap = L.map('diagram-stop-map').setView([lat, lon], 16);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19
-      }).addTo(_diagMap);
-      _diagMap.on('moveend', function() {
-        clearTimeout(_diagMoveTimer);
-        _diagMoveTimer = setTimeout(_diagLoadNearby, 400);
-      });
-    } else {
-      _diagMap.invalidateSize();
-    }
-    _diagSetFocus(stopName, lat, lon);
-  }, { once: true });
-  bootstrap.Modal.getOrCreateInstance(modalEl).show();
-}
 </script>
 {% endblock %}

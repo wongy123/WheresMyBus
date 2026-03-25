@@ -94,7 +94,8 @@ def hx_stop_vehicles(stop_id: str):
                 "lat": row["vehicle_latitude"],
                 "lon": row["vehicle_longitude"],
                 "label": row.get("vehicle_label") or "",
-                "eta": row.get("estimated_arrival_time") or row.get("scheduled_arrival_time") or "",
+                "eta": (row.get("estimated_departure_time") or row.get("scheduled_departure_time") or
+                        row.get("estimated_arrival_time")   or row.get("scheduled_arrival_time") or ""),
             })
 
     return render_template("stops/_vehicle_positions.html", vehicles=vehicles)
