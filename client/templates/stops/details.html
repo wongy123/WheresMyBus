@@ -49,44 +49,17 @@
 
 <h2 class="h5 mb-2">Upcoming Services</h2>
 <div id="stop-timetable"
-     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&page=1&hx_target=%23stop-timetable"
-     hx-trigger="load"
+     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&hx_target=%23stop-timetable"
+     hx-trigger="load, every 5s"
      hx-target="this"
      hx-swap="innerHTML"
+     hx-vals='js:{"page": document.querySelector("#stop-timetable [data-tt-page]")?.dataset.ttPage || "1"}'
      aria-live="polite">
   <div class="text-muted small d-flex align-items-center gap-2">
     <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
     <span>Loading...</span>
   </div>
 </div>
-<script>(function () {
-  var ttEl = document.getElementById('stop-timetable');
-  if (!ttEl) return;
-  var _pollTimer = null;
-  var _curPage = 1;
-  var _baseUrl = '{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&hx_target=%23stop-timetable';
-
-  function schedulePoll() {
-    clearTimeout(_pollTimer);
-    _pollTimer = setTimeout(function () {
-      htmx.ajax('GET', _baseUrl + '&page=' + _curPage, { target: ttEl, swap: 'innerHTML' });
-    }, 5000);
-  }
-
-  ttEl.addEventListener('htmx:afterSettle', function () {
-    var pgEl = ttEl.querySelector('[data-tt-page]');
-    if (!pgEl) return;
-    var page = parseInt(pgEl.dataset.ttPage, 10) || 1;
-    var pageCount = parseInt(pgEl.dataset.ttPageCount, 10) || 0;
-    _curPage = (pageCount > 0 && page > pageCount) ? pageCount : page;
-    if (pageCount > 0 && page > pageCount) {
-      clearTimeout(_pollTimer);
-      htmx.ajax('GET', _baseUrl + '&page=' + _curPage, { target: ttEl, swap: 'innerHTML' });
-    } else {
-      schedulePoll();
-    }
-  });
-}());</script>
 
 {% if stop.stop_lat and stop.stop_lon %}
 <div class="row g-3 mb-4 mt-2">
@@ -139,13 +112,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 // Current stop marker — white dot, colour from dominant route type
 var _curTypes = Object.values(routeTypeMap).map(Number);
 var _curPrimary = [2, 0, 4].find(function(t) { return _curTypes.indexOf(t) >= 0; }) || 3;
-var _curDot = L.divIcon({
-  className: '',
-  html: '<div style="width:16px;height:16px;background:#fff;border-radius:50%;border:3px solid ' +
-        window.TRANSIT.color(_curPrimary, false) + ';box-shadow:0 1px 4px rgba(0,0,0,.35);"></div>',
-  iconSize: [16, 16], iconAnchor: [8, 8]
-});
-L.marker([stopLat, stopLon], { icon: _curDot }).addTo(map)
+L.marker([stopLat, stopLon], { icon: window.TRANSIT.makeRouteDot(window.TRANSIT.color(_curPrimary, false), 16) }).addTo(map)
   .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Current stop</span>')
   .openPopup();
 
@@ -159,10 +126,8 @@ function makeNearbyIcon(s) {
 var nearbyMarkerMap = {};
 nearby.forEach(function(s) {
   if (!s.stop_lat || !s.stop_lon) return;
-  var popup =
-    '<b>' + s.stop_name + '</b>' +
-    '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
-  var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) }).addTo(map).bindPopup(popup);
+  var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) })
+    .addTo(map).bindPopup(window.TRANSIT.makeStopPopup(s, BASE_PATH));
   nearbyMarkerMap[s.stop_id] = m;
 });
 
@@ -190,10 +155,8 @@ function loadStopsNearCenter() {
         if (!s.stop_lat || !s.stop_lon) return;
         if (s.stop_id === stopId) return;
         if (nearbyMarkerMap[s.stop_id]) return;
-        var popup =
-          '<b>' + s.stop_name + '</b>' +
-          '<br><a href="' + BASE_PATH + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
-        var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) }).addTo(map).bindPopup(popup);
+        var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) })
+          .addTo(map).bindPopup(window.TRANSIT.makeStopPopup(s, BASE_PATH));
         dynamicMarkerMap[s.stop_id] = m;
       });
     })
@@ -211,62 +174,44 @@ var activeRoutePolyline = null;
 
 
 window.stopMapAddVehicles = function(vehicles) {
-  var seen = {};
-  vehicles.forEach(function(v) {
-    if (!v.lat || !v.lon) return;
-    seen[v.trip_id] = true;
-    var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
-    var color = v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
-
-    var etaStr = '';
-    if (v.eta) {
-      var p = v.eta.split(':');
-      var tSec = parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + (parseInt(p[2]) || 0);
-      var now = new Date();
-      var nSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-      var diff = tSec - nSec;
-      if (diff < -3600) diff += 86400;
-      var mins = Math.round(diff / 60);
-      etaStr = mins <= 0 ? 'now' : mins + ' min';
+  window.TRANSIT.updateVehicleMarkers(map, vehicleMarkerMap, vehicles, {
+    makePopup: function (v) {
+      return window.TRANSIT.stopVehiclePopup({
+        routeShortName: v.route_short_name,
+        label: v.label || '',
+        headsign: v.trip_headsign || '',
+        etaStr: v.eta ? window.fmtMins(window.minsFromNow(v.eta)) : '',
+        routeId: v.route_id,
+        basePath: BASE_PATH
+      });
+    },
+    getColor: function (v) {
+      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+      return v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
+    },
+    getIconName: function (v) {
+      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+      return window.TRANSIT.vehicleIcon(rt);
+    },
+    onNewMarker: function (marker, v) {
+      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+      var col = v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
+      marker.on('click', function () {
+        if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+        fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(v.route_id) + '/shape?direction=' + (v.direction_id || 0))
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            var pts = (data.data || []).map(function (pt) { return [pt.lat, pt.lon]; });
+            if (pts.length) {
+              activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
+            }
+          })
+          .catch(function () {});
+      });
+      marker.on('popupclose', function () {
+        if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+      });
     }
-    var label = v.label ? ' · ' + v.label : '';
-    var popup = '<b>' + v.route_short_name + '</b>' + label +
-      (v.trip_headsign ? ' — ' + v.trip_headsign : '') +
-      (etaStr ? '<br><span class="map-popup-meta">' + etaStr + '</span>' : '') +
-      '<br><a href="' + BASE_PATH + '/routes/' + encodeURIComponent(v.route_id) + '" class="map-popup-link">View Route</a>';
-
-    if (vehicleMarkerMap[v.trip_id]) {
-      vehicleMarkerMap[v.trip_id].setLatLng([v.lat, v.lon]);
-      vehicleMarkerMap[v.trip_id].setPopupContent(popup);
-    } else {
-      var marker = L.marker([v.lat, v.lon], {
-        icon: window.TRANSIT.makeVehicleIcon(color, window.TRANSIT.vehicleIcon(rt)),
-        zIndexOffset: 1000
-      }).addTo(map).bindPopup(popup);
-
-      (function(vv, col) {
-        marker.on('click', function() {
-          if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
-          fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(vv.route_id) + '/shape?direction=' + (vv.direction_id || 0))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-              var pts = (data.data || []).map(function(pt) { return [pt.lat, pt.lon]; });
-              if (pts.length) {
-                activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
-              }
-            })
-            .catch(function() {});
-        });
-        marker.on('popupclose', function() {
-          if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
-        });
-      }(v, color));
-
-      vehicleMarkerMap[v.trip_id] = marker;
-    }
-  });
-  Object.keys(vehicleMarkerMap).forEach(function(tid) {
-    if (!seen[tid]) { map.removeLayer(vehicleMarkerMap[tid]); delete vehicleMarkerMap[tid]; }
   });
 };
 

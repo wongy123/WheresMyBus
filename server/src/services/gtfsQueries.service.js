@@ -91,6 +91,7 @@ function applyRealtimeToRow(row, rt, vpos) {
   // Delay / stop-update data — long TTL key; persists after position expires
   const seq = row.stop_sequence ?? row.stopSequence ?? null;
   let su = null;
+  let suIsPreceding = false;
   if (seq != null) {
     su = (rt.stopUpdates || []).find(u => Number(u.stopSequence) === Number(seq));
   }
@@ -99,11 +100,13 @@ function applyRealtimeToRow(row, rt, vpos) {
   }
   // GTFS-RT incremental feeds only include stops from the vehicle's current position onwards.
   // If no exact match, propagate delay from the closest preceding stop update.
+  // Mark it as preceding so we only use delay-relative fields, not absolute timestamps
+  // (an absolute departureTime from stop N would be wrong if applied to a later stop M).
   if (!su && seq != null && rt.stopUpdates?.length) {
     const preceding = rt.stopUpdates
       .filter(u => u.stopSequence != null && Number(u.stopSequence) < Number(seq))
       .sort((a, b) => Number(b.stopSequence) - Number(a.stopSequence));
-    if (preceding.length) su = preceding[0];
+    if (preceding.length) { su = preceding[0]; suIsPreceding = true; }
   }
 
   let appliedRT = false;
@@ -125,7 +128,9 @@ function applyRealtimeToRow(row, rt, vpos) {
         enriched.estimated_arrival_time = secToHms(schedSec + Number(su.arrivalDelay));
         appliedRT = true;
       }
-    } else if (su.arrivalTime != null) {
+    } else if (su.arrivalTime != null && !suIsPreceding) {
+      // Only use absolute timestamp from an exact-match update.
+      // A preceding stop's arrivalTime belongs to that stop, not this one.
       const hms = epochToHms(su.arrivalTime);
       if (hms) { enriched.estimated_arrival_time = hms; appliedRT = true; }
     }
@@ -137,7 +142,9 @@ function applyRealtimeToRow(row, rt, vpos) {
         enriched.estimated_departure_time = secToHms(schedSec + Number(su.departureDelay));
         appliedRT = true;
       }
-    } else if (su.departureTime != null) {
+    } else if (su.departureTime != null && !suIsPreceding) {
+      // Only use absolute timestamp from an exact-match update.
+      // A preceding stop's departureTime belongs to that stop, not this one.
       const hms = epochToHms(su.departureTime);
       if (hms) { enriched.estimated_departure_time = hms; appliedRT = true; }
     }
@@ -822,9 +829,6 @@ export async function getUpcomingByStation(
     // Position ghost filter: vehicle has already passed this stop
     if (r.vehicle_current_stop_sequence !== null &&
         r.vehicle_current_stop_sequence > r.stop_sequence) return false;
-    // Time ghost filter: effective arrival is more than 60s in the past
-    const effectiveSec = r.win_sec + (r.arrival_delay || 0);
-    if (effectiveSec < startSec - 60) return false;
     return true;
   });
   visible.sort((a, b) =>

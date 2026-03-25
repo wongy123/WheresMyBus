@@ -42,7 +42,7 @@ def create_app():
             if seconds is None:
                 return {"status": "scheduled", "label": "Scheduled", "cls": "text-bg-secondary"}
             s = int(seconds)
-            if s == 0:
+            if abs(s) < 30:
                 return {"status": "ontime", "label": "On time", "cls": "text-bg-success"}
             mins = abs(s) // 60
             if s > 0:

@@ -1,6 +1,41 @@
 // Shared helpers for timetable fragments.
 // Loaded in <head> so they are available when HTMX swaps in partials.
 (function (w) {
+  // Return the best departure-time string from a row object.
+  // Prefers estimated over scheduled, departure over arrival (for last-stop fallback).
+  w.gtfsTime = function (row) {
+    return row.estimated_departure_time || row.scheduled_departure_time ||
+           row.estimated_arrival_time   || row.scheduled_arrival_time   || '';
+  };
+
+  // Return the effective delay in seconds from a row object.
+  // Prefers departure_delay; falls back to arrival_delay (first/last stop).
+  w.gtfsDelay = function (row) {
+    return row.departure_delay != null ? row.departure_delay :
+           row.arrival_delay   != null ? row.arrival_delay   : null;
+  };
+
+  // Format a GTFS HH:MM:SS time string for display, normalising overflow hours.
+  w.formatGtfsTime = function (t) {
+    if (!t) return '';
+    var parts = String(t).split(':');
+    if (parts.length < 2) return t;
+    var h = parseInt(parts[0], 10) % 24;
+    return (h < 10 ? '0' : '') + h + ':' + parts[1];
+  };
+
+  // Return { label, bg, fg } for a delay value in seconds (null = not yet known).
+  w.delayInfo = function (seconds) {
+    if (seconds === null || seconds === undefined) {
+      return { label: 'Scheduled', bg: '#6c757d', fg: '#fff' };
+    }
+    var s = parseInt(seconds, 10);
+    if (Math.abs(s) < 30) return { label: 'On time', bg: '#198754', fg: '#fff' };
+    var mins = Math.floor(Math.abs(s) / 60);
+    if (s > 0) return { label: mins + 'm late',  bg: '#ffc107', fg: '#000' };
+    return            { label: mins + 'm early', bg: '#0dcaf0', fg: '#000' };
+  };
+
   w.minsFromNow = function (hhmm) {
     var p = hhmm.split(':');
     var target = parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60;

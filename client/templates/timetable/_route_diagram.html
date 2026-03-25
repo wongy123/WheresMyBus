@@ -37,11 +37,13 @@
       {% for v in vehicles | reverse %}
         {% set dly = v.departure_delay if v.departure_delay is not none else (v.arrival_delay if v.arrival_delay is not none else none) %}
         {% set info = dly | delay_info %}
-        {% set eta = v.estimated_arrival_time or v.scheduled_arrival_time %}
+        {% set eta = v.estimated_departure_time or v.scheduled_departure_time or v.estimated_arrival_time or v.scheduled_arrival_time %}
 
         <div class="d-flex align-items-center" style="min-height: 44px; position: relative; z-index: 1;">
           <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
-            <span class="material-symbols-outlined {{ vehicle_cls }}" style="font-size: 1.4rem; line-height: 1;">{{ vehicle_icon }}</span>
+            <div style="width:28px;height:28px;background:{{ ('#' + route_color) if route_color else '#6c757d' }};border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;">
+              <span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">{{ vehicle_icon }}</span>
+            </div>
           </div>
           <div class="ms-1 d-flex align-items-center gap-2 py-1 px-2 rounded border bg-white shadow-sm" style="font-size: .82rem;">
             <span class="badge {{ info.cls }}">{{ info.label }}</span>
