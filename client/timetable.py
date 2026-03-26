@@ -8,12 +8,14 @@ from api import api_get
 _BRISBANE_TZ = pytz.timezone("Australia/Brisbane")
 
 def _hms_to_sec(hms):
-    """Parse HH:MM:SS (or HH:MM) to seconds since midnight. Returns None on failure."""
+    """Parse HH:MM:SS (or HH:MM) to seconds since midnight. Returns None on failure.
+    Normalises GTFS overflow hours (e.g. 24:19:00 → 1140)."""
     if not hms:
         return None
     try:
         parts = hms.split(':')
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + (int(parts[2]) if len(parts) > 2 else 0)
+        sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + (int(parts[2]) if len(parts) > 2 else 0)
+        return sec % 86400
     except Exception:
         return None
 

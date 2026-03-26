@@ -192,7 +192,8 @@
   }
 
   @media (max-width: 767px) {
-    #map-search { width: calc(100vw - 2rem); top: 4.5rem; }
+    #map-search { width: calc(100vw - 2rem); top: 1rem; }
+    .leaflet-top.leaflet-left { padding-top: 4.5rem; }
     #map-filter { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
 
     /* Split layout: map top, sidebar bottom */
@@ -296,13 +297,18 @@
             style="background:var(--transit-tram-color);color:#333;border-color:var(--transit-tram-color);">
       <span class="material-symbols-outlined">tram</span>Tram
     </button>
+    <button id="global-vehicles-btn" class="map-filter-btn off"
+            style="background:#198754;color:#fff;border-color:#198754;">
+      <span class="material-symbols-outlined">sensors</span>Live
+    </button>
   </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function () {
-  var BASE_PATH = {{ BASE_PATH | tojson }};
+  var BASE_PATH   = {{ BASE_PATH | tojson }};
+  var POLL_MS     = 5000;
 
   // Default centre: Brisbane CBD
   var map = L.map('map', { zoomControl: true }).setView([-27.4698, 153.0251], 14);
@@ -350,6 +356,7 @@
         btn.classList.remove('off');
       }
       loadBoundsMarkers();
+      if (globalActive && !globalPaused) renderGlobalVehicles(lastGlobalVehicles);
     });
   });
 
@@ -363,12 +370,12 @@
       '&east='  + b.getEast().toFixed(6) +
       '&west='  + b.getWest().toFixed(6) +
       '&types=' + types +
-      '&limit=750';
+      '&limit=400';
     fetch(url)
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var stops = d.data || [];
-        if (stops.length >= 750) { clearStopMarkers(); return; }
+        if (stops.length >= 400) { clearStopMarkers(); return; }
         clearStopMarkers();
         stops.forEach(addStopMarker);
       })
@@ -382,7 +389,11 @@
     // moveend fires when flyTo completes → loadBoundsMarkers called automatically
   }
 
-  map.on('moveend', loadBoundsMarkers);
+  var boundsDebounce = null;
+  map.on('moveend', function () {
+    clearTimeout(boundsDebounce);
+    boundsDebounce = setTimeout(loadBoundsMarkers, 350);
+  });
 
   // ── Sidebar ───────────────────────────────────────────────────────────────
   var sidebar     = document.getElementById('map-sidebar');
@@ -435,12 +446,13 @@
     sidebar.classList.add('open');
     mapWrap.classList.add('sidebar-open');
     clearShape();
+    pauseGlobalVehicles();
     setStopHighlight(stopId, lat || null, lon || null);
     setTimeout(function () { map.invalidateSize(); }, 240);
 
     clearSidebarVehicles();
     if (sidebarPollInterval) clearInterval(sidebarPollInterval);
-    sidebarPollInterval = setInterval(refreshSidebar, 5000);
+    sidebarPollInterval = setInterval(refreshSidebar, POLL_MS);
 
     fetch(window.API_BASE_URL + '/stops/' + stopId + '/timetable?limit=15&duration=3600')
       .then(function (r) { return r.json(); })
@@ -457,6 +469,7 @@
     sidebar.classList.remove('open');
     mapWrap.classList.remove('sidebar-open');
     clearShape();
+    resumeGlobalVehicles();
     setStopHighlight(null, null, null);
     setTimeout(function () { map.invalidateSize(); }, 240);
   }
@@ -479,6 +492,11 @@
         '<div class="text-center text-muted small py-4">No upcoming services in the next 90 minutes.</div>';
       return;
     }
+    rows = rows.slice().sort(function (a, b) {
+      var at = window.formatGtfsTime(window.gtfsTime(a));
+      var bt = window.formatGtfsTime(window.gtfsTime(b));
+      return (at ? window.minsFromNow(at) : Infinity) - (bt ? window.minsFromNow(bt) : Infinity);
+    });
     var frag = document.createDocumentFragment();
     rows.forEach(function (row) {
       var btn = document.createElement('button');
@@ -634,7 +652,7 @@
         });
       },
       getColor:    function (v) { return v.route_color ? '#' + v.route_color : '#0d6efd'; },
-      getIconName: function (v) { return window.TRANSIT.vehicleIcon(v.route_type || 3); }
+      getIconName: function (v) { return window.TRANSIT.vehicleIcon(v.route_type != null ? v.route_type : 3); }
     });
   }
 
@@ -734,6 +752,124 @@
       el.style.removeProperty('--row-color');
     });
   }
+
+  // ── Global vehicle layer ──────────────────────────────────────────────────
+  var globalVehicleMarkers = {};
+  var globalPollInterval   = null;
+  var globalActive         = false;
+  var globalPaused         = false;
+  var lastGlobalVehicles   = [];
+
+  var globalVehicleRenderOpts = {
+    makePopup: function (v) {
+      return window.TRANSIT.stopVehiclePopup({
+        routeShortName: escHtml(v.route_short_name || v.route_id),
+        label:          v.vehicle_label ? escHtml(String(v.vehicle_label)) : '',
+        headsign:       v.trip_headsign ? escHtml(v.trip_headsign) : '',
+        stopName:       v.stop_name ? escHtml(v.stop_name) : '',
+        etaStr:         v.minutes_away != null ? window.fmtMins(v.minutes_away) : '',
+        routeId:        escHtml(v.route_id),
+        basePath:       BASE_PATH
+      });
+    },
+    getColor:    function (v) { return v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(v.route_type != null ? v.route_type : 3); },
+    getIconName: function (v) { return window.TRANSIT.vehicleIcon(v.route_type != null ? v.route_type : 3); },
+    onNewMarker: function (marker, v) {
+      marker.on('click', function () {
+        var tid      = v.trip_id;
+        var shapeKey = v.route_id + '_' + v.direction_id + '_' + tid;
+        var wasActive = activeShapeKey === shapeKey;
+        clearShape();
+        if (wasActive) {
+          renderGlobalVehicles(lastGlobalVehicles);
+          return;
+        }
+        // Remove from global layer; activeVehicleMarker (from drawRouteShape) takes over
+        if (globalVehicleMarkers[tid]) {
+          map.removeLayer(globalVehicleMarkers[tid]);
+          delete globalVehicleMarkers[tid];
+        }
+        activeTripId = tid;
+        var popup = window.TRANSIT.stopVehiclePopup({
+          routeShortName: escHtml(v.route_short_name || v.route_id),
+          label:          v.vehicle_label ? escHtml(String(v.vehicle_label)) : '',
+          headsign:       v.trip_headsign ? escHtml(v.trip_headsign) : '',
+          stopName:       v.stop_name ? escHtml(v.stop_name) : '',
+          etaStr:         v.minutes_away != null ? window.fmtMins(v.minutes_away) : '',
+          routeId:        escHtml(v.route_id),
+          basePath:       BASE_PATH
+        });
+        drawRouteShape(v.route_id, v.direction_id, v.route_color, v.route_type, v.lat, v.lon, popup, shapeKey);
+      });
+    }
+  };
+
+  function renderGlobalVehicles(vehicles) {
+    // Follow the active vehicle if it was selected from the global layer
+    if (activeVehicleMarker && activeTripId && !currentStopId) {
+      for (var i = 0; i < vehicles.length; i++) {
+        if (vehicles[i].trip_id === activeTripId) {
+          activeVehicleMarker.setLatLng([vehicles[i].lat, vehicles[i].lon]);
+          map.panTo([vehicles[i].lat, vehicles[i].lon]);
+          break;
+        }
+      }
+    }
+    window.TRANSIT.updateVehicleMarkers(map, globalVehicleMarkers,
+      vehicles.filter(function (v) { return v.trip_id !== activeTripId && activeTypes.has(v.route_type); }),
+      globalVehicleRenderOpts
+    );
+  }
+
+  function fetchAndRenderGlobal() {
+    fetch(window.API_BASE_URL + '/vehicles')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        lastGlobalVehicles = d.data || [];
+        if (globalActive && !globalPaused) renderGlobalVehicles(lastGlobalVehicles);
+      })
+      .catch(function () {});
+  }
+
+  function startGlobalVehicles() {
+    globalActive = true;
+    globalPaused = false;
+    fetchAndRenderGlobal();
+    globalPollInterval = setInterval(fetchAndRenderGlobal, POLL_MS);
+  }
+
+  function stopGlobalVehicles() {
+    globalActive = false;
+    globalPaused = false;
+    if (globalPollInterval) { clearInterval(globalPollInterval); globalPollInterval = null; }
+    Object.values(globalVehicleMarkers).forEach(function (m) { map.removeLayer(m); });
+    globalVehicleMarkers = {};
+  }
+
+  function pauseGlobalVehicles() {
+    if (!globalActive) return;
+    globalPaused = true;
+    if (globalPollInterval) { clearInterval(globalPollInterval); globalPollInterval = null; }
+    Object.values(globalVehicleMarkers).forEach(function (m) { map.removeLayer(m); });
+    globalVehicleMarkers = {};
+  }
+
+  function resumeGlobalVehicles() {
+    if (!globalActive) return;
+    globalPaused = false;
+    fetchAndRenderGlobal();
+    globalPollInterval = setInterval(fetchAndRenderGlobal, POLL_MS);
+  }
+
+  document.getElementById('global-vehicles-btn').addEventListener('click', function () {
+    if (globalActive) {
+      stopGlobalVehicles();
+      this.classList.add('off');
+    } else {
+      startGlobalVehicles();
+      this.classList.remove('off');
+    }
+  });
 
   // ── Locate me ─────────────────────────────────────────────────────────────
   var userMarker = null;
@@ -899,6 +1035,8 @@
       hideDropdown();
     }
   });
+
+  window.TRANSIT.addFullscreenBtn(document.getElementById('map'), function () { return map; });
 
   // Load stops for initial view
   loadBoundsMarkers();
