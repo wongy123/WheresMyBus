@@ -67,7 +67,11 @@ def stops_nearby_json():
 @bp.get("/hx/stops/<stop_id>/vehicles")
 def hx_stop_vehicles(stop_id: str):
     duration = request.args.get("duration", 3600, type=int)
-    resp = api_get(f"stops/{stop_id}/timetable", {"page": 1, "limit": 50, "duration": duration})
+    params = {"page": 1, "limit": 50, "duration": duration}
+    routes = request.args.get("routes", "").strip()
+    if routes:
+        params["routes"] = routes
+    resp = api_get(f"stops/{stop_id}/timetable", params)
 
     rows = []
     if isinstance(resp, dict):

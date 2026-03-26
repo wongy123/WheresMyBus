@@ -295,7 +295,7 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
         END AS sort_rank
       FROM stops
       WHERE ${tokenClauses}
-      ORDER BY sort_rank ASC, stop_name ASC
+      ORDER BY sort_rank ASC, (location_type != 1) ASC, stop_name ASC
     `;
     params = {
       ...tokenParams,
@@ -756,10 +756,17 @@ export async function getUpcomingByStop(
     return r.win_sec >= startSec;
   });
 
-  // Re-sort by effective arrival time (estimated if available, otherwise scheduled)
-  visible.sort((a, b) =>
-    (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
-  );
+  // Sort by the same effective time the client displays (dep preferred over arr).
+  // arrival_delay is the vehicle's delay at its *current GPS stop*, not at this
+  // stop, so using it as an offset produces wrong sort keys for future buses.
+  const effectiveSec = r => {
+    const t = r.estimated_departure_time || r.estimated_arrival_time ||
+              r.scheduled_departure_time || r.scheduled_arrival_time;
+    if (!t) return r.win_sec;
+    const parts = t.split(':');
+    return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2] || 0);
+  };
+  visible.sort((a, b) => effectiveSec(a) - effectiveSec(b));
   // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
   for (const r of visible) {
     r.scheduled_arrival_time   = normalizeHms(r.scheduled_arrival_time);
@@ -843,9 +850,14 @@ export async function getUpcomingByStation(
     }
     return r.win_sec >= startSec;
   });
-  visible.sort((a, b) =>
-    (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
-  );
+  const effectiveSecStn = r => {
+    const t = r.estimated_departure_time || r.estimated_arrival_time ||
+              r.scheduled_departure_time || r.scheduled_arrival_time;
+    if (!t) return r.win_sec;
+    const parts = t.split(':');
+    return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2] || 0);
+  };
+  visible.sort((a, b) => effectiveSecStn(a) - effectiveSecStn(b));
   // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
   for (const r of visible) {
     r.scheduled_arrival_time   = normalizeHms(r.scheduled_arrival_time);

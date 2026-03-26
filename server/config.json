@@ -13,5 +13,6 @@
       }
     }
   ],
-  "sqlitePath": "./sqlite/translink.db"
+  "sqlitePath": "./sqlite/translink.db",
+  "pollSeconds": 3
 }

@@ -63,7 +63,11 @@ def hx_timetable_stop(stop_id: str):
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 10, type=int)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
-    resp = api_get(f"stops/{stop_id}/timetable", {"page": page, "limit": limit, "duration": duration})
+    params = {"page": page, "limit": limit, "duration": duration}
+    routes = request.args.get("routes", "").strip()
+    if routes:
+        params["routes"] = routes
+    resp = api_get(f"stops/{stop_id}/timetable", params)
 
     rows, pagination = [], {}
     if isinstance(resp, dict):
