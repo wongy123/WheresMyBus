@@ -66,7 +66,7 @@ platform_code          (stations only)
 
 **Popover on status badge**: shows `"est HH:MM · sched HH:MM"` when estimated ≠ scheduled, otherwise just the scheduled time.
 
-**Auto-refresh**: HTMX polls every 5s on both the timetable page and the stop details page. Both use the same mechanism: after each swap, the inline fragment script updates the outer div's `hx-get` attribute to include the current page number, so the next poll stays on the right page. If the current page no longer exists (total results dropped), it fires an immediate HTMX request to jump to the last valid page.
+**Auto-refresh**: HTMX polls every 5s on both the timetable page and the stop details page. Both use the same mechanism: `hx-vals='js:{...}'` with a dynamic expression that reads `data-tt-page` from a hidden `<span>` rendered inside the fragment. This carries the current page number into each poll request so the displayed page stays stable across refreshes. If the current page no longer exists (total results dropped), the fragment script fires an immediate HTMX request to jump to the last valid page.
 
 **Client-side re-sort**: After each HTMX swap, rows are re-sorted in the DOM by `minsFromNow(data-time)`. This corrects any ordering drift caused by rendering at a slightly different moment than the server sorted.
 
@@ -195,7 +195,7 @@ A hidden `<div>` polls `GET /hx/stops/<stop_id>/vehicles?duration=3600` every 5 
   eta: estimated_departure || scheduled_departure || estimated_arrival || scheduled_arrival }
 ```
 
-The hidden HTMX div renders `_vehicle_positions.html`, which calls `window.stopMapAddVehicles(vehicles)` via an inline script tag. This function (defined in `stops/details.html`) delegates to `window.TRANSIT.updateVehicleMarkers(map, vehicleMarkerMap, vehicles, opts)` to update vehicle markers on the Leaflet map in-place — existing markers are moved, new ones are added, departed ones are removed. An `onNewMarker` callback attaches click (draw route polyline) and `popupclose` (clear polyline) handlers to new markers.
+The hidden HTMX div renders `_vehicle_positions.html`, which calls `window.stopMapAddVehicles(vehicles)` via an inline script tag. This function (defined in `stops/details.html`) stores the full vehicle list in `_lastStopVehicles` then delegates to `window._renderFilteredVehicles()`, which applies the active route filter (see below) and calls `window.TRANSIT.updateVehicleMarkers(map, vehicleMarkerMap, toShow, opts)` to update vehicle markers on the Leaflet map in-place — existing markers are moved, new ones are added, departed ones are removed. An `onNewMarker` callback attaches click (draw route polyline) and `popupclose` (clear polyline) handlers to new markers.
 
 **Vehicle popup** (constructed in `stopMapAddVehicles`):
 - Route short name + vehicle label
@@ -210,6 +210,20 @@ The hidden HTMX div renders `_vehicle_positions.html`, which calls `window.stopM
 On page load, the stop's own coordinates and the pre-fetched `nearby` stops (up to 8, excluding the current stop) are placed as Leaflet markers using `window.TRANSIT.makeStopIcon(s)`. On map pan/zoom (`moveend`), the center coordinates are sent to `GET /api/stops/nearby?lat=&lng=&limit=30` and the result replaces dynamic markers (skipping the current stop and any already in the static nearby list).
 
 The current stop marker uses a larger white-bordered dot whose colour is derived from the dominant route type among the routes serving this stop (priority: rail > tram > ferry > bus).
+
+### Route filter
+
+At the top of the stop details page, each route serving the stop is shown as a clickable badge. Clicking a badge toggles it active; multiple badges can be active simultaneously. The filtering is entirely **client-side** — the server always returns all buses regardless of which routes are active.
+
+**Timetable rows**: `applyFilter()` shows/hides `<tr data-route="...">` rows in the timetable tbody based on the set of active route names. No server request is made.
+
+**Pagination nav**: when any filter is active, `#stop-timetable` receives the CSS class `filter-active`. The rule `#stop-timetable.filter-active nav { display: none !important; }` permanently hides the pagination nav. Since HTMX swaps `innerHTML` (not the element itself), the class persists across every poll cycle, so any nav the server renders is hidden immediately by CSS without timing dependencies.
+
+**Re-application after poll**: `document.addEventListener('htmx:afterSwap', ...)` listens for swaps targeting `#stop-timetable` (identified via `evt.detail.target`). On each swap, `applyFilter()` runs synchronously — before the browser has a chance to paint — so newly loaded rows are filtered in the same frame as the content swap with no visible flash.
+
+**Vehicle markers**: `window._renderFilteredVehicles()` (exposed on the map script) filters `_lastStopVehicles` by `route_short_name` against the active set, then calls `updateVehicleMarkers` with only the matching vehicles. `applyFilter()` calls this at the end of every invocation, keeping the map and timetable in sync.
+
+**Page reset**: when the user changes the active filter (badge click or clear), `data-tt-page` is reset to `'1'` so the next 5s poll fetches page 1. This reset does NOT happen when `applyFilter()` is called by the `htmx:afterSwap` listener (preserving the current page across background polls).
 
 ---
 
@@ -319,10 +333,10 @@ Used by map pages. Returns `{ data: [...] }` JSON directly. Called with `limit=8
 
 ### Stop details page load (`/stops/<stop_id>`)
 
-Flask makes three calls at page load:
+Flask makes up to four calls at page load:
 1. `GET /api/stops/<stop_id>` — stop name, code, coordinates, location_type
-2. `GET /api/stops/nearby?lat=&lng=&limit=9` — up to 8 nearby stops (current stop excluded)
-3. `GET /api/stops/<stop_id>/routes` — all routes serving this stop (shown as coloured badges)
+2. `GET /api/stops/nearby?lat=&lng=&limit=9` — up to 8 nearby stops (current stop excluded; only called if the stop has coordinates)
+3. `GET /api/stops/<stop_id>/routes` — all routes serving this stop (shown as coloured filter badges)
 4. `GET /api/stops/<stop_id>/platforms` — if `location_type == 1` (station)
 
 ### Route details page load (`/routes/<route_id>`)

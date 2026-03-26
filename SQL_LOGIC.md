@@ -357,10 +357,10 @@ SELECT stop_id, stop_name, stop_lat, stop_lon, location_type,
   END AS sort_rank
 FROM stops
 WHERE stop_name LIKE $tok0 AND stop_name LIKE $tok1 ...
-ORDER BY sort_rank ASC, stop_name ASC
+ORDER BY sort_rank ASC, (location_type != 1) ASC, stop_name ASC
 ```
 
-With no search term, returns all stops ordered alphabetically.
+The secondary sort key `(location_type != 1) ASC` floats parent stations (`location_type = 1`) to the top within each rank tier. With no search term, returns all stops ordered alphabetically (stations first).
 
 ---
 
@@ -502,7 +502,7 @@ ORDER BY se.win_sec, se.route_short_name, se.trip_id, se.stop_sequence
 
 After RT enrichment, a **ghost filter** removes rows where `vehicle_current_stop_sequence > stop_sequence` — the bus has physically departed from this stop even if its scheduled time is still in the window.
 
-Results are re-sorted by `win_sec + (arrival_delay || 0)` (effective arrival time).
+Results are re-sorted by effective display time: `estimated_departure || estimated_arrival || scheduled_departure || scheduled_arrival` parsed to seconds. This matches the time actually shown in the UI and avoids missorting caused by `arrival_delay` (which reflects the vehicle's current GPS stop, not the queried stop).
 
 **Path B — parent station** (child platforms exist):
 
@@ -517,6 +517,7 @@ Additional station-specific behaviour:
 - Ghost filter: same as path A (position-based).
 - Time ghost filter: also removes rows where `effectiveSec < startSec - 60` (arrived more than 60 s ago).
 - `platform_code` added to each row from the platforms lookup.
+- Re-sort: same effective-display-time sort as path A.
 
 ---
 

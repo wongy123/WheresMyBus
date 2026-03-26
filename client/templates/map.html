@@ -4,7 +4,7 @@
 <style>
   html, body { overflow: hidden !important; height: 100% !important; }
   #map-wrap { position: relative; overflow: hidden; }
-  #map { height: calc(100vh - 56px); width: 100%; }
+  #map { height: calc(100vh - 56px); height: calc(100dvh - 56px); width: 100%; }
 
   #map-search {
     position: absolute;
@@ -192,14 +192,15 @@
   }
 
   @media (max-width: 767px) {
-    #map-search { width: calc(100vw - 2rem); }
-    #map-filter { bottom: 1rem; }
+    #map-search { width: calc(100vw - 2rem); top: 4.5rem; }
+    #map-filter { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
 
     /* Split layout: map top, sidebar bottom */
     #map-wrap {
       display: flex;
       flex-direction: column;
       height: calc(100vh - 56px);
+      height: calc(100dvh - 56px);
     }
     #map {
       flex: 1 1 auto;
@@ -542,6 +543,7 @@
         var wasActive = activeShapeKey === shapeKey;
         clearShape();
         if (wasActive) return;
+        activeTripId = row.trip_id || null;
         btn.classList.add('active');
         btn.style.setProperty('--row-color', color);
         var vRawTime = window.gtfsTime(row);
@@ -560,6 +562,10 @@
                        row.route_type, row.vehicle_latitude, row.vehicle_longitude, vPopup, shapeKey, row.trip_id);
       });
 
+      if (activeShapeKey && shapeKey === activeShapeKey) {
+        btn.classList.add('active');
+        btn.style.setProperty('--row-color', color);
+      }
       frag.appendChild(btn);
     });
     sidebarBody.innerHTML = '';
@@ -587,7 +593,9 @@
       for (var i = 0; i < rows.length; i++) {
         if (rows[i].trip_id === activeTripId &&
             rows[i].vehicle_latitude && rows[i].vehicle_longitude) {
-          activeVehicleMarker.setLatLng([rows[i].vehicle_latitude, rows[i].vehicle_longitude]);
+          var _followPos = [rows[i].vehicle_latitude, rows[i].vehicle_longitude];
+          activeVehicleMarker.setLatLng(_followPos);
+          map.panTo(_followPos);
           break;
         }
       }
@@ -695,6 +703,7 @@
 
   function clearShape() {
     activeShapeKey = null;
+    activeTripId = null;
     if (activePolyline)      { map.removeLayer(activePolyline);      activePolyline = null; }
     if (activeVehicleMarker) { map.removeLayer(activeVehicleMarker); activeVehicleMarker = null; }
     activeRouteStopMarkers.forEach(function (m) { map.removeLayer(m); });
@@ -746,9 +755,14 @@
     }
   }
 
-  // On load: silently try to centre on the user's position if already permitted.
+  // Auto-centre once on the user's position if already permitted, but only if
+  // the user hasn't started interacting with the map before the callback fires.
+  var _gpsAutoFocusDone = false;
+  map.on('dragstart zoomstart', function () { _gpsAutoFocusDone = true; });
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(function (pos) {
+      if (_gpsAutoFocusDone) return;
+      _gpsAutoFocusDone = true;
       map.setView([pos.coords.latitude, pos.coords.longitude], 15);
       placeUserLocation(pos.coords.latitude, pos.coords.longitude, false);
     }, function () { /* permission denied or unavailable — stay on default view */ });

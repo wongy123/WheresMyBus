@@ -14,20 +14,83 @@
 </div>
 
 {% if routes %}
+<style>
+  .route-filter-btn { transition: opacity .15s; cursor: pointer; }
+  #route-filter-badges.has-filter .route-filter-btn:not(.active) { opacity: 0.3; }
+  .route-filter-btn.active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0,0,0,.45); }
+  #stop-timetable.filter-active nav { display: none !important; }
+</style>
 <div class="mb-4">
-  <div class="fw-semibold small mb-2">Routes serving this stop</div>
-  <div class="d-flex flex-wrap gap-1">
+  <div class="fw-semibold small mb-2">
+    Routes serving this stop
+    <span id="route-filter-hint" style="display:none;">
+      — <a href="#" id="route-filter-clear" class="text-muted fw-normal small">clear filter</a>
+    </span>
+  </div>
+  <div class="d-flex flex-wrap gap-1" id="route-filter-badges">
     {% for r in routes %}
       {% set bg = '#' + (r.route_color or 'CCCCCC') %}
       {% set fg = '#' + (r.route_text_color or '000000') %}
-      <a href="{{ BASE_PATH }}/routes/{{ r.route_id }}" class="text-decoration-none">
-        <span class="badge rounded-pill px-2 py-1" style="background-color: {{ bg }}; color: {{ fg }}; font-size: .85rem;">
-          {{ r.route_short_name }}
-        </span>
-      </a>
+      <button type="button"
+              class="route-filter-btn badge rounded-pill px-2 py-1 border-0"
+              style="background-color: {{ bg }}; color: {{ fg }}; font-size: .85rem;"
+              data-route="{{ r.route_short_name }}"
+              title="Filter to {{ r.route_short_name }}">
+        {{ r.route_short_name }}
+      </button>
     {% endfor %}
   </div>
 </div>
+<script>
+(function () {
+  var badgesEl = document.getElementById('route-filter-badges');
+  var hintEl   = document.getElementById('route-filter-hint');
+
+  function applyFilter() {
+    var ttEl = document.getElementById('stop-timetable');
+    var anyActive = !!badgesEl.querySelector('.route-filter-btn.active');
+    badgesEl.classList.toggle('has-filter', anyActive);
+    hintEl.style.display = anyActive ? '' : 'none';
+
+    if (ttEl) {
+      ttEl.classList.toggle('filter-active', anyActive);
+      // Instantly show/hide rows — no server round-trip needed.
+      var active = new Set(
+        Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
+          .map(function (b) { return b.dataset.route; })
+      );
+      var tbody = ttEl.querySelector('table tbody');
+      if (tbody) {
+        tbody.querySelectorAll('tr[data-route]').forEach(function (tr) {
+          tr.style.display = (anyActive && !active.has(tr.dataset.route)) ? 'none' : '';
+        });
+      }
+    }
+    if (window._renderFilteredVehicles) window._renderFilteredVehicles();
+  }
+
+  badgesEl.addEventListener('click', function (e) {
+    var btn = e.target.closest('.route-filter-btn');
+    if (!btn) return;
+    btn.classList.toggle('active');
+    var _ps = document.querySelector('#stop-timetable [data-tt-page]');
+    if (_ps) _ps.dataset.ttPage = '1';
+    applyFilter();
+  });
+
+  document.getElementById('route-filter-clear').addEventListener('click', function (e) {
+    e.preventDefault();
+    badgesEl.querySelectorAll('.route-filter-btn.active').forEach(function (b) { b.classList.remove('active'); });
+    var _ps = document.querySelector('#stop-timetable [data-tt-page]');
+    if (_ps) _ps.dataset.ttPage = '1';
+    applyFilter();
+  });
+
+  document.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') applyFilter();
+  });
+}());
+</script>
 {% endif %}
 
 {% if platforms %}
@@ -171,48 +234,62 @@ map.on('moveend', function() {
 // Live vehicle markers
 var vehicleMarkerMap = {};
 var activeRoutePolyline = null;
+var _lastStopVehicles = [];
 
+var _vehicleRenderOpts = {
+  makePopup: function (v) {
+    return window.TRANSIT.stopVehiclePopup({
+      routeShortName: v.route_short_name,
+      label: v.label || '',
+      headsign: v.trip_headsign || '',
+      etaStr: v.eta ? window.fmtMins(window.minsFromNow(v.eta)) : '',
+      routeId: v.route_id,
+      basePath: BASE_PATH
+    });
+  },
+  getColor: function (v) {
+    var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+    return v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
+  },
+  getIconName: function (v) {
+    var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+    return window.TRANSIT.vehicleIcon(rt);
+  },
+  onNewMarker: function (marker, v) {
+    var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+    var col = v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
+    marker.on('click', function () {
+      if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+      fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(v.route_id) + '/shape?direction=' + (v.direction_id || 0))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var pts = (data.data || []).map(function (pt) { return [pt.lat, pt.lon]; });
+          if (pts.length) {
+            activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
+          }
+        })
+        .catch(function () {});
+    });
+    marker.on('popupclose', function () {
+      if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+    });
+  }
+};
+
+window._renderFilteredVehicles = function() {
+  var active = new Set(
+    Array.from(document.querySelectorAll('.route-filter-btn.active'))
+      .map(function(b) { return b.dataset.route; })
+  );
+  var toShow = active.size > 0
+    ? _lastStopVehicles.filter(function(v) { return active.has(v.route_short_name); })
+    : _lastStopVehicles;
+  window.TRANSIT.updateVehicleMarkers(map, vehicleMarkerMap, toShow, _vehicleRenderOpts);
+};
 
 window.stopMapAddVehicles = function(vehicles) {
-  window.TRANSIT.updateVehicleMarkers(map, vehicleMarkerMap, vehicles, {
-    makePopup: function (v) {
-      return window.TRANSIT.stopVehiclePopup({
-        routeShortName: v.route_short_name,
-        label: v.label || '',
-        headsign: v.trip_headsign || '',
-        etaStr: v.eta ? window.fmtMins(window.minsFromNow(v.eta)) : '',
-        routeId: v.route_id,
-        basePath: BASE_PATH
-      });
-    },
-    getColor: function (v) {
-      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
-      return v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
-    },
-    getIconName: function (v) {
-      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
-      return window.TRANSIT.vehicleIcon(rt);
-    },
-    onNewMarker: function (marker, v) {
-      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
-      var col = v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
-      marker.on('click', function () {
-        if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
-        fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(v.route_id) + '/shape?direction=' + (v.direction_id || 0))
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            var pts = (data.data || []).map(function (pt) { return [pt.lat, pt.lon]; });
-            if (pts.length) {
-              activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
-            }
-          })
-          .catch(function () {});
-      });
-      marker.on('popupclose', function () {
-        if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
-      });
-    }
-  });
+  _lastStopVehicles = vehicles;
+  window._renderFilteredVehicles();
 };
 
 if (navigator.geolocation) {

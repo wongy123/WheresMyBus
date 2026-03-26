@@ -131,11 +131,17 @@ export async function getStopTimetable(req, res, next) {
 
     const startTime = parseIntParam(req.query.startTime);
     const duration = parseIntParam(req.query.duration);
+    const routes = req.query.routes
+      ? req.query.routes.split(',').map(r => r.trim()).filter(Boolean)
+      : null;
 
     const rows = await getUpcomingByStation(stopId, startTime, duration);
+    const filtered = routes && routes.length
+      ? rows.filter(r => routes.includes(r.route_short_name))
+      : rows;
 
     const body = paginateResponse({
-      data: rows,
+      data: filtered,
       req,
       res,
       defaultLimit: 20,

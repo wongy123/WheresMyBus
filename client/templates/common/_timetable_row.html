@@ -13,7 +13,7 @@
   {% set sch = it.scheduled_departure_time or it.scheduled_arrival_time %}
   {% set main_time = est or sch %}
   {% set badge_popup = ('est ' ~ est[:5] ~ ' · sched ' ~ sch[:5]) if (est and sch and est[:5] != sch[:5]) else (sch[:5] if sch else '') %}
-  <tr>
+  <tr data-route="{{ it.route_short_name }}">
     <td class="text-nowrap">
       <span class="tt-time" data-time="{{ main_time[:5] }}" title="Click to toggle" style="cursor:pointer;">
         <span class="tt-min fw-semibold"></span><span class="tt-abs d-none text-body-secondary">{{ main_time }}</span>

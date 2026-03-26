@@ -55,10 +55,11 @@
 </div>
 
 <div id="tt-stop-results"
-     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}&page={{ page }}&limit={{ limit }}"
+     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration={{ duration }}&limit={{ limit }}"
      hx-trigger="load, every 5s"
      hx-target="this"
      hx-swap="innerHTML"
+     hx-vals='js:{"page": document.querySelector("#tt-stop-results [data-tt-page]")?.dataset.ttPage || "1"}'
      aria-live="polite">
   <div class="text-muted small d-flex align-items-center gap-2 htmx-indicator">
     <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
