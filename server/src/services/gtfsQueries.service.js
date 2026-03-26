@@ -697,6 +697,11 @@ export async function getUpcomingByStop(
   midnight.setHours(0, 0, 0, 0);
   const startSec = Math.floor((date - midnight) / 1000);
   const endSec = startSec + duration;
+  // Look back up to 60 minutes so late-running buses whose scheduled departure
+  // has passed are still surfaced. The GPS filter below keeps only buses that
+  // haven't yet reached this stop, so the larger window doesn't cause false positives.
+  const MAX_OVERDUE_SEC = 3600;
+  const overdueSec = startSec - MAX_OVERDUE_SEC;
 
   const sql = `
     SELECT
@@ -723,14 +728,15 @@ export async function getUpcomingByStop(
       se.real_time_data
     FROM stop_events_3day se
     WHERE se.stop_id = $stopId
-      AND se.win_sec BETWEEN $startSec AND $endSec
+      AND se.win_sec BETWEEN $overdueSec AND $endSec
     ORDER BY se.win_sec, se.route_short_name, se.trip_id, se.stop_sequence
   `;
 
   const params = {
     stopId: String(stopId),
     startSec,
-    endSec
+    endSec,
+    overdueSec,
   };
 
   const rows = await withDb(db => db.prepare(sql).all(params), configPath);
@@ -738,13 +744,17 @@ export async function getUpcomingByStop(
   // Enrich with realtime (cache)
   const enriched = await enrichRowsWithRealtime(rows);
 
-  // Remove ghost entries for early-running buses: if the vpos feed shows the
-  // vehicle is already past this stop (currentStopSequence > stop_sequence),
-  // the bus has departed even though its scheduled time is still in the window.
-  const visible = enriched.filter(r =>
-    r.vehicle_current_stop_sequence == null ||
-    r.vehicle_current_stop_sequence <= r.stop_sequence
-  );
+  // Keep a row if:
+  //   - scheduled in the normal future window (win_sec >= startSec), OR
+  //   - in the overdue back-window: GPS confirms the vehicle hasn't yet passed
+  //     this stop (late bus still approaching). Rows without GPS data are dropped
+  //     from the overdue window to avoid surfacing cancelled/completed services.
+  const visible = enriched.filter(r => {
+    if (r.vehicle_current_stop_sequence != null) {
+      return r.vehicle_current_stop_sequence <= r.stop_sequence;
+    }
+    return r.win_sec >= startSec;
+  });
 
   // Re-sort by effective arrival time (estimated if available, otherwise scheduled)
   visible.sort((a, b) =>
@@ -776,6 +786,8 @@ export async function getUpcomingByStation(
   midnight.setHours(0, 0, 0, 0);
   const startSec = Math.floor((date - midnight) / 1000);
   const endSec = startSec + duration;
+  const MAX_OVERDUE_SEC = 3600;
+  const overdueSec = startSec - MAX_OVERDUE_SEC;
 
   const platformIds = platforms.map(p => String(p.stop_id));
   const platformCodeMap = Object.fromEntries(platforms.map(p => [String(p.stop_id), p.platform_code]));
@@ -810,7 +822,7 @@ export async function getUpcomingByStation(
     ORDER BY se.win_sec, se.route_short_name, se.trip_id, se.stop_sequence
   `;
 
-  const rows = await withDb(db => db.prepare(sql).all(...platformIds, startSec, endSec), configPath);
+  const rows = await withDb(db => db.prepare(sql).all(...platformIds, overdueSec, endSec), configPath);
 
   rows.forEach(r => {
     r.platform_code = platformCodeMap[String(r.stop_id)] ?? null;
@@ -826,10 +838,10 @@ export async function getUpcomingByStation(
 
   const enriched = await enrichRowsWithRealtime(rows);
   const visible = enriched.filter(r => {
-    // Position ghost filter: vehicle has already passed this stop
-    if (r.vehicle_current_stop_sequence !== null &&
-        r.vehicle_current_stop_sequence > r.stop_sequence) return false;
-    return true;
+    if (r.vehicle_current_stop_sequence != null) {
+      return r.vehicle_current_stop_sequence <= r.stop_sequence;
+    }
+    return r.win_sec >= startSec;
   });
   visible.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
