@@ -107,9 +107,21 @@ var currentDirection = 0;
 var currentView = 'schedule';
 var scheduleLoadedForDirection = 0;
 
+function _refreshDiagram(dir) {
+  htmx.ajax('GET',
+    '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction=' + dir + '&duration=3600',
+    { target: '#route-diagram', swap: 'innerHTML' });
+}
+
+function _refreshSchedule(dir) {
+  htmx.ajax('GET',
+    '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/schedule?direction=' + dir,
+    { target: '#route-schedule', swap: 'innerHTML' });
+}
+
 var diagramInterval = setInterval(function() {
   if (currentView === 'diagram' || currentView === 'map') {
-    htmx.trigger(document.getElementById('route-diagram'), 'refresh');
+    _refreshDiagram(currentDirection);
   }
 }, 5000);
 
@@ -118,25 +130,17 @@ function setDirection(dir) {
   document.getElementById('dir-0-btn').classList.toggle('active', dir === 0);
   document.getElementById('dir-1-btn').classList.toggle('active', dir === 1);
 
-  var diagramDiv = document.getElementById('route-diagram');
-  diagramDiv.setAttribute('hx-get',
-    '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction=' + dir + '&duration=3600');
-  htmx.process(diagramDiv);
-
-  var scheduleDiv = document.getElementById('route-schedule');
-  scheduleDiv.setAttribute('hx-get',
-    '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/schedule?direction=' + dir);
-  htmx.process(scheduleDiv);
-
   if (mapLoaded) _pageMapLoad(dir);
 
   if (currentView === 'diagram') {
     diagramLoaded = true;
-    htmx.trigger(diagramDiv, 'refresh');
+    _refreshDiagram(dir);
     scheduleLoadedForDirection = -1;
+  } else if (currentView === 'map') {
+    _refreshDiagram(dir);
   } else {
     scheduleLoadedForDirection = dir;
-    htmx.trigger(scheduleDiv, 'refresh');
+    _refreshSchedule(dir);
   }
 }
 
@@ -222,24 +226,26 @@ function setView(view) {
 
   if (view === 'diagram' && !diagramLoaded) {
     diagramLoaded = true;
-    htmx.trigger(document.getElementById('route-diagram'), 'refresh');
+    _refreshDiagram(currentDirection);
   }
   if (view === 'schedule' && scheduleLoadedForDirection !== currentDirection) {
     scheduleLoadedForDirection = currentDirection;
-    htmx.trigger(document.getElementById('route-schedule'), 'refresh');
+    _refreshSchedule(currentDirection);
   }
   if (view === 'map') {
     if (!mapLoaded) {
       mapLoaded = true;
       _pageMapLoad(currentDirection);
-      // Also trigger diagram for vehicle positions
       if (!diagramLoaded) {
         diagramLoaded = true;
-        htmx.trigger(document.getElementById('route-diagram'), 'refresh');
+        _refreshDiagram(currentDirection);
       }
     }
     _pageMap.invalidateSize();
   }
 }
+
+window.TRANSIT.addFullscreenBtn(document.getElementById('route-page-map'), function () { return _pageMap; });
+window.TRANSIT.addFullscreenBtn(document.getElementById('diagram-stop-map'), function () { return _diagMap; });
 </script>
 {% endblock %}

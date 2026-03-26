@@ -39,7 +39,7 @@
     vehicleIcon: function (rt) {
       if (rt === 1 || rt === 2 || rt === 12) return 'train';
       if (rt === 0) return 'tram';
-      if (rt === 4) return 'directions_ferry';
+      if (rt === 4) return 'directions_boat';
       return 'directions_bus';
     },
     makeStopIcon: function (s) {
@@ -60,15 +60,18 @@
       });
     },
     // Build a vehicle popup for stop-context maps (stop detail page, main map sidebar).
-    // Shows route name, label, headsign, ETA, and a "View route" link.
-    // opts: { routeShortName, label, headsign, etaStr, routeId, basePath }
+    // Shows route name, label, headsign, optional next stop + ETA, and a "View route" link.
+    // opts: { routeShortName, label, headsign, stopName, etaStr, routeId, basePath }
     stopVehiclePopup: function (opts) {
       var label = opts.label ? ' · ' + opts.label : '';
+      var meta = opts.stopName
+        ? 'Next: ' + opts.stopName + (opts.etaStr ? ' · ' + opts.etaStr : '')
+        : (opts.etaStr || '');
       return '<b>' + (opts.routeShortName || '') + '</b>' + label +
         (opts.headsign ? ' — ' + opts.headsign : '') +
-        (opts.etaStr ? '<br><span class="map-popup-meta">' + opts.etaStr + '</span>' : '') +
-        (opts.basePath && opts.routeId
-          ? '<br><a href="' + opts.basePath + '/routes/' + encodeURIComponent(opts.routeId) + '" class="map-popup-link">View route</a>'
+        (meta ? '<br><span class="map-popup-meta">' + meta + '</span>' : '') +
+        (opts.routeId
+          ? '<br><a href="' + (opts.basePath || '') + '/routes/' + encodeURIComponent(opts.routeId) + '" class="map-popup-link">View route</a>'
           : '');
     },
     // Build a vehicle popup for route-context maps (route diagram / details page).
@@ -119,6 +122,36 @@
     //   getIconName: function(v) → icon name  (new markers only; default: vehicleIcon(3))
     //   onNewMarker: function(marker, v)       (optional, called after marker added)
     // }
+    // Attach a fullscreen toggle button (top-right overlay) to a map container.
+    // container: element or id string. getMap: function returning the Leaflet map.
+    addFullscreenBtn: function (container, getMap) {
+      if (typeof container === 'string') container = document.getElementById(container);
+      if (!container) return;
+      var _origHeight = '';
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-sm btn-light border shadow-sm d-flex align-items-center';
+      btn.style.cssText = 'position:absolute;z-index:1001;top:8px;right:8px;pointer-events:auto;padding:3px 6px;';
+      btn.title = 'Toggle fullscreen';
+      var icon = document.createElement('span');
+      icon.className = 'material-symbols-outlined';
+      icon.style.cssText = 'font-size:.9rem;line-height:1;';
+      icon.textContent = 'fullscreen';
+      btn.appendChild(icon);
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (document.fullscreenElement) { document.exitFullscreen(); }
+        else { container.requestFullscreen(); }
+      });
+      container.addEventListener('fullscreenchange', function () {
+        var isFs = document.fullscreenElement === container;
+        icon.textContent = isFs ? 'fullscreen_exit' : 'fullscreen';
+        if (isFs) { _origHeight = container.style.height; container.style.height = '100%'; }
+        else { container.style.height = _origHeight; }
+        var m = typeof getMap === 'function' ? getMap() : getMap;
+        if (m) setTimeout(function () { m.invalidateSize(); }, 50);
+      });
+      container.appendChild(btn);
+    },
     updateVehicleMarkers: function (theMap, markerMap, vehicles, opts) {
       var seen = {};
       vehicles.forEach(function (v) {

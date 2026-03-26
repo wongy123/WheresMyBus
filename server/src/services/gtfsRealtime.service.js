@@ -69,6 +69,8 @@ function buildVehiclePosMap(feed) {
       vehicleLabel: vp.vehicle?.label ? String(vp.vehicle.label) : null,
       currentStopSequence: vp.currentStopSequence ?? null,
       timestamp: vp.timestamp != null ? Number(vp.timestamp) : null,
+      routeId: vp.trip?.routeId ? String(vp.trip.routeId) : null,
+      directionId: vp.trip?.directionId ?? null,
     });
   }
   return map;
@@ -85,6 +87,7 @@ async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl }) {
 
   const tuMap = tuFeed ? buildTripUpdateMap(tuFeed) : new Map();
   const vpMap = vpFeed ? buildVehiclePosMap(vpFeed) : new Map();
+  latestVposMap = vpMap;
 
   console.log(`[gtfsrt] tripUpdates=${tuMap.size} vehiclePositions=${vpMap.size}`);
 
@@ -131,6 +134,11 @@ function vposKey(tripId) {
 
 
 let timer = null;
+let latestVposMap = new Map();
+
+export function getLatestVehiclePositions() {
+  return latestVposMap;
+}
 
 export function startGtfsRealtimeLoop() {
   const cfg = readConfig();
