@@ -790,7 +790,11 @@ export async function getUpcomingByStop(
               r.scheduled_departure_time || r.scheduled_arrival_time;
     if (!t) return r.win_sec;
     const parts = t.split(':');
-    return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2] || 0);
+    let s = Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2] || 0);
+    // secToHms wraps past-midnight times to 00:xx; if the result is more than
+    // 12 hours behind win_sec the time has wrapped — add 86400 to restore it.
+    if (r.win_sec - s > 43200) s += 86400;
+    return s;
   };
   visible.sort((a, b) => effectiveSec(a) - effectiveSec(b));
   // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
@@ -881,7 +885,11 @@ export async function getUpcomingByStation(
               r.scheduled_departure_time || r.scheduled_arrival_time;
     if (!t) return r.win_sec;
     const parts = t.split(':');
-    return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2] || 0);
+    let s = Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2] || 0);
+    // secToHms wraps past-midnight times to 00:xx; if the result is more than
+    // 12 hours behind win_sec the time has wrapped — add 86400 to restore it.
+    if (r.win_sec - s > 43200) s += 86400;
+    return s;
   };
   visible.sort((a, b) => effectiveSecStn(a) - effectiveSecStn(b));
   // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
