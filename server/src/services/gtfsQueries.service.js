@@ -330,6 +330,7 @@ export async function getNearbyStops(lat, lng, limit = 5, configPath = defaultCo
       FROM stops
       WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
         AND (location_type IS NULL OR location_type IN (0, 1))
+        AND parent_station IS NULL
     `).all();
 
     const topN = rows
@@ -521,6 +522,7 @@ export async function getRoutesByStop(stopId, configPath = defaultConfigPath) {
       FROM stop_times st
       JOIN trips t ON st.trip_id = t.trip_id
       WHERE st.stop_id = $stopId
+        OR st.stop_id IN (SELECT stop_id FROM stops WHERE parent_station = $stopId)
     ) serving ON r.route_id = serving.route_id
     INNER JOIN (
       SELECT route_short_name, MIN(route_id) AS min_id

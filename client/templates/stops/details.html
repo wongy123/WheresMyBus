@@ -7,6 +7,15 @@
   <h1 class="h4 mb-0">{{ stop.stop_name }}</h1>
   <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">View Full Timetable</a>
 </div>
+{% if parent_station %}
+<div class="mb-2">
+  <a href="{{ BASE_PATH }}/stops/{{ stop.parent_station }}"
+     class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1">
+    <span class="material-symbols-outlined" style="font-size:.9rem;line-height:1;">{{ parent_station_icon }}</span>
+    {{ parent_station.stop_name }}
+  </a>
+</div>
+{% endif %}
 <div class="text-muted small mb-3">
   Stop ID: <code>{{ stop.stop_id }}</code>
   {% if stop.stop_code %} &bull; Code: <code>{{ stop.stop_code }}</code>{% endif %}
@@ -93,23 +102,6 @@
 </script>
 {% endif %}
 
-{% if platforms %}
-<div class="mb-4">
-  <h2 class="h6 mb-2">Platforms</h2>
-  <div class="list-group list-group-flush">
-    {% for p in platforms %}
-      <a href="{{ BASE_PATH }}/stops/{{ p.stop_id }}"
-         class="list-group-item list-group-item-action py-2 px-0 border-0 border-bottom">
-        <span class="small">{{ p.stop_name }}</span>
-        {% if p.platform_code %}
-          <span class="badge text-bg-secondary ms-1" style="font-size:.75rem;">Platform {{ p.platform_code }}</span>
-        {% endif %}
-      </a>
-    {% endfor %}
-  </div>
-</div>
-{% endif %}
-
 <h2 class="h5 mb-2">Upcoming Services</h2>
 <div id="stop-timetable"
      hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&hx_target=%23stop-timetable"
@@ -156,6 +148,23 @@
     {% else %}
       <div class="text-muted small">No nearby stops found.</div>
     {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if platforms %}
+<div class="mb-4">
+  <h2 class="h5 mb-2">Platforms</h2>
+  <div class="list-group list-group-flush">
+    {% for p in platforms %}
+      <a href="{{ BASE_PATH }}/stops/{{ p.stop_id }}"
+         class="list-group-item list-group-item-action py-2 px-0 border-0 border-bottom">
+        <span class="small">{{ p.stop_name }}</span>
+        {% if p.platform_code %}
+          <span class="badge text-bg-secondary ms-1" style="font-size:.75rem;">Platform {{ p.platform_code }}</span>
+        {% endif %}
+      </a>
+    {% endfor %}
   </div>
 </div>
 {% endif %}

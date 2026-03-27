@@ -123,8 +123,33 @@ def stop_details(stop_id: str):
     routes = routes_data.get("data", [])
 
     platforms = []
+    parent_station = None
+
     if details.get("location_type") == 1:
+        # Station — fetch its platforms and exclude them from nearby
         platforms_data = api_get(f"stops/{stop_id}/platforms") or {}
         platforms = platforms_data.get("data", [])
+        if platforms:
+            platform_ids = {p["stop_id"] for p in platforms}
+            nearby = [s for s in nearby if s.get("stop_id") not in platform_ids]
+    elif details.get("parent_station"):
+        # Platform — fetch parent station and exclude sibling platforms from nearby
+        parent_station = api_get(f"stops/{details['parent_station']}")
+        siblings_data = api_get(f"stops/{details['parent_station']}/platforms") or {}
+        siblings = siblings_data.get("data", [])
+        if siblings:
+            sibling_ids = {s["stop_id"] for s in siblings}
+            nearby = [s for s in nearby if s.get("stop_id") not in sibling_ids]
 
-    return render_template("stops/details.html", stop=details, nearby=nearby, routes=routes, platforms=platforms, BASE_PATH=BASE_PATH)
+    # Pick a mode icon for the parent-station button based on the stop's route types
+    _types = {r.get("route_type") for r in routes}
+    if _types & {1, 2, 12}:
+        parent_station_icon = "train"
+    elif 0 in _types:
+        parent_station_icon = "tram"
+    elif 4 in _types:
+        parent_station_icon = "directions_boat"
+    else:
+        parent_station_icon = "hub"
+
+    return render_template("stops/details.html", stop=details, nearby=nearby, routes=routes, platforms=platforms, parent_station=parent_station, parent_station_icon=parent_station_icon, BASE_PATH=BASE_PATH)
