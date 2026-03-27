@@ -418,13 +418,16 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
       JOIN routes r ON t.route_id = r.route_id
       WHERE (t.route_id = $routeId OR r.route_short_name = $routeId)
         AND t.direction_id = $direction
-      ORDER BY (SELECT COUNT(*) FROM stop_times WHERE trip_id = t.trip_id) DESC
+      ORDER BY (SELECT MAX(stop_sequence) FROM stop_times WHERE trip_id = t.trip_id) DESC
       LIMIT 1
     )
     ORDER BY st.stop_sequence
   `;
 
-  return withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
+  const rows = await withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
+  if (rows.length > 0) return rows;
+  const altDir = direction === 0 ? 1 : 0;
+  return withDb(db => db.prepare(sql).all({ routeId, direction: altDir }), configPath);
 }
 
 export async function getRouteShape(routeId, direction = 0, configPath = defaultConfigPath) {
@@ -438,13 +441,16 @@ export async function getRouteShape(routeId, direction = 0, configPath = default
       WHERE (t.route_id = $routeId OR r.route_short_name = $routeId)
         AND t.direction_id = $direction
         AND t.shape_id IS NOT NULL
-      ORDER BY (SELECT COUNT(*) FROM stop_times WHERE trip_id = t.trip_id) DESC
+      ORDER BY (SELECT MAX(stop_sequence) FROM stop_times WHERE trip_id = t.trip_id) DESC
       LIMIT 1
     )
     ORDER BY sh.shape_pt_sequence
   `;
 
-  return withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
+  const rows = await withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
+  if (rows.length > 0) return rows;
+  const altDir = direction === 0 ? 1 : 0;
+  return withDb(db => db.prepare(sql).all({ routeId, direction: altDir }), configPath);
 }
 
 export async function getRouteSchedule(routeId, direction = 0, configPath = defaultConfigPath) {
@@ -919,10 +925,14 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
       if (fallbackRouteIds.length > 0) {
         const fbPlaceholders = fallbackRouteIds.map(() => '?').join(',');
         const routeRows = db.prepare(`
-          SELECT route_id, route_short_name, route_color, route_text_color,
-                 COALESCE(route_type, 3) AS route_type
-          FROM routes
-          WHERE route_id IN (${fbPlaceholders})
+          SELECT r.route_id, r.route_short_name, r.route_color, r.route_text_color,
+                 COALESCE(r.route_type, 3) AS route_type,
+                 MIN(t.direction_id) AS min_dir,
+                 MAX(t.direction_id) AS max_dir
+          FROM routes r
+          LEFT JOIN trips t ON t.route_id = r.route_id
+          WHERE r.route_id IN (${fbPlaceholders})
+          GROUP BY r.route_id
         `).all(...fallbackRouteIds);
         const routeMap = new Map(routeRows.map(r => [r.route_id, r]));
         for (const tripId of missingTripIds) {
@@ -930,10 +940,18 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
           if (!vpos?.routeId) continue;
           const route = routeMap.get(vpos.routeId);
           if (!route) continue;
+          // Trust the RT direction_id only if it's non-zero (explicitly set, not the
+          // protobuf uint32 default) and that direction exists for this route in GTFS.
+          // Otherwise fall back to the route's actual direction from the trips table.
+          const rtDir = vpos.directionId;
+          const onlyOneDir = route.min_dir === route.max_dir;
+          const direction_id = (rtDir && (rtDir === route.min_dir || rtDir === route.max_dir))
+            ? rtDir
+            : (onlyOneDir ? route.min_dir : 0);
           fallbackRows.push({
             trip_id:          tripId,
             route_id:         route.route_id,
-            direction_id:     vpos.directionId ?? 0,
+            direction_id,
             trip_headsign:    '',
             route_short_name: route.route_short_name,
             route_color:      route.route_color,
@@ -944,21 +962,24 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
       }
     }
 
-    const nextStopStmt = db.prepare(`
-      SELECT stop_name, win_sec
-      FROM stop_events_3day
-      WHERE trip_id = ?
-        AND stop_sequence >= ?
-        AND win_sec >= ?
-      ORDER BY stop_sequence ASC
-      LIMIT 1
-    `);
+    // Single batched next-stop query: IN (...) lets SQLite push the trip_id
+    // predicate into the view's base table index, unlike a CTE VALUES join.
+    // We drop the per-trip stop_sequence threshold and rely on win_sec alone;
+    // the 30-min lookback window is tight enough for next-stop accuracy.
+    const nextStopRows = db.prepare(`
+      SELECT trip_id, stop_name, win_sec
+      FROM (
+        SELECT trip_id, stop_name, win_sec,
+               ROW_NUMBER() OVER (PARTITION BY trip_id ORDER BY stop_sequence ASC) AS rn
+        FROM stop_events_3day
+        WHERE trip_id IN (${placeholders})
+          AND win_sec >= ?
+      )
+      WHERE rn = 1
+    `).all(...tripIds, secNow - 1800);
     const nextStopMap = {};
-    for (const tripId of tripIds) {
-      const vpos = vposMap.get(tripId);
-      const minSeq = vpos?.currentStopSequence ?? 0;
-      const row = nextStopStmt.get(tripId, minSeq, secNow - 1800);
-      if (row) nextStopMap[tripId] = row;
+    for (const row of nextStopRows) {
+      nextStopMap[row.trip_id] = row;
     }
     return { tripRows, fallbackRows, nextStopMap };
   }, configPath);

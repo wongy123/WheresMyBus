@@ -246,24 +246,38 @@ map.on('moveend', function() {
 // Live vehicle markers
 var vehicleMarkerMap = {};
 var activeRoutePolyline = null;
+var activeRouteStopMarkers = [];
 var activeTripId = null;
+var isFollowing = false;
 var _lastStopVehicles = [];
 
 function _drawActiveShape(routeId, directionId, col) {
   if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
-  fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId) + '/shape?direction=' + directionId)
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      var pts = (data.data || []).map(function (pt) { return [pt.lat, pt.lon]; });
-      if (pts.length) {
-        activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
-      }
-    })
-    .catch(function () {});
+  activeRouteStopMarkers.forEach(function(m) { map.removeLayer(m); });
+  activeRouteStopMarkers = [];
+  var dir = directionId || 0;
+  var base = window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId);
+  var shapeP = fetch(base + '/shape?direction=' + dir).then(function(r) { return r.json(); });
+  var stopsP = fetch(base + '/stops?direction='  + dir).then(function(r) { return r.json(); });
+  Promise.all([shapeP, stopsP]).then(function(results) {
+    var pts = (results[0].data || []).map(function(pt) { return [pt.lat, pt.lon]; });
+    if (pts.length) {
+      activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
+    }
+    (results[1].data || []).forEach(function(s) {
+      if (!s.stop_lat || !s.stop_lon) return;
+      var m = L.marker([s.stop_lat, s.stop_lon], {
+        icon: window.TRANSIT.makeRouteDot(col), zIndexOffset: 300
+      }).addTo(map);
+      activeRouteStopMarkers.push(m);
+    });
+  }).catch(function() {});
 }
 
 function _clearActiveShape() {
   if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+  activeRouteStopMarkers.forEach(function(m) { map.removeLayer(m); });
+  activeRouteStopMarkers = [];
 }
 
 function _highlightActiveRow(tripId) {
@@ -298,12 +312,14 @@ var _vehicleRenderOpts = {
     var col = v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
     marker.on('click', function () {
       activeTripId = v.trip_id;
+      isFollowing = true;
       _drawActiveShape(v.route_id, v.direction_id || 0, col);
       _highlightActiveRow(v.trip_id);
     });
     marker.on('popupclose', function () {
       if (activeTripId === v.trip_id) {
         activeTripId = null;
+        isFollowing = false;
         _clearActiveShape();
         _highlightActiveRow(null);
       }
@@ -320,7 +336,7 @@ window._renderFilteredVehicles = function() {
     ? _lastStopVehicles.filter(function(v) { return active.has(v.route_short_name); })
     : _lastStopVehicles;
   window.TRANSIT.updateVehicleMarkers(map, vehicleMarkerMap, toShow, _vehicleRenderOpts);
-  if (activeTripId) {
+  if (activeTripId && isFollowing) {
     for (var i = 0; i < _lastStopVehicles.length; i++) {
       if (_lastStopVehicles[i].trip_id === activeTripId) {
         var _pos = L.latLng(_lastStopVehicles[i].lat, _lastStopVehicles[i].lon);
@@ -355,6 +371,7 @@ document.getElementById('stop-timetable').addEventListener('click', function(e) 
   }
   if (!vehicle) return;
   activeTripId = tripId;
+  isFollowing = true;
   var rt = routeTypeMap[vehicle.route_id] != null ? routeTypeMap[vehicle.route_id] : 3;
   var col = vehicle.route_color ? '#' + vehicle.route_color : window.TRANSIT.vehicleColor(rt);
   _drawActiveShape(vehicle.route_id, vehicle.direction_id || 0, col);
@@ -364,6 +381,8 @@ document.getElementById('stop-timetable').addEventListener('click', function(e) 
 });
 
 window.TRANSIT.addFullscreenBtn(document.getElementById('stop-map'), function() { return map; });
+
+map.on('dragstart', function() { isFollowing = false; });
 
 document.getElementById('center-stop-btn').addEventListener('click', function(e) {
   e.stopPropagation();

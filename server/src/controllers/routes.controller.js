@@ -8,6 +8,7 @@ import {
 } from '../services/gtfsQueries.service.js';
 import { paginateResponse } from '../utils/paginate.js';
 import { parseIntParam, parseDirection } from '../utils/params.js';
+import { cacheGet, cacheSet } from '../services/cache.service.js';
 
 /**
  * GET /api/routes/search?searchTerm=...&page=1&limit=20
@@ -60,9 +61,15 @@ export async function getRouteStops(req, res, next) {
   try {
     const routeId = req.params.routeId;
     const direction = parseDirection(req.query.direction);
+    const cacheKey = `api:stops:${routeId}:${direction}`;
+
+    const cached = await cacheGet(cacheKey);
+    if (cached?.data?.length > 0) return res.json(cached);
 
     const stops = await getStopsByRoute(routeId, direction);
-    res.json({ data: stops });
+    const body = { data: stops };
+    if (stops.length > 0) await cacheSet(cacheKey, body, 3600);
+    res.json(body);
   } catch (err) {
     next(err);
   }
@@ -75,9 +82,15 @@ export async function getRouteShape(req, res, next) {
   try {
     const routeId = req.params.routeId;
     const direction = parseDirection(req.query.direction);
+    const cacheKey = `api:shape:${routeId}:${direction}`;
+
+    const cached = await cacheGet(cacheKey);
+    if (cached?.data?.length > 0) return res.json(cached);
 
     const points = await getRouteShapeService(routeId, direction);
-    res.json({ data: points });
+    const body = { data: points };
+    if (points.length > 0) await cacheSet(cacheKey, body, 3600);
+    res.json(body);
   } catch (err) {
     next(err);
   }
