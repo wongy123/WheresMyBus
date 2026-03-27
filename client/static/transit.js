@@ -167,7 +167,7 @@
           var marker = L.marker([v.lat, v.lon], {
             icon: window.TRANSIT.makeVehicleIcon(color, iconName),
             zIndexOffset: 1000
-          }).addTo(theMap).bindPopup(popup);
+          }).addTo(theMap).bindPopup(popup, { autoPan: false });
           if (opts.onNewMarker) opts.onNewMarker(marker, v);
           markerMap[v.trip_id] = marker;
         }

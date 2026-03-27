@@ -195,6 +195,7 @@
     #map-search { width: calc(100vw - 2rem); top: 1rem; }
     .leaflet-top.leaflet-left { padding-top: 4.5rem; }
     #map-filter { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+    #map-locate { bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); }
 
     /* Split layout: map top, sidebar bottom */
     #map-wrap {
@@ -297,7 +298,7 @@
             style="background:var(--transit-tram-color);color:#333;border-color:var(--transit-tram-color);">
       <span class="material-symbols-outlined">tram</span>Tram
     </button>
-    <button id="global-vehicles-btn" class="map-filter-btn off"
+    <button id="global-vehicles-btn" class="map-filter-btn"
             style="background:#198754;color:#fff;border-color:#198754;">
       <span class="material-symbols-outlined">sensors</span>Live
     </button>
@@ -613,7 +614,7 @@
             rows[i].vehicle_latitude && rows[i].vehicle_longitude) {
           var _followPos = [rows[i].vehicle_latitude, rows[i].vehicle_longitude];
           activeVehicleMarker.setLatLng(_followPos);
-          map.panTo(_followPos);
+          if (isFollowing) map.panTo(_followPos);
           break;
         }
       }
@@ -664,12 +665,30 @@
   var activeRouteStopMarkers = [];
   var activeRouteStopIds     = new Set();
   var activeTripId           = null;
+  var isFollowing            = false;
   var sidebarVehicleMarkers  = {};
   var sidebarPollInterval    = null;
 
   function drawRouteShape(routeId, directionId, routeColor, routeType, vLat, vLon, vPopup, shapeKey) {
     activeShapeKey = shapeKey || (routeId + '_' + directionId);
+    var myShapeKey = activeShapeKey;
     var color = routeColor ? '#' + routeColor : '#0d6efd';
+
+    // Place vehicle marker and fly immediately — don't wait for shape/stops fetch
+    if (vLat && vLon) {
+      isFollowing = true;
+      if (activeVehicleMarker) { map.removeLayer(activeVehicleMarker); activeVehicleMarker = null; }
+      activeVehicleMarker = L.marker([vLat, vLon], {
+        icon: window.TRANSIT.makeVehicleIcon(color, window.TRANSIT.vehicleIcon(routeType || 3)),
+        zIndexOffset: 1000
+      }).addTo(map);
+      if (vPopup) activeVehicleMarker.bindPopup(vPopup, { autoPan: false });
+      var _markerToOpen = activeVehicleMarker;
+      map.once('moveend', function () {
+        if (_markerToOpen && map.hasLayer(_markerToOpen)) _markerToOpen.openPopup();
+      });
+      map.flyTo([vLat, vLon], Math.max(map.getZoom(), 14));
+    }
 
     var shapeP = fetch(window.API_BASE_URL + '/routes/' + routeId + '/shape?direction=' + (directionId || 0))
       .then(function (r) { return r.json(); });
@@ -677,6 +696,9 @@
       .then(function (r) { return r.json(); });
 
     Promise.all([shapeP, stopsP]).then(function (results) {
+      // Abort if user selected a different vehicle while fetching
+      if (activeShapeKey !== myShapeKey) return;
+
       var shapeData = results[0];
       var stopsData = results[1];
 
@@ -702,26 +724,13 @@
         });
         activeRouteStopMarkers.push(m);
       });
-
-      // Vehicle marker
-      if (vLat && vLon) {
-        activeVehicleMarker = L.marker([vLat, vLon], {
-          icon: window.TRANSIT.makeVehicleIcon(color, window.TRANSIT.vehicleIcon(routeType || 3)),
-          zIndexOffset: 1000
-        }).addTo(map);
-        if (vPopup) activeVehicleMarker.bindPopup(vPopup);
-        var _markerToOpen = activeVehicleMarker;
-        map.once('moveend', function () {
-          if (_markerToOpen && map.hasLayer(_markerToOpen)) _markerToOpen.openPopup();
-        });
-        map.flyTo([vLat, vLon], Math.max(map.getZoom(), 14));
-      }
     }).catch(function () {});
   }
 
   function clearShape() {
     activeShapeKey = null;
     activeTripId = null;
+    isFollowing = false;
     if (activePolyline)      { map.removeLayer(activePolyline);      activePolyline = null; }
     if (activeVehicleMarker) { map.removeLayer(activeVehicleMarker); activeVehicleMarker = null; }
     activeRouteStopMarkers.forEach(function (m) { map.removeLayer(m); });
@@ -810,7 +819,7 @@
       for (var i = 0; i < vehicles.length; i++) {
         if (vehicles[i].trip_id === activeTripId) {
           activeVehicleMarker.setLatLng([vehicles[i].lat, vehicles[i].lon]);
-          map.panTo([vehicles[i].lat, vehicles[i].lon]);
+          if (isFollowing) map.panTo([vehicles[i].lat, vehicles[i].lon]);
           break;
         }
       }
@@ -1038,8 +1047,11 @@
 
   window.TRANSIT.addFullscreenBtn(document.getElementById('map'), function () { return map; });
 
-  // Load stops for initial view
+  map.on('dragstart', function () { isFollowing = false; });
+
+  // Load stops and start live vehicles on initial view
   loadBoundsMarkers();
+  startGlobalVehicles();
 }());
 </script>
 {% endblock %}

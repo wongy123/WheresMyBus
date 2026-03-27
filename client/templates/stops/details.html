@@ -315,6 +315,7 @@ var _vehicleRenderOpts = {
       isFollowing = true;
       _drawActiveShape(v.route_id, v.direction_id || 0, col);
       _highlightActiveRow(v.trip_id);
+      map.panTo(marker.getLatLng());
     });
     marker.on('popupclose', function () {
       if (activeTripId === v.trip_id) {
@@ -339,8 +340,7 @@ window._renderFilteredVehicles = function() {
   if (activeTripId && isFollowing) {
     for (var i = 0; i < _lastStopVehicles.length; i++) {
       if (_lastStopVehicles[i].trip_id === activeTripId) {
-        var _pos = L.latLng(_lastStopVehicles[i].lat, _lastStopVehicles[i].lon);
-        if (!map.getBounds().contains(_pos)) map.panTo(_pos);
+        map.panTo([_lastStopVehicles[i].lat, _lastStopVehicles[i].lon]);
         break;
       }
     }
