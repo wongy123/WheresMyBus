@@ -10,7 +10,7 @@
 {% if parent_station %}
 <div class="mb-2">
   <a href="{{ BASE_PATH }}/stops/{{ stop.parent_station }}"
-     class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1">
+    class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1">
     <span class="material-symbols-outlined" style="font-size:.9rem;line-height:1;">{{ parent_station_icon }}</span>
     {{ parent_station.stop_name }}
   </a>
@@ -24,10 +24,22 @@
 
 {% if routes %}
 <style>
-  .route-filter-btn { transition: opacity .15s; cursor: pointer; }
-  #route-filter-badges.has-filter .route-filter-btn:not(.active) { opacity: 0.3; }
-  .route-filter-btn.active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0,0,0,.45); }
-  #stop-timetable.filter-active nav { display: none !important; }
+  .route-filter-btn {
+    transition: opacity .15s;
+    cursor: pointer;
+  }
+
+  #route-filter-badges.has-filter .route-filter-btn:not(.active) {
+    opacity: 0.3;
+  }
+
+  .route-filter-btn.active {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, .45);
+  }
+
+  #stop-timetable.filter-active nav {
+    display: none !important;
+  }
 </style>
 <div class="mb-4">
   <div class="fw-semibold small mb-2">
@@ -38,78 +50,74 @@
   </div>
   <div class="d-flex flex-wrap gap-1" id="route-filter-badges">
     {% for r in routes %}
-      {% set bg = '#' + (r.route_color or 'CCCCCC') %}
-      {% set fg = '#' + (r.route_text_color or '000000') %}
-      <button type="button"
-              class="route-filter-btn badge rounded-pill px-2 py-1 border-0"
-              style="background-color: {{ bg }}; color: {{ fg }}; font-size: .85rem;"
-              data-route="{{ r.route_short_name }}"
-              title="Filter to {{ r.route_short_name }}">
-        {{ r.route_short_name }}
-      </button>
+    {% set bg = '#' + (r.route_color or 'CCCCCC') %}
+    {% set fg = '#' + (r.route_text_color or '000000') %}
+    <button type="button" class="route-filter-btn badge rounded-pill px-2 py-1 border-0"
+      style="background-color: {{ bg }}; color: {{ fg }}; font-size: .85rem;" data-route="{{ r.route_short_name }}"
+      title="Filter to {{ r.route_short_name }}">
+      {{ r.route_short_name }}
+    </button>
     {% endfor %}
   </div>
 </div>
 <script>
-(function () {
-  var badgesEl = document.getElementById('route-filter-badges');
-  var hintEl   = document.getElementById('route-filter-hint');
+  (function () {
+    var badgesEl = document.getElementById('route-filter-badges');
+    var hintEl = document.getElementById('route-filter-hint');
 
-  function applyFilter() {
-    var ttEl = document.getElementById('stop-timetable');
-    var anyActive = !!badgesEl.querySelector('.route-filter-btn.active');
-    badgesEl.classList.toggle('has-filter', anyActive);
-    hintEl.style.display = anyActive ? '' : 'none';
+    function applyFilter() {
+      var ttEl = document.getElementById('stop-timetable');
+      var anyActive = !!badgesEl.querySelector('.route-filter-btn.active');
+      badgesEl.classList.toggle('has-filter', anyActive);
+      hintEl.style.display = anyActive ? '' : 'none';
 
-    if (ttEl) {
-      ttEl.classList.toggle('filter-active', anyActive);
-      // Instantly show/hide rows — no server round-trip needed.
-      var active = new Set(
-        Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
-          .map(function (b) { return b.dataset.route; })
-      );
-      var tbody = ttEl.querySelector('table tbody');
-      if (tbody) {
-        tbody.querySelectorAll('tr[data-route]').forEach(function (tr) {
-          tr.style.display = (anyActive && !active.has(tr.dataset.route)) ? 'none' : '';
-        });
+      if (ttEl) {
+        ttEl.classList.toggle('filter-active', anyActive);
+        // Instantly show/hide rows — no server round-trip needed.
+        var active = new Set(
+          Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
+            .map(function (b) { return b.dataset.route; })
+        );
+        var tbody = ttEl.querySelector('table tbody');
+        if (tbody) {
+          tbody.querySelectorAll('tr[data-route]').forEach(function (tr) {
+            tr.style.display = (anyActive && !active.has(tr.dataset.route)) ? 'none' : '';
+          });
+        }
       }
+      if (window._renderFilteredVehicles) window._renderFilteredVehicles();
     }
-    if (window._renderFilteredVehicles) window._renderFilteredVehicles();
-  }
 
-  badgesEl.addEventListener('click', function (e) {
-    var btn = e.target.closest('.route-filter-btn');
-    if (!btn) return;
-    btn.classList.toggle('active');
-    var _ps = document.querySelector('#stop-timetable [data-tt-page]');
-    if (_ps) _ps.dataset.ttPage = '1';
-    applyFilter();
-  });
+    badgesEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('.route-filter-btn');
+      if (!btn) return;
+      btn.classList.toggle('active');
+      var _ps = document.querySelector('#stop-timetable [data-tt-page]');
+      if (_ps) _ps.dataset.ttPage = '1';
+      applyFilter();
+    });
 
-  document.getElementById('route-filter-clear').addEventListener('click', function (e) {
-    e.preventDefault();
-    badgesEl.querySelectorAll('.route-filter-btn.active').forEach(function (b) { b.classList.remove('active'); });
-    var _ps = document.querySelector('#stop-timetable [data-tt-page]');
-    if (_ps) _ps.dataset.ttPage = '1';
-    applyFilter();
-  });
+    document.getElementById('route-filter-clear').addEventListener('click', function (e) {
+      e.preventDefault();
+      badgesEl.querySelectorAll('.route-filter-btn.active').forEach(function (b) { b.classList.remove('active'); });
+      var _ps = document.querySelector('#stop-timetable [data-tt-page]');
+      if (_ps) _ps.dataset.ttPage = '1';
+      applyFilter();
+    });
 
-  document.addEventListener('htmx:afterSwap', function(evt) {
-    if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') applyFilter();
-  });
-}());
+    document.addEventListener('htmx:afterSwap', function (evt) {
+      if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') applyFilter();
+    });
+  }());
 </script>
 {% endif %}
 
 <h2 class="h5 mb-2">Upcoming Services</h2>
 <div id="stop-timetable"
-     hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&hx_target=%23stop-timetable"
-     hx-trigger="load, every 5s"
-     hx-target="this"
-     hx-swap="innerHTML"
-     hx-vals='js:{"page": document.querySelector("#stop-timetable [data-tt-page]")?.dataset.ttPage || "1"}'
-     aria-live="polite">
+  hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&hx_target=%23stop-timetable"
+  hx-trigger="load, every 5s" hx-target="this" hx-swap="innerHTML"
+  hx-vals='js:{"page": document.querySelector("#stop-timetable [data-tt-page]")?.dataset.ttPage || "1"}'
+  aria-live="polite">
   <div class="text-muted small d-flex align-items-center gap-2">
     <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
     <span>Loading...</span>
@@ -121,8 +129,8 @@
   <div class="col-lg-8">
     <div id="stop-map" class="map-container" style="height: 340px; position: relative;">
       <button id="center-stop-btn" title="Re-centre on this stop"
-              style="position:absolute;z-index:1001;bottom:8px;right:8px;pointer-events:auto;"
-              class="btn btn-sm btn-light border shadow-sm d-flex align-items-center gap-1">
+        style="position:absolute;z-index:1001;bottom:8px;right:8px;pointer-events:auto;"
+        class="btn btn-sm btn-light border shadow-sm d-flex align-items-center gap-1">
         <span class="material-symbols-outlined" style="font-size:.9rem;line-height:1;">my_location</span>
         <span style="font-size:.78rem;">This stop</span>
       </button>
@@ -131,22 +139,22 @@
   <div class="col-lg-4">
     <h2 class="h6 mb-2">Nearby Stops</h2>
     {% if nearby %}
-      <ul class="list-unstyled mb-0" id="nearby-stop-list">
-        {% for s in nearby %}
-          <li class="d-flex align-items-start justify-content-between gap-2 py-1 border-bottom">
-            <a href="{{ BASE_PATH }}/stops/{{ s.stop_id }}" class="text-decoration-none text-body small">
-              {{ s.stop_name }}
-            </a>
-            <button class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center flex-shrink-0 py-0 ps-1 pe-2"
-                    style="font-size:.72rem; gap:.2rem;"
-                    onclick="focusStop('{{ s.stop_id }}')">
-              <span class="material-symbols-outlined" style="font-size:.85rem; line-height:1; width:.85rem; height:.85rem; overflow:hidden; display:inline-block;">location_on</span>Map
-            </button>
-          </li>
-        {% endfor %}
-      </ul>
+    <ul class="list-unstyled mb-0" id="nearby-stop-list">
+      {% for s in nearby %}
+      <li class="d-flex align-items-start justify-content-between gap-2 py-1 border-bottom">
+        <a href="{{ BASE_PATH }}/stops/{{ s.stop_id }}" class="text-decoration-none text-body small">
+          {{ s.stop_name }}
+        </a>
+        <button class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center flex-shrink-0 py-0 ps-1 pe-2"
+          style="font-size:.72rem; gap:.2rem;" onclick="focusStop('{{ s.stop_id }}')">
+          <span class="material-symbols-outlined"
+            style="font-size:.85rem; line-height:1; width:.85rem; height:.85rem; overflow:hidden; display:inline-block;">location_on</span>Map
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
     {% else %}
-      <div class="text-muted small">No nearby stops found.</div>
+    <div class="text-muted small">No nearby stops found.</div>
     {% endif %}
   </div>
 </div>
@@ -157,13 +165,13 @@
   <h2 class="h5 mb-2">Platforms</h2>
   <div class="list-group list-group-flush">
     {% for p in platforms %}
-      <a href="{{ BASE_PATH }}/stops/{{ p.stop_id }}"
-         class="list-group-item list-group-item-action py-2 px-0 border-0 border-bottom">
-        <span class="small">{{ p.stop_name }}</span>
-        {% if p.platform_code %}
-          <span class="badge text-bg-secondary ms-1" style="font-size:.75rem;">Platform {{ p.platform_code }}</span>
-        {% endif %}
-      </a>
+    <a href="{{ BASE_PATH }}/stops/{{ p.stop_id }}"
+      class="list-group-item list-group-item-action py-2 px-0 border-0 border-bottom">
+      <span class="small">{{ p.stop_name }}</span>
+      {% if p.platform_code %}
+      <span class="badge text-bg-secondary ms-1" style="font-size:.75rem;">Platform {{ p.platform_code }}</span>
+      {% endif %}
+    </a>
     {% endfor %}
   </div>
 </div>
@@ -171,272 +179,308 @@
 
 {% if stop.stop_lat and stop.stop_lon %}
 <style>
-  #stop-timetable tr[data-trip-id] { cursor: pointer; }
-  #stop-timetable tr[data-trip-id]:hover td { background-color: rgba(var(--bs-primary-rgb), .04); }
-  #stop-timetable tr.tt-row-active td { background-color: rgba(var(--bs-primary-rgb), .10); }
+  #stop-timetable tr[data-trip-id] {
+    cursor: pointer;
+  }
+
+  #stop-timetable tr[data-trip-id]:hover td {
+    background-color: rgba(var(--bs-primary-rgb), .04);
+  }
+
+  #stop-timetable tr.tt-row-active td {
+    background-color: rgba(var(--bs-primary-rgb), .10);
+  }
 </style>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var stopLat = {{ stop.stop_lat }};
-var stopLon = {{ stop.stop_lon }};
-var stopId = {{ stop.stop_id | tojson }};
-var stopName = {{ stop.stop_name | tojson }};
-var nearby = {{ nearby | tojson }};
-var BASE_PATH = {{ BASE_PATH | tojson }};
+  var stopLat = {{ stop.stop_lat }};
+  var stopLon = {{ stop.stop_lon }};
+  var stopId = {{ stop.stop_id | tojson }};
+  var stopName = {{ stop.stop_name | tojson }};
+  var nearby = {{ nearby | tojson }};
+  var BASE_PATH = {{ BASE_PATH | tojson }};
 
-var routeTypeMap = {};
-{{ routes | tojson }}.forEach(function(r) { routeTypeMap[r.route_id] = r.route_type; });
+  var routeTypeMap = {};
+  { { routes | tojson } }.forEach(function (r) { routeTypeMap[r.route_id] = r.route_type; });
 
-var map = L.map('stop-map').setView([stopLat, stopLon], 16);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom: 19
-}).addTo(map);
+  var map = L.map('stop-map').setView([stopLat, stopLon], 16);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(map);
 
-// Current stop marker — white dot, colour from dominant route type
-var _curTypes = Object.values(routeTypeMap).map(Number);
-var _curPrimary = [2, 0, 4].find(function(t) { return _curTypes.indexOf(t) >= 0; }) || 3;
-var stopMarker = L.marker([stopLat, stopLon], { icon: window.TRANSIT.makeRouteDot(window.TRANSIT.color(_curPrimary, false), 16) }).addTo(map)
-  .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Current stop</span>')
-  .openPopup();
+  // Current stop marker — white dot, colour from dominant route type
+  var _curTypes = Object.values(routeTypeMap).map(Number);
+  var _curPrimary = [2, 0, 4].find(function (t) { return _curTypes.indexOf(t) >= 0; }) || 3;
+  var stopMarker = L.marker([stopLat, stopLon], { icon: window.TRANSIT.makeRouteDot(window.TRANSIT.color(_curPrimary, false), 16) }).addTo(map)
+    .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Current stop</span>')
+    .openPopup();
 
-// Icon: color+label from route_type, shape from location_type
-// route_type: 2=rail/metro/tram → purple T; 4=ferry → cyan F; else → blue B
-// location_type: 1=station → square; else → circle
-function makeNearbyIcon(s) {
-  return window.TRANSIT.makeStopIcon(s);
-}
+  // Icon: color+label from route_type, shape from location_type
+  // route_type: 2=rail/metro/tram → purple T; 4=ferry → cyan F; else → blue B
+  // location_type: 1=station → square; else → circle
+  function makeNearbyIcon(s) {
+    return window.TRANSIT.makeStopIcon(s);
+  }
 
-var nearbyMarkerMap = {};
-nearby.forEach(function(s) {
-  if (!s.stop_lat || !s.stop_lon) return;
-  var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) })
-    .addTo(map).bindPopup(window.TRANSIT.makeStopPopup(s, BASE_PATH));
-  nearbyMarkerMap[s.stop_id] = m;
-});
+  var nearbyMarkerMap = {};
+  nearby.forEach(function (s) {
+    if (!s.stop_lat || !s.stop_lon) return;
+    var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) })
+      .addTo(map).bindPopup(window.TRANSIT.makeStopPopup(s, BASE_PATH));
+    nearbyMarkerMap[s.stop_id] = m;
+  });
 
-function focusStop(sid) {
-  var m = nearbyMarkerMap[sid] || dynamicMarkerMap[sid];
-  if (!m) return;
-  map.flyTo(m.getLatLng(), 17);
-  m.openPopup();
-}
+  function focusStop(sid) {
+    var m = nearbyMarkerMap[sid] || dynamicMarkerMap[sid];
+    if (!m) return;
+    map.flyTo(m.getLatLng(), 17);
+    m.openPopup();
+  }
 
-// Dynamic stop loading on map pan/zoom
-var dynamicMarkerMap = {};
-var moveTimer = null;
+  // Dynamic stop loading on map pan/zoom
+  var dynamicMarkerMap = {};
+  var moveTimer = null;
 
-function loadStopsNearCenter() {
-  var center = map.getCenter();
-  fetch(window.API_BASE_URL + '/stops/nearby?lat=' + center.lat + '&lng=' + center.lng + '&limit=30')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      // Remove old dynamic markers
-      Object.values(dynamicMarkerMap).forEach(function(m) { map.removeLayer(m); });
-      dynamicMarkerMap = {};
+  function loadStopsNearCenter() {
+    var center = map.getCenter();
+    fetch(window.API_BASE_URL + '/stops/nearby?lat=' + center.lat + '&lng=' + center.lng + '&limit=30')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        // Remove old dynamic markers
+        Object.values(dynamicMarkerMap).forEach(function (m) { map.removeLayer(m); });
+        dynamicMarkerMap = {};
 
-      (data.data || []).forEach(function(s) {
+        (data.data || []).forEach(function (s) {
+          if (!s.stop_lat || !s.stop_lon) return;
+          if (s.stop_id === stopId) return;
+          if (nearbyMarkerMap[s.stop_id]) return;
+          var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) })
+            .addTo(map).bindPopup(window.TRANSIT.makeStopPopup(s, BASE_PATH));
+          dynamicMarkerMap[s.stop_id] = m;
+        });
+      })
+      .catch(function () { });
+  }
+
+  map.on('moveend', function () {
+    clearTimeout(moveTimer);
+    moveTimer = setTimeout(loadStopsNearCenter, 400);
+  });
+
+  // Live vehicle markers
+  var vehicleMarkerMap = {};
+  var activeRoutePolyline = null;
+  var activeRouteStopMarkers = [];
+  var activeTripId = null;
+  var isFollowing = false;
+  var _lastStopVehicles = [];
+
+  function _drawActiveShape(routeId, directionId, col) {
+    if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+    activeRouteStopMarkers.forEach(function (m) { map.removeLayer(m); });
+    activeRouteStopMarkers = [];
+    var dir = directionId || 0;
+    var base = window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId);
+    var shapeP = fetch(base + '/shape?direction=' + dir).then(function (r) { return r.json(); });
+    var stopsP = fetch(base + '/stops?direction=' + dir).then(function (r) { return r.json(); });
+    Promise.all([shapeP, stopsP]).then(function (results) {
+      var pts = (results[0].data || []).map(function (pt) { return [pt.lat, pt.lon]; });
+      if (pts.length) {
+        activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
+      }
+      (results[1].data || []).forEach(function (s) {
         if (!s.stop_lat || !s.stop_lon) return;
-        if (s.stop_id === stopId) return;
-        if (nearbyMarkerMap[s.stop_id]) return;
-        var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) })
-          .addTo(map).bindPopup(window.TRANSIT.makeStopPopup(s, BASE_PATH));
-        dynamicMarkerMap[s.stop_id] = m;
+        var m = L.marker([s.stop_lat, s.stop_lon], {
+          icon: window.TRANSIT.makeRouteDot(col), zIndexOffset: 300
+        }).addTo(map);
+        activeRouteStopMarkers.push(m);
       });
-    })
-    .catch(function() {});
-}
+    }).catch(function () { });
+  }
 
-map.on('moveend', function() {
-  clearTimeout(moveTimer);
-  moveTimer = setTimeout(loadStopsNearCenter, 400);
-});
+  function _clearActiveShape() {
+    if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+    activeRouteStopMarkers.forEach(function (m) { map.removeLayer(m); });
+    activeRouteStopMarkers = [];
+  }
 
-// Live vehicle markers
-var vehicleMarkerMap = {};
-var activeRoutePolyline = null;
-var activeRouteStopMarkers = [];
-var activeTripId = null;
-var isFollowing = false;
-var _lastStopVehicles = [];
-
-function _drawActiveShape(routeId, directionId, col) {
-  if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
-  activeRouteStopMarkers.forEach(function(m) { map.removeLayer(m); });
-  activeRouteStopMarkers = [];
-  var dir = directionId || 0;
-  var base = window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId);
-  var shapeP = fetch(base + '/shape?direction=' + dir).then(function(r) { return r.json(); });
-  var stopsP = fetch(base + '/stops?direction='  + dir).then(function(r) { return r.json(); });
-  Promise.all([shapeP, stopsP]).then(function(results) {
-    var pts = (results[0].data || []).map(function(pt) { return [pt.lat, pt.lon]; });
-    if (pts.length) {
-      activeRoutePolyline = L.polyline(pts, { color: col, weight: 4, opacity: 0.7 }).addTo(map);
+  function _highlightActiveRow(tripId) {
+    document.querySelectorAll('#stop-timetable tr.tt-row-active').forEach(function (r) { r.classList.remove('tt-row-active'); });
+    if (tripId) {
+      var row = document.querySelector('#stop-timetable tr[data-trip-id="' + tripId + '"]');
+      if (row) row.classList.add('tt-row-active');
     }
-    (results[1].data || []).forEach(function(s) {
-      if (!s.stop_lat || !s.stop_lon) return;
-      var m = L.marker([s.stop_lat, s.stop_lon], {
-        icon: window.TRANSIT.makeRouteDot(col), zIndexOffset: 300
-      }).addTo(map);
-      activeRouteStopMarkers.push(m);
-    });
-  }).catch(function() {});
-}
-
-function _clearActiveShape() {
-  if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
-  activeRouteStopMarkers.forEach(function(m) { map.removeLayer(m); });
-  activeRouteStopMarkers = [];
-}
-
-function _highlightActiveRow(tripId) {
-  document.querySelectorAll('#stop-timetable tr.tt-row-active').forEach(function(r) { r.classList.remove('tt-row-active'); });
-  if (tripId) {
-    var row = document.querySelector('#stop-timetable tr[data-trip-id="' + tripId + '"]');
-    if (row) row.classList.add('tt-row-active');
   }
-}
 
-var _vehicleRenderOpts = {
-  makePopup: function (v) {
-    return window.TRANSIT.stopVehiclePopup({
-      routeShortName: v.route_short_name,
-      label: v.label || '',
-      headsign: v.trip_headsign || '',
-      etaStr: v.eta ? window.fmtMins(window.minsFromNow(v.eta)) : '',
-      routeId: v.route_id,
-      basePath: BASE_PATH
-    });
-  },
-  getColor: function (v) {
-    var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
-    return v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
-  },
-  getIconName: function (v) {
-    var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
-    return window.TRANSIT.vehicleIcon(rt);
-  },
-  onNewMarker: function (marker, v) {
-    var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
-    var col = v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
-    marker.on('click', function () {
-      activeTripId = v.trip_id;
-      isFollowing = true;
-      _drawActiveShape(v.route_id, v.direction_id || 0, col);
-      _highlightActiveRow(v.trip_id);
-      map.panTo(marker.getLatLng());
-    });
-    marker.on('popupclose', function () {
-      if (activeTripId === v.trip_id) {
-        activeTripId = null;
-        isFollowing = false;
-        _clearActiveShape();
-        _highlightActiveRow(null);
+  var _vehicleRenderOpts = {
+    makePopup: function (v) {
+      return window.TRANSIT.stopVehiclePopup({
+        routeShortName: v.route_short_name,
+        label: v.label || '',
+        headsign: v.trip_headsign || '',
+        etaStr: v.eta ? window.fmtMins(window.minsFromNow(v.eta)) : '',
+        routeId: v.route_id,
+        basePath: BASE_PATH
+      });
+    },
+    getColor: function (v) {
+      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+      return v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
+    },
+    getIconName: function (v) {
+      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+      return window.TRANSIT.vehicleIcon(rt);
+    },
+    onNewMarker: function (marker, v) {
+      var rt = routeTypeMap[v.route_id] != null ? routeTypeMap[v.route_id] : 3;
+      var col = v.route_color ? '#' + v.route_color : window.TRANSIT.vehicleColor(rt);
+      marker.on('click', function () {
+        activeTripId = v.trip_id;
+        isFollowing = true;
+        _drawActiveShape(v.route_id, v.direction_id || 0, col);
+        _highlightActiveRow(v.trip_id);
+        map.panTo(marker.getLatLng());
+      });
+      marker.on('popupclose', function () {
+        if (activeTripId === v.trip_id) {
+          activeTripId = null;
+          isFollowing = false;
+          _clearActiveShape();
+          _highlightActiveRow(null);
+        }
+      });
+    }
+  };
+
+  window._renderFilteredVehicles = function () {
+    var active = new Set(
+      Array.from(document.querySelectorAll('.route-filter-btn.active'))
+        .map(function (b) { return b.dataset.route; })
+    );
+    var toShow = active.size > 0
+      ? _lastStopVehicles.filter(function (v) { return active.has(v.route_short_name); })
+      : _lastStopVehicles;
+    window.TRANSIT.updateVehicleMarkers(map, vehicleMarkerMap, toShow, _vehicleRenderOpts);
+    if (activeTripId && isFollowing) {
+      for (var i = 0; i < _lastStopVehicles.length; i++) {
+        if (_lastStopVehicles[i].trip_id === activeTripId) {
+          map.panTo([_lastStopVehicles[i].lat, _lastStopVehicles[i].lon]);
+          break;
+        }
       }
-    });
-  }
-};
+    }
+  };
 
-window._renderFilteredVehicles = function() {
-  var active = new Set(
-    Array.from(document.querySelectorAll('.route-filter-btn.active'))
-      .map(function(b) { return b.dataset.route; })
-  );
-  var toShow = active.size > 0
-    ? _lastStopVehicles.filter(function(v) { return active.has(v.route_short_name); })
-    : _lastStopVehicles;
-  window.TRANSIT.updateVehicleMarkers(map, vehicleMarkerMap, toShow, _vehicleRenderOpts);
-  if (activeTripId && isFollowing) {
+  window.stopMapAddVehicles = function (vehicles) {
+    _lastStopVehicles = vehicles;
+    window._renderFilteredVehicles();
+  };
+
+  // Row click → focus map on bus and follow it
+  document.getElementById('stop-timetable').addEventListener('click', function (e) {
+    if (e.target.closest('a, button, .tt-time, .rt-icon, .status-badge')) return;
+    var row = e.target.closest('tr[data-trip-id]');
+    if (!row || !row.dataset.tripId) return;
+    var tripId = row.dataset.tripId;
+    if (activeTripId === tripId) {
+      activeTripId = null;
+      _clearActiveShape();
+      _highlightActiveRow(null);
+      map.closePopup();
+      return;
+    }
+    var vehicle = null;
     for (var i = 0; i < _lastStopVehicles.length; i++) {
-      if (_lastStopVehicles[i].trip_id === activeTripId) {
-        map.panTo([_lastStopVehicles[i].lat, _lastStopVehicles[i].lon]);
-        break;
-      }
+      if (_lastStopVehicles[i].trip_id === tripId) { vehicle = _lastStopVehicles[i]; break; }
     }
-  }
-};
+    if (!vehicle) return;
+    activeTripId = tripId;
+    isFollowing = true;
+    var rt = routeTypeMap[vehicle.route_id] != null ? routeTypeMap[vehicle.route_id] : 3;
+    var col = vehicle.route_color ? '#' + vehicle.route_color : window.TRANSIT.vehicleColor(rt);
+    _drawActiveShape(vehicle.route_id, vehicle.direction_id || 0, col);
+    _highlightActiveRow(tripId);
+    map.flyTo([vehicle.lat, vehicle.lon], Math.max(map.getZoom(), 14));
+    if (vehicleMarkerMap[tripId]) vehicleMarkerMap[tripId].openPopup();
+  });
 
-window.stopMapAddVehicles = function(vehicles) {
-  _lastStopVehicles = vehicles;
-  window._renderFilteredVehicles();
-};
+  window.TRANSIT.addFullscreenBtn(document.getElementById('stop-map'), function () { return map; });
 
-// Row click → focus map on bus and follow it
-document.getElementById('stop-timetable').addEventListener('click', function(e) {
-  if (e.target.closest('a, button, .tt-time, .rt-icon, .status-badge')) return;
-  var row = e.target.closest('tr[data-trip-id]');
-  if (!row || !row.dataset.tripId) return;
-  var tripId = row.dataset.tripId;
-  if (activeTripId === tripId) {
+  map.on('dragstart', function () { isFollowing = false; });
+
+  document.getElementById('center-stop-btn').addEventListener('click', function (e) {
+    e.stopPropagation();
     activeTripId = null;
     _clearActiveShape();
     _highlightActiveRow(null);
     map.closePopup();
-    return;
-  }
-  var vehicle = null;
-  for (var i = 0; i < _lastStopVehicles.length; i++) {
-    if (_lastStopVehicles[i].trip_id === tripId) { vehicle = _lastStopVehicles[i]; break; }
-  }
-  if (!vehicle) return;
-  activeTripId = tripId;
-  isFollowing = true;
-  var rt = routeTypeMap[vehicle.route_id] != null ? routeTypeMap[vehicle.route_id] : 3;
-  var col = vehicle.route_color ? '#' + vehicle.route_color : window.TRANSIT.vehicleColor(rt);
-  _drawActiveShape(vehicle.route_id, vehicle.direction_id || 0, col);
-  _highlightActiveRow(tripId);
-  map.flyTo([vehicle.lat, vehicle.lon], Math.max(map.getZoom(), 14));
-  if (vehicleMarkerMap[tripId]) vehicleMarkerMap[tripId].openPopup();
-});
+    map.once('moveend', function () { stopMarker.openPopup(); });
+    map.flyTo([stopLat, stopLon], 16);
+  });
 
-window.TRANSIT.addFullscreenBtn(document.getElementById('stop-map'), function() { return map; });
-
-map.on('dragstart', function() { isFollowing = false; });
-
-document.getElementById('center-stop-btn').addEventListener('click', function(e) {
-  e.stopPropagation();
-  activeTripId = null;
-  _clearActiveShape();
-  _highlightActiveRow(null);
-  map.closePopup();
-  map.once('moveend', function() { stopMarker.openPopup(); });
-  map.flyTo([stopLat, stopLon], 16);
-});
-
-// Re-apply row highlight after timetable HTMX refresh
-document.addEventListener('htmx:afterSwap', function(evt) {
-  if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') {
-    _highlightActiveRow(activeTripId);
-  }
-});
-
-if (navigator.geolocation) {
-  navigator.geolocation.getCurrentPosition(function(pos) {
-    var lat = pos.coords.latitude;
-    var lng = pos.coords.longitude;
-    var accuracy = pos.coords.accuracy;
-
-    var userIcon = L.divIcon({
-      className: '',
-      html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1;">person_pin_circle</span>',
-      iconSize: [32, 32],
-      iconAnchor: [16, 32]
-    });
-
-    L.marker([lat, lng], { icon: userIcon }).addTo(map)
-      .bindPopup('<b>Your location</b>');
-
-    if (accuracy < 500) {
-      L.circle([lat, lng], { radius: accuracy, color: '#0d6efd', fillColor: '#0d6efd', fillOpacity: 0.08, weight: 1 }).addTo(map);
+  // Re-apply row highlight after timetable HTMX refresh
+  document.addEventListener('htmx:afterSwap', function (evt) {
+    if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') {
+      _highlightActiveRow(activeTripId);
     }
   });
-}
+
+  var userLocationMarker = null;
+  var userAccuracyCircle = null;
+  var userWatchId = null;
+  var userIcon = L.divIcon({
+    className: '',
+    html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1;">person_pin_circle</span>',
+    iconSize: [32, 32],
+    iconAnchor: [16, 32]
+  });
+
+  function updateUserLocation(lat, lng, accuracy) {
+    if (userLocationMarker) {
+      userLocationMarker.setLatLng([lat, lng]);
+    } else {
+      userLocationMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map)
+        .bindPopup('<b>Your location</b>');
+    }
+
+    if (accuracy < 500) {
+      if (userAccuracyCircle) {
+        userAccuracyCircle.setLatLng([lat, lng]);
+        userAccuracyCircle.setRadius(accuracy);
+      } else {
+        userAccuracyCircle = L.circle([lat, lng], {
+          radius: accuracy,
+          color: '#0d6efd',
+          fillColor: '#0d6efd',
+          fillOpacity: 0.08,
+          weight: 1
+        }).addTo(map);
+      }
+    } else if (userAccuracyCircle) {
+      map.removeLayer(userAccuracyCircle);
+      userAccuracyCircle = null;
+    }
+  }
+
+  if (navigator.geolocation) {
+    userWatchId = navigator.geolocation.watchPosition(
+      function (pos) {
+        updateUserLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 0);
+      },
+      function () { },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+  }
+
+  window.addEventListener('pagehide', function () {
+    if (userWatchId != null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(userWatchId);
+      userWatchId = null;
+    }
+  });
 </script>
-<div id="stop-vehicle-poll"
-     hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/vehicles?duration=3600"
-     hx-trigger="load, every 5s"
-     hx-target="this"
-     hx-swap="innerHTML"
-     style="display:none;" aria-hidden="true"></div>
+<div id="stop-vehicle-poll" hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/vehicles?duration=3600"
+  hx-trigger="load, every 5s" hx-target="this" hx-swap="innerHTML" style="display:none;" aria-hidden="true"></div>
 {% endif %}
 {% endblock %}
