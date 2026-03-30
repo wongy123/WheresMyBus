@@ -22,6 +22,19 @@ def _hms_to_sec(hms):
 def _validate_direction(val):
     return val if val in (0, 1) else 0
 
+def _get_route_directions(route_id: str):
+    data = api_get(f"routes/{route_id}/directions") or {}
+    available = [d for d in data.get("available_directions", []) if d in (0, 1)]
+    default = data.get("default_direction", 0)
+    if default not in available:
+        default = available[0] if available else 0
+    return available, default
+
+def _normalize_direction(direction, available_directions, default_direction):
+    if direction in available_directions:
+        return direction
+    return default_direction
+
 bp = Blueprint("timetable", __name__)
 DEFAULT_DURATION = int(os.environ.get("DURATION_SECONDS", "7200"))  # 2h
 
@@ -54,10 +67,13 @@ def timetable_by_route(route_id: str):
     duration = request.args.get("duration", type=int) or 3600
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 10, type=int)
-    direction = _validate_direction(direction)
+    available_directions, default_direction = _get_route_directions(route_id)
+    direction = _normalize_direction(_validate_direction(direction), available_directions, default_direction)
     return render_template("timetable/route.html",
                            route=route, direction=direction, duration=duration,
-                           page=page, limit=limit)
+                           page=page, limit=limit,
+                           available_directions=available_directions,
+                           default_direction=default_direction)
 
 # ---------- HTMX fragments ----------
 @bp.get("/hx/timetable/stop/<stop_id>")
@@ -89,7 +105,12 @@ def hx_timetable_route(route_id: str):
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 10, type=int)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
-    direction = _validate_direction(request.args.get("direction", default=0, type=int))
+    available_directions, default_direction = _get_route_directions(route_id)
+    direction = _normalize_direction(
+        _validate_direction(request.args.get("direction", default=default_direction, type=int)),
+        available_directions,
+        default_direction,
+    )
 
     resp = api_get(f"routes/{route_id}/upcoming",
                    {"page": page, "limit": limit, "duration": duration, "direction": direction})
@@ -108,7 +129,12 @@ def hx_timetable_route(route_id: str):
 
 @bp.get("/hx/timetable/route/<route_id>/schedule")
 def hx_timetable_route_schedule(route_id: str):
-    direction = _validate_direction(request.args.get("direction", 0, type=int))
+    available_directions, default_direction = _get_route_directions(route_id)
+    direction = _normalize_direction(
+        _validate_direction(request.args.get("direction", default_direction, type=int)),
+        available_directions,
+        default_direction,
+    )
 
     data = api_get(f"routes/{route_id}/schedule", {"direction": direction}) or {}
     stops = data.get("stops", [])
@@ -122,7 +148,12 @@ def hx_timetable_route_schedule(route_id: str):
 
 @bp.get("/hx/timetable/route/<route_id>/diagram")
 def hx_timetable_route_diagram(route_id: str):
-    direction = _validate_direction(request.args.get("direction", 0, type=int))
+    available_directions, default_direction = _get_route_directions(route_id)
+    direction = _normalize_direction(
+        _validate_direction(request.args.get("direction", default_direction, type=int)),
+        available_directions,
+        default_direction,
+    )
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
 
     route = api_get(f"routes/{route_id}") or {}

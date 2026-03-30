@@ -6,6 +6,10 @@
 {% block content %}
 {% set bg = '#' + (route.route_color or 'CCCCCC') %}
 {% set fg = '#' + (route.route_text_color or '000000') %}
+{% set available_directions = available_directions if available_directions is defined else [0, 1] %}
+{% set default_direction = default_direction if default_direction is defined else 0 %}
+{% set has_dir_0 = 0 in available_directions %}
+{% set has_dir_1 = 1 in available_directions %}
 
 <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-2">
   <div class="d-flex align-items-center gap-3">
@@ -31,7 +35,7 @@
     <label for="limit" class="small text-muted text-nowrap">Per page</label>
     <select id="limit" name="limit" class="form-select form-select-sm" onchange="this.form.submit()">
       {% for opt in [5,10,15,20] %}
-        <option value="{{ opt }}" {{ 'selected' if limit == opt else '' }}>{{ opt }}</option>
+      <option value="{{ opt }}" {{ 'selected' if limit==opt else '' }}>{{ opt }}</option>
       {% endfor %}
     </select>
   </form>
@@ -39,36 +43,34 @@
 
 <div id="tt-route-controls" class="d-flex align-items-center flex-wrap gap-3 mb-3">
   <div class="btn-group" role="group" aria-label="direction">
-    <a class="btn btn-outline-primary {{ 'active' if direction == 0 else '' }}"
-       href="?duration={{ duration }}&page=1&limit={{ limit }}">Inbound</a>
-    <a class="btn btn-outline-primary {{ 'active' if direction == 1 else '' }}"
-       href="?direction=1&duration={{ duration }}&page=1&limit={{ limit }}">Outbound</a>
+    <a class="btn btn-outline-primary {{ 'active' if direction == 0 else '' }} {{ 'disabled direction-unavailable' if not has_dir_0 else '' }}"
+      {{ 'aria-disabled=true tabindex=-1 title=Direction unavailable' if not has_dir_0 else '' }}
+      href="?duration={{ duration }}&page=1&limit={{ limit }}">Inbound</a>
+    <a class="btn btn-outline-primary {{ 'active' if direction == 1 else '' }} {{ 'disabled direction-unavailable' if not has_dir_1 else '' }}"
+      {{ 'aria-disabled=true tabindex=-1 title=Direction unavailable' if not has_dir_1 else '' }}
+      href="?direction=1&duration={{ duration }}&page=1&limit={{ limit }}">Outbound</a>
   </div>
 
   <div class="btn-group" role="group" aria-label="duration">
     <a class="btn btn-outline-secondary {{ 'active' if duration == 3600 else '' }}"
-       href="?direction={{ direction }}&duration=3600&page=1&limit={{ limit }}">1h</a>
+      href="?direction={{ direction }}&duration=3600&page=1&limit={{ limit }}">1h</a>
     <a class="btn btn-outline-secondary {{ 'active' if duration == 7200 else '' }}"
-       href="?direction={{ direction }}&duration=7200&page=1&limit={{ limit }}">2h</a>
+      href="?direction={{ direction }}&duration=7200&page=1&limit={{ limit }}">2h</a>
     <a class="btn btn-outline-secondary {{ 'active' if duration == 14400 else '' }}"
-       href="?direction={{ direction }}&duration=14400&page=1&limit={{ limit }}">4h</a>
+      href="?direction={{ direction }}&duration=14400&page=1&limit={{ limit }}">4h</a>
   </div>
 
   <div class="btn-group" role="group" aria-label="view">
     <button type="button" id="view-diagram-btn" class="btn btn-outline-secondary active"
-            onclick="showView('diagram')">Diagram</button>
+      onclick="showView('diagram')">Diagram</button>
     <button type="button" id="view-table-btn" class="btn btn-outline-secondary"
-            onclick="showView('table')">Table</button>
+      onclick="showView('table')">Table</button>
   </div>
 </div>
 
-<div id="tt-route-results"
-     class="d-none"
-     hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}&page={{ page }}&limit={{ limit }}"
-     hx-trigger="refresh"
-     hx-target="this"
-     hx-swap="innerHTML"
-     aria-live="polite">
+<div id="tt-route-results" class="d-none"
+  hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}&page={{ page }}&limit={{ limit }}"
+  hx-trigger="refresh" hx-target="this" hx-swap="innerHTML" aria-live="polite">
   <div class="text-muted small d-flex align-items-center gap-2">
     <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
     <span>Loading timetable...</span>
@@ -76,11 +78,8 @@
 </div>
 
 <div id="tt-route-diagram"
-     hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction={{ direction }}&duration={{ duration }}"
-     hx-trigger="load, refresh"
-     hx-target="this"
-     hx-swap="innerHTML"
-     aria-live="polite">
+  hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction={{ direction }}&duration={{ duration }}"
+  hx-trigger="load, refresh" hx-target="this" hx-swap="innerHTML" aria-live="polite">
   <div class="text-muted small d-flex align-items-center gap-2">
     <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
     <span>Loading diagram...</span>
@@ -88,48 +87,48 @@
 </div>
 
 <script>
-var tableInterval = null;
-var diagramInterval = setInterval(function () {
-  htmx.trigger(document.getElementById('tt-route-diagram'), 'refresh');
-}, 5000);
+  var tableInterval = null;
+  var diagramInterval = setInterval(function () {
+    htmx.trigger(document.getElementById('tt-route-diagram'), 'refresh');
+  }, 5000);
 
-function showView(view) {
-  var tableDiv = document.getElementById('tt-route-results');
-  var diagramDiv = document.getElementById('tt-route-diagram');
-  var limitForm = document.getElementById('limit-form');
+  function showView(view) {
+    var tableDiv = document.getElementById('tt-route-results');
+    var diagramDiv = document.getElementById('tt-route-diagram');
+    var limitForm = document.getElementById('limit-form');
 
-  if (view === 'diagram') {
-    tableDiv.classList.add('d-none');
-    diagramDiv.classList.remove('d-none');
-    limitForm.classList.add('d-none');
-    if (tableInterval) {
-      clearInterval(tableInterval);
-      tableInterval = null;
-    }
-    if (!diagramInterval) {
-      diagramInterval = setInterval(function () {
-        htmx.trigger(diagramDiv, 'refresh');
-      }, 5000);
-    }
-  } else {
-    diagramDiv.classList.add('d-none');
-    tableDiv.classList.remove('d-none');
-    limitForm.classList.remove('d-none');
-    if (diagramInterval) {
-      clearInterval(diagramInterval);
-      diagramInterval = null;
-    }
-    if (!tableInterval) {
-      htmx.trigger(tableDiv, 'refresh');
-      tableInterval = setInterval(function () {
+    if (view === 'diagram') {
+      tableDiv.classList.add('d-none');
+      diagramDiv.classList.remove('d-none');
+      limitForm.classList.add('d-none');
+      if (tableInterval) {
+        clearInterval(tableInterval);
+        tableInterval = null;
+      }
+      if (!diagramInterval) {
+        diagramInterval = setInterval(function () {
+          htmx.trigger(diagramDiv, 'refresh');
+        }, 5000);
+      }
+    } else {
+      diagramDiv.classList.add('d-none');
+      tableDiv.classList.remove('d-none');
+      limitForm.classList.remove('d-none');
+      if (diagramInterval) {
+        clearInterval(diagramInterval);
+        diagramInterval = null;
+      }
+      if (!tableInterval) {
         htmx.trigger(tableDiv, 'refresh');
-      }, 5000);
+        tableInterval = setInterval(function () {
+          htmx.trigger(tableDiv, 'refresh');
+        }, 5000);
+      }
     }
-  }
 
-  document.getElementById('view-table-btn').classList.toggle('active', view === 'table');
-  document.getElementById('view-diagram-btn').classList.toggle('active', view === 'diagram');
-}
+    document.getElementById('view-table-btn').classList.toggle('active', view === 'table');
+    document.getElementById('view-diagram-btn').classList.toggle('active', view === 'diagram');
+  }
 </script>
 
 <!-- Stop mini-map modal -->
@@ -158,10 +157,10 @@ function showView(view) {
 <script>var _diagBasePath = {{ BASE_PATH | tojson }};</script>
 <script src="{{ url_for('static', filename='diagmap.js') }}"></script>
 <script>
-document.addEventListener('htmx:afterSettle', function (e) {
-  if (e.detail.target && e.detail.target.id === 'tt-route-diagram') {
-    _diagDrawVehicles();
-  }
-});
+  document.addEventListener('htmx:afterSettle', function (e) {
+    if (e.detail.target && e.detail.target.id === 'tt-route-diagram') {
+      _diagDrawVehicles();
+    }
+  });
 </script>
 {% endblock %}

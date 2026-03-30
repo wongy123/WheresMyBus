@@ -1,5 +1,6 @@
 import {
   getAllRoutes,
+  getRouteDirections as getRouteDirectionsService,
   getOneRoute as getOneRouteService,
   getUpcomingByRoute,
   getStopsByRoute,
@@ -49,6 +50,33 @@ export async function getOneRoute(req, res, next) {
     }
 
     res.json(route);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/routes/:routeId/directions
+ */
+export async function getRouteDirections(req, res, next) {
+  try {
+    const routeId = req.params.routeId ?? req.query.routeId;
+    if (!routeId) {
+      return res.status(400).json({ error: 'routeId is required' });
+    }
+
+    const cacheKey = `api:route-directions:${routeId}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached?.available_directions?.length) return res.json(cached);
+
+    const availableDirections = await getRouteDirectionsService(routeId);
+    const body = {
+      available_directions: availableDirections,
+      default_direction: availableDirections.includes(0) ? 0 : (availableDirections[0] ?? 0)
+    };
+
+    if (availableDirections.length > 0) await cacheSet(cacheKey, body, 3600);
+    res.json(body);
   } catch (err) {
     next(err);
   }

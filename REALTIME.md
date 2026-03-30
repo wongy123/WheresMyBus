@@ -119,6 +119,20 @@ Called after every scheduled SQL query that returns rows. The function:
 
 Rows with no `trip_id` are returned unchanged.
 
+#### Fallback vehicle-position matching for rail services
+
+For GTFS-RT vehicle positions, the primary lookup is by `trip_id` (exact Redis key match). However, **unplanned or ADDED GTFS-RT services** use synthetic trip IDs (e.g. `UNPLANNED-93375730`) that will never match a scheduled `trip_id`, so their vpos Redis keys are unreachable via the primary path.
+
+To handle this, `enrichRowsWithRealtime` builds a secondary `fallbackVposByKey` map from the live in-memory `latestVposMap` (maintained by `gtfsRealtime.service.js`). The key is:
+
+```
+"${routeShortNameFamily}|${directionId}|${vehicleLabel}"
+```
+
+For each scheduled row, if no direct Redis vpos match is found **and** the row is a rail service (`route_type IN (1, 2, 12)`), the function extracts the vehicle label from the scheduled `trip_id` suffix (e.g. `35884990-QR 25_26-41757-DM51` → `DM51`) and looks up the fallback map. This works because Translink encodes the physical train-set label in the scheduled trip ID and the same label appears in the RT position feed.
+
+This fallback enriches rows that exist in the static schedule but whose running trip ID in the RT feed is unplanned — they get vehicle position data even though the `rt:vpos:<unplannedTripId>` key isn't associated with their scheduled `trip_id`.
+
 ### `applyRealtimeToRow(row, rt, vpos)`
 
 Merges RT data onto a single scheduled row. Returns a new object (`{ ...row }` — original is not mutated).
@@ -175,18 +189,48 @@ Set to `1` on the row if **either** a trip update or a vehicle position was foun
 
 ### Ghost filter (stop timetable)
 
-Applied in `getUpcomingByStop` and `getUpcomingByStation` after enrichment:
+Applied via `_filterActiveVehicles` in `getUpcomingByStop` and `getUpcomingByStation` after enrichment:
 
 ```javascript
-const visible = enriched.filter(r =>
-  r.vehicle_current_stop_sequence == null ||
-  r.vehicle_current_stop_sequence <= r.stop_sequence
-);
+function _filterActiveVehicles(rows, secNow) {
+  return rows.filter(r => {
+    if (r.win_sec >= secNow) return true;
+    if (r.vehicle_current_stop_sequence != null) {
+      return r.vehicle_current_stop_sequence <= r.stop_sequence;
+    }
+    return false;
+  });
+}
 ```
 
-If `vehicle_current_stop_sequence > stop_sequence`, the vehicle has physically departed from (or passed) this stop even though its scheduled time is still within the query window. The row is removed from the response.
+If `vehicle_current_stop_sequence > stop_sequence`, the vehicle has physically departed from (or passed) this stop even though its scheduled time is still within the query window. The row is removed from the response. Overdue rows (past `secNow`) with no GPS data are also dropped — only GPS-confirmed late runners are kept.
 
-`getUpcomingByStation` uses the same position ghost filter only.
+`getUpcomingByStation` uses a similar position ghost filter.
+
+### Unplanned rail injection (`injectUnplannedRailRows`)
+
+After the ghost filter on every stop/route result set, `injectUnplannedRailRows(rows, opts)` is called to surface GTFS-RT services whose `trip_id` begins with `UNPLANNED-` (or any synthetic prefix) and therefore have no matching rows in the static GTFS schedule.
+
+**Flow:**
+1. Calls `getVehiclePositionsWithRoutes()` to get the current live vehicle list (with next-stop data already resolved).
+2. Filters to unplanned rail vehicles (`trip_id` starts with `UNPLANNED-`; `route_type IN (1, 2, 12)`).
+3. Applies optional context filters: `routeShortName` (route pages), `direction`, `stopIds` set-membership (stop/station pages), and time window (`secNow`..`endSec`).
+4. Builds a **deduplication key set** from the existing rows. For rail scheduled rows the key extracts the vehicle label from the `trip_id` suffix (e.g. `…-DM51`) so that an unplanned vehicle whose scheduled counterpart is already present in the result set is not injected again:
+   ```
+   key = "${route_short_name}|${direction_id}|${keyId}"
+   // keyId = vehicle_label || labelFromTripId || vehicle_id || trip_id
+   ```
+5. Builds a synthetic row for each new candidate carrying all the fields the timetable templates expect (`scheduled_arrival_time`, `estimated_arrival_time`, `vehicle_latitude`, `vehicle_longitude`, etc.). The time fields are set to `secToHms(secNow + minutes_away * 60)`.
+6. Appends synthetic rows to the original `rows` array and returns the combined result.
+
+**Context parameters:**
+
+| Parameter | Used by |
+|---|---|
+| `routeShortName` | `getUpcomingByRoute` — restricts to one route family |
+| `direction` | `getUpcomingByRoute` — restricts to one direction |
+| `stopIds` | `getUpcomingByStop`, `getUpcomingByStation` — vehicle must have its `stop_id` within this set |
+| `secNow`, `endSec` | All paths — time-window bounds |
 
 ### Stale / behind correction (route upcoming)
 
@@ -229,3 +273,56 @@ Replacement rows are RT-enriched again with a second `enrichRowsWithRealtime` ca
 | Trip ID not in Redis | Row returned as-is with no RT fields; `real_time_data` remains `0` |
 | Stop update exists but no matching stop | Preceding stop propagation returns the closest earlier stop's delay; if no preceding update exists, no delay is applied |
 | `vehicle_current_stop_sequence` missing | Ghost filter and stale/behind correction are both no-ops (guarded by `!= null` checks) |
+| GTFS-RT trip ID not in static GTFS (unplanned/ADDED service) | `enrichRowsWithRealtime` falls back to label-based vpos matching for rail; `injectUnplannedRailRows` injects a synthetic timetable row so the service appears in stop/route pages |
+
+---
+
+## `GET /api/vehicles` — Live Vehicle Positions
+
+**Service**: `getVehiclePositionsWithRoutes(vposMap, configPath)`
+
+Called on every `/api/vehicles` request. Resolves route/headsign data and computes the next upcoming stop for each live vehicle.
+
+### Trip resolution
+
+For each `trip_id` in `latestVposMap`:
+
+1. **Planned trips**: looked up directly in `trips JOIN routes` by `trip_id IN (...)`.
+2. **Unplanned/ADDED trips** (trip ID not found in static GTFS): looked up by `routeId` from the RT feed against the `routes` table. For **rail unplanned trips**, an additional query finds the best-matching scheduled trip using the vehicle label suffix encoded in scheduled trip IDs:
+   ```sql
+   SELECT trip_id, trip_headsign FROM stop_events_3day
+   WHERE route_short_name = $routeShortName
+     AND direction_id = $directionId
+     AND trip_id LIKE '%-DM51'           -- label suffix from RT vehicleLabel
+   ORDER BY ABS(win_sec - $targetSec) ASC, stop_sequence ASC
+   LIMIT 1
+   ```
+   The matched `schedule_trip_id` is used to resolve stop events for this vehicle; the RT `trip_id` is still returned to the client.
+
+### Stop event bulk fetch
+
+A single `stop_events_3day` query fetches all upcoming stop events for all resolved trips at once (including scheduled counterpart IDs for unplanned rail). Results are grouped into `stopEventMap` keyed by `trip_id`.
+
+### Next-stop selection (`pickNextStop`)
+
+For each vehicle, `pickNextStop(events, currentStopSequence)` selects the vehicle's next stop:
+
+1. Computes `adjustedEventSec` for every candidate stop:
+   - Extracts the best available time (estimated departure → estimated arrival → scheduled departure → scheduled arrival) and converts to seconds since midnight.
+   - If the result is more than 30 minutes in the past (`sec < secNow - 1800`), adds 86 400 s — this handles midnight rollover where `secToHms` wraps 24:xx times back to 00:xx.
+2. Filters to stops that are still "present or future" (`adjustedSec >= secNow - 60`). If none pass, falls back to all stops.
+3. If `vehicle_current_stop_sequence` is available (non-zero), further restricts to stops where `stop_sequence >= currentStopSequence`.
+4. Sorts remaining candidates by `adjustedSec` ascending (then `stop_sequence` as a tiebreaker) and returns the first.
+
+`minutes_away` is then `max(0, round((adjustedSec - secNow) / 60))`.
+
+### Output fields per vehicle
+
+```
+trip_id, route_id, direction_id, trip_headsign,
+route_short_name, route_color, route_text_color, route_type,
+lat, lon, vehicle_id, vehicle_label, timestamp,
+stop_id, stop_name, stop_sequence,     ← next upcoming stop
+vehicle_current_stop_sequence,          ← raw from RT position feed
+minutes_away                            ← minutes to that next stop
+```
