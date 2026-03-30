@@ -1,6 +1,7 @@
 // src/services/gtfsQueries.service.js
 import { getStops, getStopTimeUpdates } from 'gtfs';
 import { cacheGet } from './cache.service.js';
+import { getLatestVehiclePositions } from './gtfsRealtime.service.js';
 import crypto from 'node:crypto';
 import { getLineNames } from '../utils/routeNames.js';
 import { withDb } from '../utils/dbQuery.js';
@@ -175,13 +176,46 @@ async function enrichRowsWithRealtime(rows) {
     Promise.all(tripIds.map(id => cacheGet(tripKey(id)))),
     Promise.all(tripIds.map(id => cacheGet(vposKey(id)))),
   ]);
-  const rtMap   = new Map(tripIds.map((id, i) => [id, rtLookups[i]]));
+  const rtMap = new Map(tripIds.map((id, i) => [id, rtLookups[i]]));
   const vposMap = new Map(tripIds.map((id, i) => [id, vposLookups[i]]));
+
+  const latestVposMap = getLatestVehiclePositions() || new Map();
+  const fallbackVposByKey = new Map();
+  for (const [_id, v] of latestVposMap.entries()) {
+    const label = v?.vehicleLabel ? String(v.vehicleLabel).trim() : '';
+    const routeId = v?.routeId ? String(v.routeId) : '';
+    const direction = Number(v?.directionId);
+    if (!label || !routeId || !Number.isFinite(direction)) continue;
+    const family = routeId.split('-')[0];
+    if (!family) continue;
+    fallbackVposByKey.set(`${family}|${direction}|${label}`, v);
+  }
+
+  function rowTripLabel(row) {
+    const tripId = String(row.trip_id || row.tripId || '');
+    if (!tripId) return '';
+    const i = tripId.lastIndexOf('-');
+    return i >= 0 ? tripId.slice(i + 1) : '';
+  }
+
+  function fallbackVposForRow(row) {
+    // Restrict fallback to rail services where vehicle label is stable and
+    // encoded in scheduled trip IDs (e.g. ...-DM51).
+    if (!(row.route_type === 1 || row.route_type === 2 || row.route_type === 12)) return null;
+    const label = rowTripLabel(row);
+    if (!label) return null;
+    const family = row.route_short_name || (row.route_id ? String(row.route_id).split('-')[0] : '');
+    const direction = Number(row.direction_id);
+    if (!family || !Number.isFinite(direction)) return null;
+    return fallbackVposByKey.get(`${family}|${direction}|${label}`) || null;
+  }
 
   const out = [];
   for (const r of rows) {
     const t = r.trip_id || r.tripId;
-    out.push(applyRealtimeToRow(r, t ? rtMap.get(t) : null, t ? vposMap.get(t) : null));
+    const directVpos = t ? vposMap.get(t) : null;
+    const fallbackVpos = !directVpos ? fallbackVposForRow(r) : null;
+    out.push(applyRealtimeToRow(r, t ? rtMap.get(t) : null, directVpos || fallbackVpos));
   }
   return out;
 }
@@ -237,22 +271,22 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
 
   const scored = routes
     .map(r => {
-      const sn       = (r.route_short_name || '').toLowerCase();
-      const ln       = (r.route_long_name  || '').toLowerCase();
-      const lineName = (r.line_name        || '').toLowerCase();
+      const sn = (r.route_short_name || '').toLowerCase();
+      const ln = (r.route_long_name || '').toLowerCase();
+      const lineName = (r.line_name || '').toLowerCase();
 
       const allTokensMatch = tokens.every(t => sn.includes(t) || ln.includes(t) || lineName.includes(t));
       if (!allTokensMatch) return null;
 
       let rank;
-      if      (sn === q)              rank = 0;
-      else if (sn.startsWith(q))     rank = 1;
-      else if (ln.startsWith(q))     rank = 2;
+      if (sn === q) rank = 0;
+      else if (sn.startsWith(q)) rank = 1;
+      else if (ln.startsWith(q)) rank = 2;
       else if (lineName.startsWith(q)) rank = 3;
-      else if (sn.includes(q))       rank = 4;
-      else if (ln.includes(q))       rank = 5;
+      else if (sn.includes(q)) rank = 4;
+      else if (ln.includes(q)) rank = 5;
       else if (lineName.includes(q)) rank = 6;
-      else                           rank = 7;
+      else rank = 7;
 
       return { ...r, sort_rank: rank };
     })
@@ -273,6 +307,20 @@ export async function getOneRoute(identifier, configPath = defaultConfigPath) {
   const route = await withDb(db => db.prepare(sql).get({ id: identifier }), configPath);
   if (!route) return null;
   return { ...route, line_name: getLineNames(route.route_short_name).join(' / ') || null };
+}
+
+async function resolveRouteFamily(identifier, configPath = defaultConfigPath) {
+  const route = await withDb(db => db.prepare(`
+    SELECT route_id, route_short_name
+    FROM routes
+    WHERE route_id = $id OR route_short_name = $id
+    LIMIT 1
+  `).get({ id: identifier }), configPath);
+
+  return {
+    routeId: route?.route_id || identifier,
+    routeShortName: route?.route_short_name || identifier,
+  };
 }
 
 /* ---------------------------------- stops ---------------------------------- */
@@ -299,7 +347,7 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
     `;
     params = {
       ...tokenParams,
-      fullPrefix:   `${searchTerm}%`,
+      fullPrefix: `${searchTerm}%`,
       fullContains: `%${searchTerm}%`,
     };
   } else {
@@ -408,6 +456,22 @@ export async function getStopPlatforms(stationId, configPath = defaultConfigPath
   `).all({ stationId }), configPath);
 }
 
+export async function getRouteDirections(routeId, configPath = defaultConfigPath) {
+  const family = await resolveRouteFamily(routeId, configPath);
+  const rows = await withDb(db => db.prepare(`
+    SELECT DISTINCT t.direction_id
+    FROM trips t
+    JOIN routes r ON t.route_id = r.route_id
+    WHERE (t.route_id = $routeId OR r.route_short_name = $routeShortName)
+      AND t.direction_id IN (0, 1)
+    ORDER BY t.direction_id
+  `).all(family), configPath);
+
+  return rows
+    .map(row => row.direction_id)
+    .filter(direction => direction === 0 || direction === 1);
+}
+
 export async function getStopsByRoute(routeId, direction = 0, configPath = defaultConfigPath) {
   const sql = `
     SELECT st.stop_sequence, st.stop_id, s.stop_name, s.stop_code, s.stop_lat, s.stop_lon
@@ -455,6 +519,7 @@ export async function getRouteShape(routeId, direction = 0, configPath = default
 }
 
 export async function getRouteSchedule(routeId, direction = 0, configPath = defaultConfigPath) {
+  const family = await resolveRouteFamily(routeId, configPath);
   const sql = `
     SELECT
       st.trip_id,
@@ -466,15 +531,14 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
       st.dep_sec_base
     FROM stop_times_today st
     JOIN stops s ON st.stop_id = s.stop_id
-    WHERE st.route_id IN (
-      SELECT route_id FROM routes
-      WHERE route_id = $routeId OR route_short_name = $routeId
-    )
+    JOIN trips t ON st.trip_id = t.trip_id
+    JOIN routes r ON t.route_id = r.route_id
+    WHERE (t.route_id = $routeId OR r.route_short_name = $routeShortName)
     AND st.direction_id = $direction
     ORDER BY st.trip_id, st.stop_sequence
   `;
 
-  const rows = await withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
+  const rows = await withDb(db => db.prepare(sql).all({ ...family, direction }), configPath);
 
   if (!rows.length) return { stops: [], trips: [] };
 
@@ -556,6 +620,7 @@ export async function getUpcomingByRoute(
   duration = 7200,                           // 2 hours
   configPath = defaultConfigPath
 ) {
+  const family = await resolveRouteFamily(routeId, configPath);
   // Convert startTime (epoch seconds) to seconds since local midnight
   const date = new Date(startTime * 1000);
   const midnight = new Date(date);
@@ -575,7 +640,7 @@ WITH filtered AS (
     arrival_delay, departure_delay, real_time_data,
     event_sec, win_sec
   FROM stop_events_3day
-  WHERE (route_id = $routeId OR route_short_name = $routeId)
+  WHERE (route_id = $routeId OR route_short_name = $routeShortName)
     AND direction_id = $direction
     AND win_sec BETWEEN $startSec AND $endSec
 ),
@@ -604,7 +669,7 @@ ORDER BY f.win_sec ASC;
   // Matches the MAX_OVERDUE_SEC lookback used by getUpcomingByStop.
   const MAX_LOOKBACK_SEC = 3600;
   const params = {
-    routeId,
+    ...family,
     direction,
     startSec: secNow - MAX_LOOKBACK_SEC,
     endSec: secEnd,
@@ -630,7 +695,7 @@ ORDER BY f.win_sec ASC;
   //   the bus hasn't physically reached them.  Step back to veh_seq, capped at
   //   MAX_OVERDUE_SEC seconds past secNow to avoid showing very old stops.
   const MAX_OVERDUE_SEC = 480; // 8 minutes
-  const staleByTrip  = new Map();
+  const staleByTrip = new Map();
   const behindByTrip = new Map();
   for (const r of enriched) {
     const vseq = r.vehicle_current_stop_sequence;
@@ -657,7 +722,20 @@ ORDER BY f.win_sec ASC;
   `;
 
   const needsReplacement = staleByTrip.size > 0 || behindByTrip.size > 0;
-  if (!needsReplacement) return _filterActiveVehicles(enriched, secNow);
+  if (!needsReplacement) {
+    let visible = _filterActiveVehicles(enriched, secNow);
+    visible = await injectUnplannedRailRows(visible, {
+      routeShortName: family.routeShortName,
+      direction,
+      secNow,
+      endSec: secEnd,
+      configPath,
+    });
+    visible.sort((a, b) =>
+      (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
+    );
+    return visible;
+  }
 
   const replacements = await withDb(db => {
     const out = [];
@@ -692,10 +770,18 @@ ORDER BY f.win_sec ASC;
     ...enriched.filter(r => !replacedTrips.has(r.trip_id)),
     ...replacementsEnriched,
   ];
-  result.sort((a, b) =>
+  let visible = _filterActiveVehicles(result, secNow);
+  visible = await injectUnplannedRailRows(visible, {
+    routeShortName: family.routeShortName,
+    direction,
+    secNow,
+    endSec: secEnd,
+    configPath,
+  });
+  visible.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
-  return _filterActiveVehicles(result, secNow);
+  return visible;
 }
 
 // Keep a row if it's in the normal future window, or if GPS confirms the
@@ -709,6 +795,91 @@ function _filterActiveVehicles(rows, secNow) {
     }
     return false;
   });
+}
+
+async function injectUnplannedRailRows(rows, {
+  routeShortName = null,
+  direction = null,
+  stopIds = null,
+  secNow,
+  endSec,
+  configPath = defaultConfigPath,
+}) {
+  const vposMap = getLatestVehiclePositions();
+  if (!vposMap || vposMap.size === 0) return rows;
+
+  const vehicles = await getVehiclePositionsWithRoutes(vposMap, configPath);
+  if (!vehicles.length) return rows;
+
+  const stopIdSet = stopIds ? new Set(stopIds.map(String)) : null;
+  const existingKeys = new Set(rows.map(r => {
+    // For rail trips the vehicle label is encoded in the scheduled trip_id suffix
+    // (e.g. "35884990-QR 25_26-41757-DM51" → "DM51").  Use it as the dedup key
+    // so we don't inject an unplanned row when the scheduled counterpart is present
+    // but hasn't been enriched with vehicle_label yet.
+    const isRail = r.route_type === 1 || r.route_type === 2 || r.route_type === 12;
+    const labelFromTripId = isRail && r.trip_id
+      ? (() => { const s = String(r.trip_id); const i = s.lastIndexOf('-'); return i >= 0 ? s.slice(i + 1) : ''; })()
+      : '';
+    const keyId = r.vehicle_label || labelFromTripId || r.vehicle_id || r.trip_id;
+    return `${r.route_short_name}|${r.direction_id}|${keyId}`;
+  }));
+
+  const candidates = vehicles.filter(v => {
+    if (!String(v.trip_id || '').startsWith('UNPLANNED-')) return false;
+    if (!(v.route_type === 1 || v.route_type === 2 || v.route_type === 12)) return false;
+    if (routeShortName && v.route_short_name !== routeShortName) return false;
+    if (direction != null && Number(v.direction_id) !== Number(direction)) return false;
+    if (stopIdSet && (!v.stop_id || !stopIdSet.has(String(v.stop_id)))) return false;
+    if (v.minutes_away == null) return false;
+    const targetSec = secNow + Math.max(0, Number(v.minutes_away)) * 60;
+    return targetSec <= endSec;
+  });
+
+  const injected = [];
+  for (const v of candidates) {
+    const keyId = v.vehicle_label || v.vehicle_id || v.trip_id;
+    const key = `${v.route_short_name}|${v.direction_id}|${keyId}`;
+    if (existingKeys.has(key)) continue;
+    existingKeys.add(key);
+
+    const targetSec = secNow + Math.max(0, Number(v.minutes_away || 0)) * 60;
+    const eta = secToHms(targetSec);
+
+    injected.push({
+      route_id: v.route_id,
+      route_short_name: v.route_short_name,
+      route_color: v.route_color,
+      route_text_color: v.route_text_color,
+      route_type: v.route_type,
+      service_id: null,
+      trip_id: v.trip_id,
+      trip_headsign: v.trip_headsign || '',
+      direction_id: v.direction_id,
+      stop_id: v.stop_id || null,
+      stop_code: null,
+      stop_name: v.stop_name || null,
+      stop_sequence: v.stop_sequence || null,
+      scheduled_arrival_time: eta,
+      scheduled_departure_time: eta,
+      estimated_arrival_time: eta,
+      estimated_departure_time: eta,
+      arrival_delay: null,
+      departure_delay: null,
+      real_time_data: 1,
+      event_sec: targetSec,
+      win_sec: targetSec,
+      vehicle_latitude: v.lat,
+      vehicle_longitude: v.lon,
+      vehicle_id: v.vehicle_id || null,
+      vehicle_label: v.vehicle_label || null,
+      vehicle_current_stop_sequence: v.vehicle_current_stop_sequence ?? null,
+      vehicle_timestamp: v.timestamp || null,
+      vehicle_time_local: epochToLocalHms(v.timestamp),
+    });
+  }
+
+  return rows.concat(injected);
 }
 
 export async function getUpcomingByStop(
@@ -775,11 +946,17 @@ export async function getUpcomingByStop(
   //   - in the overdue back-window: GPS confirms the vehicle hasn't yet passed
   //     this stop (late bus still approaching). Rows without GPS data are dropped
   //     from the overdue window to avoid surfacing cancelled/completed services.
-  const visible = enriched.filter(r => {
+  let visible = enriched.filter(r => {
     if (r.vehicle_current_stop_sequence != null) {
       return r.vehicle_current_stop_sequence <= r.stop_sequence;
     }
     return r.win_sec >= startSec;
+  });
+  visible = await injectUnplannedRailRows(visible, {
+    stopIds: [String(stopId)],
+    secNow: startSec,
+    endSec,
+    configPath,
   });
 
   // Sort by the same effective time the client displays (dep preferred over arr).
@@ -787,7 +964,7 @@ export async function getUpcomingByStop(
   // stop, so using it as an offset produces wrong sort keys for future buses.
   const effectiveSec = r => {
     const t = r.estimated_departure_time || r.estimated_arrival_time ||
-              r.scheduled_departure_time || r.scheduled_arrival_time;
+      r.scheduled_departure_time || r.scheduled_arrival_time;
     if (!t) return r.win_sec;
     const parts = t.split(':');
     let s = Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2] || 0);
@@ -799,7 +976,7 @@ export async function getUpcomingByStop(
   visible.sort((a, b) => effectiveSec(a) - effectiveSec(b));
   // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
   for (const r of visible) {
-    r.scheduled_arrival_time   = normalizeHms(r.scheduled_arrival_time);
+    r.scheduled_arrival_time = normalizeHms(r.scheduled_arrival_time);
     r.scheduled_departure_time = normalizeHms(r.scheduled_departure_time);
   }
   return visible;
@@ -874,15 +1051,21 @@ export async function getUpcomingByStation(
   });
 
   const enriched = await enrichRowsWithRealtime(rows);
-  const visible = enriched.filter(r => {
+  let visible = enriched.filter(r => {
     if (r.vehicle_current_stop_sequence != null) {
       return r.vehicle_current_stop_sequence <= r.stop_sequence;
     }
     return r.win_sec >= startSec;
   });
+  visible = await injectUnplannedRailRows(visible, {
+    stopIds: platformIds,
+    secNow: startSec,
+    endSec,
+    configPath,
+  });
   const effectiveSecStn = r => {
     const t = r.estimated_departure_time || r.estimated_arrival_time ||
-              r.scheduled_departure_time || r.scheduled_arrival_time;
+      r.scheduled_departure_time || r.scheduled_arrival_time;
     if (!t) return r.win_sec;
     const parts = t.split(':');
     let s = Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2] || 0);
@@ -894,7 +1077,7 @@ export async function getUpcomingByStation(
   visible.sort((a, b) => effectiveSecStn(a) - effectiveSecStn(b));
   // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
   for (const r of visible) {
-    r.scheduled_arrival_time   = normalizeHms(r.scheduled_arrival_time);
+    r.scheduled_arrival_time = normalizeHms(r.scheduled_arrival_time);
     r.scheduled_departure_time = normalizeHms(r.scheduled_departure_time);
   }
   return visible;
@@ -912,7 +1095,7 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
   const secNow = Math.floor((now - midnight) / 1000);
 
   const placeholders = tripIds.map(() => '?').join(',');
-  const { tripRows, fallbackRows, nextStopMap } = await withDb(db => {
+  const { tripRows, fallbackRows, stopEventRows } = await withDb(db => {
     const tripRows = db.prepare(`
       SELECT t.trip_id, t.route_id, COALESCE(t.direction_id, 0) AS direction_id,
              t.trip_headsign,
@@ -958,66 +1141,140 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
           const direction_id = (rtDir && (rtDir === route.min_dir || rtDir === route.max_dir))
             ? rtDir
             : (onlyOneDir ? route.min_dir : 0);
+
+          let scheduleTripId = null;
+          let scheduleHeadsign = '';
+          if ((route.route_type === 1 || route.route_type === 2 || route.route_type === 12) && vpos.vehicleLabel) {
+            const matchedTrip = db.prepare(`
+              SELECT trip_id, trip_headsign
+              FROM stop_events_3day
+              WHERE route_short_name = $routeShortName
+                AND direction_id = $directionId
+                AND trip_id LIKE $tripSuffix
+              ORDER BY ABS(win_sec - $targetSec) ASC, stop_sequence ASC
+              LIMIT 1
+            `).get({
+              routeShortName: route.route_short_name,
+              directionId: direction_id,
+              tripSuffix: '%-' + vpos.vehicleLabel,
+              targetSec: secNow,
+            });
+            if (matchedTrip) {
+              scheduleTripId = matchedTrip.trip_id;
+              scheduleHeadsign = matchedTrip.trip_headsign || '';
+            }
+          }
+
           fallbackRows.push({
-            trip_id:          tripId,
-            route_id:         route.route_id,
+            trip_id: tripId,
+            route_id: route.route_id,
             direction_id,
-            trip_headsign:    '',
+            trip_headsign: scheduleHeadsign,
             route_short_name: route.route_short_name,
-            route_color:      route.route_color,
+            route_color: route.route_color,
             route_text_color: route.route_text_color,
-            route_type:       route.route_type,
+            route_type: route.route_type,
+            schedule_trip_id: scheduleTripId,
           });
         }
       }
     }
 
-    // Single batched next-stop query: IN (...) lets SQLite push the trip_id
-    // predicate into the view's base table index, unlike a CTE VALUES join.
-    // We drop the per-trip stop_sequence threshold and rely on win_sec alone;
-    // the 30-min lookback window is tight enough for next-stop accuracy.
-    const nextStopRows = db.prepare(`
-      SELECT trip_id, stop_name, win_sec
-      FROM (
-        SELECT trip_id, stop_name, win_sec,
-               ROW_NUMBER() OVER (PARTITION BY trip_id ORDER BY stop_sequence ASC) AS rn
-        FROM stop_events_3day
-        WHERE trip_id IN (${placeholders})
-          AND win_sec >= ?
-      )
-      WHERE rn = 1
-    `).all(...tripIds, secNow - 1800);
-    const nextStopMap = {};
-    for (const row of nextStopRows) {
-      nextStopMap[row.trip_id] = row;
-    }
-    return { tripRows, fallbackRows, nextStopMap };
+    const stopEventTripIds = [...new Set([
+      ...tripRows.map(row => row.trip_id),
+      ...fallbackRows.map(row => row.schedule_trip_id || row.trip_id),
+    ])];
+    const stopEventPlaceholders = stopEventTripIds.map(() => '?').join(',');
+    const stopEventRows = db.prepare(`
+      SELECT
+        trip_id,
+        stop_id,
+        stop_name,
+        stop_sequence,
+        win_sec,
+        arrival_time AS scheduled_arrival_time,
+        departure_time AS scheduled_departure_time,
+        estimated_arrival_time,
+        estimated_departure_time
+      FROM stop_events_3day
+      WHERE trip_id IN (${stopEventPlaceholders})
+    `).all(...stopEventTripIds);
+
+    return { tripRows, fallbackRows, stopEventRows };
   }, configPath);
+
+  function eventTimeSec(row) {
+    const time = row.estimated_departure_time || row.estimated_arrival_time ||
+      row.scheduled_departure_time || row.scheduled_arrival_time;
+    if (time) {
+      const sec = hmsToSec(time);
+      if (sec != null) return sec % 86400;
+    }
+    return row.win_sec != null ? Number(row.win_sec) : null;
+  }
+
+  function adjustedEventSec(row) {
+    const sec = eventTimeSec(row);
+    if (sec == null) return Number.POSITIVE_INFINITY;
+    return sec < (secNow - 1800) ? sec + 86400 : sec;
+  }
+
+  function pickNextStop(rows, currentStopSequence) {
+    if (!rows || rows.length === 0) return null;
+
+    const annotated = rows.map(row => ({
+      ...row,
+      _adjustedSec: adjustedEventSec(row),
+    }));
+
+    // Prefer stops that are still upcoming or effectively current, rather than
+    // stale earlier stops in the same trip which would produce 23h-style ETAs.
+    var candidates = annotated.filter(row => row._adjustedSec >= (secNow - 60));
+    if (!candidates.length) candidates = annotated;
+
+    if (currentStopSequence != null && currentStopSequence > 0) {
+      const bySequence = candidates.filter(row => row.stop_sequence >= currentStopSequence);
+      if (bySequence.length) candidates = bySequence;
+    }
+
+    candidates.sort((a, b) => a._adjustedSec - b._adjustedSec || a.stop_sequence - b.stop_sequence);
+    return candidates[0] || null;
+  }
+
+  const stopEventMap = new Map();
+  for (const row of stopEventRows) {
+    if (!stopEventMap.has(row.trip_id)) stopEventMap.set(row.trip_id, []);
+    stopEventMap.get(row.trip_id).push(row);
+  }
 
   const allRows = [...tripRows, ...fallbackRows];
   return allRows.map(row => {
     const vpos = vposMap.get(row.trip_id);
     if (!vpos?.latitude || !vpos?.longitude) return null;
-    const nextStop = nextStopMap[row.trip_id];
-    const minutesAway = nextStop?.win_sec != null
-      ? Math.max(0, Math.round((nextStop.win_sec - secNow) / 60))
+    const referenceTripId = row.schedule_trip_id || row.trip_id;
+    const nextStop = pickNextStop(stopEventMap.get(referenceTripId), vpos.currentStopSequence ?? null);
+    const minutesAway = nextStop
+      ? Math.max(0, Math.round((nextStop._adjustedSec - secNow) / 60))
       : null;
     return {
-      trip_id:          row.trip_id,
-      route_id:         row.route_id,
-      direction_id:     row.direction_id,
-      trip_headsign:    row.trip_headsign || '',
+      trip_id: row.trip_id,
+      route_id: row.route_id,
+      direction_id: row.direction_id,
+      trip_headsign: row.trip_headsign || '',
       route_short_name: row.route_short_name || '',
-      route_color:      row.route_color || null,
+      route_color: row.route_color || null,
       route_text_color: row.route_text_color || null,
-      route_type:       row.route_type,
-      lat:              vpos.latitude,
-      lon:              vpos.longitude,
-      vehicle_id:       vpos.vehicleId   || null,
-      vehicle_label:    vpos.vehicleLabel || null,
-      timestamp:        vpos.timestamp   || null,
-      stop_name:        nextStop?.stop_name || null,
-      minutes_away:     minutesAway,
+      route_type: row.route_type,
+      lat: vpos.latitude,
+      lon: vpos.longitude,
+      vehicle_id: vpos.vehicleId || null,
+      vehicle_label: vpos.vehicleLabel || null,
+      timestamp: vpos.timestamp || null,
+      stop_id: nextStop?.stop_id || null,
+      stop_name: nextStop?.stop_name || null,
+      stop_sequence: nextStop?.stop_sequence || null,
+      vehicle_current_stop_sequence: vpos.currentStopSequence ?? null,
+      minutes_away: minutesAway,
     };
   }).filter(Boolean);
 }

@@ -6,35 +6,58 @@
      stop    = light pastel, used for individual platform/stop map markers
      station = rich/dark shade, used for interchange/station map markers        */
 :root {
-  --transit-rail-color:    #C4262E;  /* Queensland Rail red */
-  --transit-rail-stop:     #f0a0a0;  /* neutral light red — distinct from bus pink */
-  --transit-rail-station:  #8b1217;
+  --transit-rail-color: #C4262E;
+  /* Queensland Rail red */
+  --transit-rail-stop: #f0a0a0;
+  /* neutral light red — distinct from bus pink */
+  --transit-rail-station: #8b1217;
 
-  --transit-tram-color:    #FFD200;  /* Translink G:link yellow */
-  --transit-tram-stop:     #fff2a8;
-  --transit-tram-station:  #c8a400;
+  --transit-tram-color: #FFD200;
+  /* Translink G:link yellow */
+  --transit-tram-stop: #fff2a8;
+  --transit-tram-station: #c8a400;
 
-  --transit-ferry-color:   #00447C;  /* Translink ferry navy */
-  --transit-ferry-stop:    #6aace0;
+  --transit-ferry-color: #00447C;
+  /* Translink ferry navy */
+  --transit-ferry-stop: #6aace0;
   --transit-ferry-station: #002b52;
 
-  --transit-bus-color:     #E463A4;  /* Translink bus pink */
-  --transit-bus-stop:      #f5b0e8;  /* light magenta — distinct from rail red */
-  --transit-bus-station:   #b5186b;
+  --transit-bus-color: #E463A4;
+  /* Translink bus pink */
+  --transit-bus-stop: #f5b0e8;
+  /* light magenta — distinct from rail red */
+  --transit-bus-station: #b5186b;
 
   /* Real-time data freshness indicator colours */
-  --rt-color-fresh:        #198754;  /* on-time / just updated */
-  --rt-color-warning:      #fd7e14;  /* updated 2–3 min ago */
-  --rt-color-stale:        #dc3545;  /* updated >3 min ago */
+  --rt-color-fresh: #198754;
+  /* on-time / just updated */
+  --rt-color-warning: #fd7e14;
+  /* updated 2–3 min ago */
+  --rt-color-stale: #dc3545;
+  /* updated >3 min ago */
 }
-.transit-rail-color  { color: var(--transit-rail-color); }
-.transit-tram-color  { color: var(--transit-tram-station); }  /* #FFD200 is unreadable on white */
-.transit-ferry-color { color: var(--transit-ferry-color); }
-.transit-bus-color   { color: var(--transit-bus-color); }
+
+.transit-rail-color {
+  color: var(--transit-rail-color);
+}
+
+.transit-tram-color {
+  color: var(--transit-tram-station);
+}
+
+/* #FFD200 is unreadable on white */
+.transit-ferry-color {
+  color: var(--transit-ferry-color);
+}
+
+.transit-bus-color {
+  color: var(--transit-bus-color);
+}
+
 .typeahead-list {
   display: block;
   background: #fff;
-  border: 1px solid rgba(0,0,0,.125);
+  border: 1px solid rgba(0, 0, 0, .125);
   border-radius: .5rem;
   z-index: 1000;
 }
@@ -61,21 +84,45 @@
   color: #6c757d;
 }
 
-.z-10 { z-index: 10; }
+.z-10 {
+  z-index: 10;
+}
 
 .route-color-chip {
-  display:inline-block;
+  display: inline-block;
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  border: 1px solid rgba(0,0,0,.15);
+  border: 1px solid rgba(0, 0, 0, .15);
 }
 
 .route-color-chip-lg {
-  display:inline-block;
+  display: inline-block;
   width: 40px;
   height: 40px;
   border-radius: 8px;
-  border: 1px solid rgba(0,0,0,.15);
+  border: 1px solid rgba(0, 0, 0, .15);
 }
-#tt-results .table td, #tt-results .table th { vertical-align: middle; }
+
+.direction-unavailable,
+.direction-unavailable.disabled,
+.direction-unavailable:disabled {
+  color: #6c757d !important;
+  background: #e9ecef !important;
+  border-color: #ced4da !important;
+  opacity: 1 !important;
+  cursor: not-allowed;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35);
+}
+
+.direction-unavailable:hover,
+.direction-unavailable:focus {
+  color: #6c757d !important;
+  background: #e9ecef !important;
+  border-color: #ced4da !important;
+}
+
+#tt-results .table td,
+#tt-results .table th {
+  vertical-align: middle;
+}

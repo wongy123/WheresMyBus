@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   searchRoutes,
   getOneRoute,
+  getRouteDirections,
   getRouteStops,
   getRouteShape,
   getRouteUpcoming,
@@ -11,6 +12,7 @@ import {
 const router = Router();
 
 router.get('/search', searchRoutes);
+router.get('/:routeId/directions', getRouteDirections);
 router.get('/:routeId/upcoming', getRouteUpcoming);
 router.get('/:routeId/stops', getRouteStops);
 router.get('/:routeId/shape', getRouteShape);
