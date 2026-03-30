@@ -192,6 +192,7 @@
   }
 </style>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="application/json" id="stop-routes-data">{{ routes | tojson }}</script>
 <script>
   var stopLat = {{ stop.stop_lat }};
   var stopLon = {{ stop.stop_lon }};
@@ -201,7 +202,7 @@
   var BASE_PATH = {{ BASE_PATH | tojson }};
 
   var routeTypeMap = {};
-  { { routes | tojson } }.forEach(function (r) { routeTypeMap[r.route_id] = r.route_type; });
+  JSON.parse(document.getElementById('stop-routes-data').textContent).forEach(function (r) { routeTypeMap[r.route_id] = r.route_type; });
 
   var map = L.map('stop-map').setView([stopLat, stopLon], 16);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
