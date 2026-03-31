@@ -39,7 +39,17 @@
         {% set info = dly | delay_info %}
         {% set eta = v.estimated_departure_time or v.scheduled_departure_time or v.estimated_arrival_time or v.scheduled_arrival_time %}
 
-        <div class="d-flex align-items-center" style="min-height: 44px; position: relative; z-index: 1;">
+        <div class="d-flex align-items-center{% if v.vehicle_latitude and v.vehicle_longitude %} diagram-vehicle-row{% endif %}" style="min-height: 44px; position: relative; z-index: 1;{% if v.vehicle_latitude and v.vehicle_longitude %} cursor:pointer;{% endif %}"
+          {% if v.vehicle_latitude and v.vehicle_longitude %}
+            data-vehicle-label="{{ v.vehicle_label or v.vehicle_id or '' }}"
+            data-trip-id="{{ v.trip_id or '' }}"
+            data-lat="{{ v.vehicle_latitude }}"
+            data-lon="{{ v.vehicle_longitude }}"
+            data-headsign="{{ v.trip_headsign or '' }}"
+            data-stop-name="{{ stop.stop_name | e }}"
+            data-minutes-away="{{ v.minutes_away if v.minutes_away is not none else '' }}"
+            onclick="typeof showVehicleMap === 'function' && showVehicleMap(this.dataset)"
+          {% endif %}>
           <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
             <div style="width:28px;height:28px;background:{{ ('#' + route_color) if route_color else '#6c757d' }};border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;">
               <span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">{{ vehicle_icon }}</span>
@@ -53,12 +63,26 @@
               {% elif eta %}{{ eta[:5] }}{% endif %}
             </span>
             {% if eta and v.minutes_away %}<span class="text-muted">{{ eta[:5] }}</span>{% endif %}
-            {% if v.realtime_updated_at %}
-              <span class="rt-icon" tabindex="0"
-                    data-bs-toggle="popover" data-bs-trigger="click" data-bs-placement="top"
-                    data-updated-at="{{ v.realtime_updated_at }}"
-                    style="cursor:pointer; display:inline-flex; align-items:center;">
-                <span class="material-symbols-outlined" style="font-size:.95rem; line-height:1; color:#198754;">sensors</span>
+            {% if v.realtime_updated_at or v.has_gps %}
+              <span style="display:inline-flex; align-items:center; gap:2px;">
+                {% if v.has_rt %}
+                <span class="rt-icon" tabindex="0"
+                      data-bs-toggle="popover" data-bs-trigger="click" data-bs-placement="top"
+                      data-updated-at="{{ v.realtime_updated_at }}"
+                      title="Trip update"
+                      style="cursor:pointer; display:inline-flex; align-items:center;">
+                  <span class="material-symbols-outlined" style="font-size:.95rem; line-height:1; color:#198754;">sensors</span>
+                </span>
+                {% endif %}
+                {% if v.has_gps %}
+                <span class="gps-icon" tabindex="0"
+                      data-bs-toggle="popover" data-bs-trigger="click" data-bs-placement="top"
+                      data-vehicle-ts="{{ v.vehicle_timestamp or '' }}"
+                      title="GPS position"
+                      style="cursor:pointer; display:inline-flex; align-items:center;">
+                  <span class="material-symbols-outlined" style="font-size:.95rem; line-height:1; color:#0d6efd;">my_location</span>
+                </span>
+                {% endif %}
               </span>
             {% endif %}
           </div>
@@ -112,6 +136,19 @@
 <script>
 (function() {
   var now = Date.now();
+  var _activePop = null;
+  function showOne(pop) {
+    if (_activePop === pop) { pop.hide(); _activePop = null; return; }
+    if (_activePop) _activePop.hide();
+    pop.show();
+    _activePop = pop;
+  }
+  document.addEventListener('click', function (e) {
+    if (_activePop && !e.target.closest('.popover, .rt-icon, .gps-icon')) {
+      _activePop.hide(); _activePop = null;
+    }
+  }, true);
+
   document.querySelectorAll('#route-diagram .rt-icon').forEach(function(el) {
     var updatedAt = parseInt(el.dataset.updatedAt, 10);
     var ageSec = (updatedAt && !isNaN(updatedAt)) ? Math.round((now - updatedAt) / 1000) : null;
@@ -123,7 +160,24 @@
       color = ageSec < 120 ? '#198754' : ageSec < 180 ? '#fd7e14' : '#dc3545';
     }
     el.querySelector('.material-symbols-outlined').style.color = color;
-    new bootstrap.Popover(el, { content: label, trigger: 'focus', placement: 'top' });
+    var pop = new bootstrap.Popover(el, { content: label, trigger: 'manual', placement: 'top' });
+    el.addEventListener('click', function (e) { e.stopPropagation(); showOne(pop); });
+  });
+
+  var gpsNow = Math.round(now / 1000);
+  document.querySelectorAll('#route-diagram .gps-icon').forEach(function(el) {
+    var ts = parseInt(el.dataset.vehicleTs, 10);
+    var ageSec = (ts && !isNaN(ts)) ? (gpsNow - ts) : null;
+    var color, label;
+    if (ageSec === null) {
+      color = '#0d6efd'; label = 'GPS position';
+    } else {
+      label = ageSec < 60 ? 'GPS updated just now' : 'GPS updated ' + Math.round(ageSec / 60) + ' min ago';
+      color = ageSec < 120 ? '#0d6efd' : ageSec < 300 ? '#fd7e14' : '#dc3545';
+    }
+    el.querySelector('.material-symbols-outlined').style.color = color;
+    var pop = new bootstrap.Popover(el, { content: label, trigger: 'manual', placement: 'top' });
+    el.addEventListener('click', function (e) { e.stopPropagation(); showOne(pop); });
   });
 }());
 window._diagRoute = {

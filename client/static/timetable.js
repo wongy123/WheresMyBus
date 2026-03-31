@@ -63,6 +63,21 @@
     var rtWarning  = rootStyle.getPropertyValue('--rt-color-warning').trim() || '#fd7e14';
     var rtStale    = rootStyle.getPropertyValue('--rt-color-stale').trim()   || '#dc3545';
 
+    // Only one popover open at a time; dismiss on outside click
+    var _activePop = null;
+    function showExclusive(pop) {
+      if (_activePop === pop) { pop.hide(); _activePop = null; return; }
+      if (_activePop) _activePop.hide();
+      pop.show();
+      _activePop = pop;
+    }
+    document.addEventListener('click', function (e) {
+      if (_activePop && !e.target.closest('.popover, .rt-icon, .gps-icon, .status-badge')) {
+        _activePop.hide();
+        _activePop = null;
+      }
+    }, true);
+
     document.querySelectorAll('.rt-icon').forEach(function (el) {
       var updatedAt = parseInt(el.dataset.updatedAt, 10);
       var ageSec = (updatedAt && !isNaN(updatedAt)) ? Math.round((_rtNow - updatedAt) / 1000) : null;
@@ -74,11 +89,33 @@
         color = ageSec < 120 ? rtFresh : ageSec < 180 ? rtWarning : rtStale;
       }
       el.querySelector('.material-symbols-outlined').style.color = color;
-      new bootstrap.Popover(el, { content: label, trigger: 'focus', placement: 'top' });
+      var pop = new bootstrap.Popover(el, { content: label, trigger: 'manual', placement: 'top' });
+      el.addEventListener('click', function (e) { e.stopPropagation(); showExclusive(pop); });
+    });
+
+    var _gpsNow = Math.round(Date.now() / 1000);
+    var gpsFresh   = '#0d6efd';
+    var gpsWarning = '#fd7e14';
+    var gpsStale   = '#dc3545';
+
+    document.querySelectorAll('.gps-icon').forEach(function (el) {
+      var ts = parseInt(el.dataset.vehicleTs, 10);
+      var ageSec = (ts && !isNaN(ts)) ? (_gpsNow - ts) : null;
+      var color, label;
+      if (ageSec === null) {
+        color = gpsFresh; label = 'GPS position';
+      } else {
+        label = ageSec < 60 ? 'GPS updated just now' : 'GPS updated ' + Math.round(ageSec / 60) + ' min ago';
+        color = ageSec < 120 ? gpsFresh : ageSec < 300 ? gpsWarning : gpsStale;
+      }
+      el.querySelector('.material-symbols-outlined').style.color = color;
+      var pop = new bootstrap.Popover(el, { content: label, trigger: 'manual', placement: 'top' });
+      el.addEventListener('click', function (e) { e.stopPropagation(); showExclusive(pop); });
     });
 
     document.querySelectorAll('.status-badge').forEach(function (el) {
-      new bootstrap.Popover(el, { trigger: 'focus', placement: 'top' });
+      var pop = new bootstrap.Popover(el, { trigger: 'manual', placement: 'top' });
+      el.addEventListener('click', function (e) { e.stopPropagation(); showExclusive(pop); });
     });
 
     document.querySelectorAll('.tt-time').forEach(function (el) {

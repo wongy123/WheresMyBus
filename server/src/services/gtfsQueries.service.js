@@ -11,6 +11,9 @@ const defaultConfigPath = '../../config.json';
 // Vehicle GPS positions older than this are considered stale and not trusted
 // for overdue-stop filtering (second safeguard after trip-update check).
 const STALE_GPS_SEC = 300; // 5 minutes
+// Trips with minutes_away beyond this threshold are almost certainly ghosts
+// (completed trips whose schedule time wraps to the next day via adjustedEventSec).
+const MAX_MINUTES_AWAY = 90;
 
 /* ----------------------------- helpers: RT merge ---------------------------- */
 
@@ -90,7 +93,10 @@ function applyRealtimeToRow(row, rt, vpos) {
   }
 
   if (!rt) {
-    if (vpos) enriched.real_time_data = 1;
+    if (vpos) {
+      enriched.real_time_data = 1;
+      enriched.has_gps = 1;
+    }
     return enriched;
   }
 
@@ -159,6 +165,8 @@ function applyRealtimeToRow(row, rt, vpos) {
   if (appliedRT || vpos) {
     enriched.real_time_data = 1;
   }
+  if (appliedRT) enriched.has_rt = 1;
+  if (vpos) enriched.has_gps = 1;
 
   // Expose the minimum stop sequence present in trip updates. Filters use this
   // to detect whether the bus has already passed a given stop: if
@@ -290,7 +298,7 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
   }));
 
   if (!searchTerm) {
-    return routes.sort((a, b) => a.route_short_name.localeCompare(b.route_short_name));
+    return [];
   }
 
   const tokens = searchTerm.trim().toLowerCase().split(/\s+/).filter(t => t.length > 0);
@@ -354,41 +362,34 @@ async function resolveRouteFamily(identifier, configPath = defaultConfigPath) {
 /* ---------------------------------- stops ---------------------------------- */
 
 export async function getAllStops(searchTerm = '', configPath = defaultConfigPath) {
-  let sql, params;
-
-  if (searchTerm) {
-    // Split into tokens so "Adelaide St Stop 40" matches "Adelaide Street Stop 40"
-    // Each token is matched against both stop_name and stop_code so searches like "001234" work
-    const tokens = searchTerm.trim().split(/\s+/).filter(t => t.length > 0);
-    const tokenClauses = tokens.map((_, i) => `(stop_name LIKE $tok${i} OR stop_code LIKE $tok${i})`).join(' AND ');
-    const tokenParams = Object.fromEntries(tokens.map((t, i) => [`tok${i}`, `%${t}%`]));
-
-    sql = `
-      SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon, location_type,
-        CASE
-          WHEN stop_code = $exactCode          THEN 0
-          WHEN stop_name LIKE $fullPrefix      THEN 1
-          WHEN stop_name LIKE $fullContains    THEN 2
-          ELSE                                      3
-        END AS sort_rank
-      FROM stops
-      WHERE ${tokenClauses}
-      ORDER BY sort_rank ASC, (location_type != 1) ASC, stop_name ASC
-    `;
-    params = {
-      ...tokenParams,
-      exactCode: searchTerm.trim(),
-      fullPrefix: `${searchTerm}%`,
-      fullContains: `%${searchTerm}%`,
-    };
-  } else {
-    sql = `
-      SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon, location_type
-      FROM stops
-      ORDER BY stop_name ASC
-    `;
-    params = {};
+  if (!searchTerm) {
+    return [];
   }
+
+  // Split into tokens so "Adelaide St Stop 40" matches "Adelaide Street Stop 40"
+  // Each token is matched against both stop_name and stop_code so searches like "001234" work
+  const tokens = searchTerm.trim().split(/\s+/).filter(t => t.length > 0);
+  const tokenClauses = tokens.map((_, i) => `(stop_name LIKE $tok${i} OR stop_code LIKE $tok${i})`).join(' AND ');
+  const tokenParams = Object.fromEntries(tokens.map((t, i) => [`tok${i}`, `%${t}%`]));
+
+  const sql = `
+    SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon, location_type,
+      CASE
+        WHEN stop_code = $exactCode          THEN 0
+        WHEN stop_name LIKE $fullPrefix      THEN 1
+        WHEN stop_name LIKE $fullContains    THEN 2
+        ELSE                                      3
+      END AS sort_rank
+    FROM stops
+    WHERE ${tokenClauses}
+    ORDER BY sort_rank ASC, (location_type != 1) ASC, stop_name ASC
+  `;
+  const params = {
+    ...tokenParams,
+    exactCode: searchTerm.trim(),
+    fullPrefix: `${searchTerm}%`,
+    fullContains: `%${searchTerm}%`,
+  };
 
   const rows = await withDb(db => db.prepare(sql).all(params), configPath);
   return rows.map(({ sort_rank, ...rest }) => rest);
@@ -405,15 +406,30 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 
 export async function getNearbyStops(lat, lng, limit = 5, configPath = defaultConfigPath) {
   return withDb(db => {
+    // Pre-filter with a generous bounding box (~5km at Brisbane latitude)
+    const degBuffer = 0.05; // ~5.5km
     const rows = db.prepare(`
       SELECT stop_id, stop_name, stop_lat, stop_lon, location_type
       FROM stops
       WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
         AND (location_type IS NULL OR location_type IN (0, 1))
         AND parent_station IS NULL
-    `).all();
+        AND stop_lat BETWEEN ? AND ?
+        AND stop_lon BETWEEN ? AND ?
+    `).all(lat - degBuffer, lat + degBuffer, lng - degBuffer, lng + degBuffer);
 
-    const topN = rows
+    let candidates = rows;
+    if (candidates.length < limit) {
+      candidates = db.prepare(`
+        SELECT stop_id, stop_name, stop_lat, stop_lon, location_type
+        FROM stops
+        WHERE stop_lat IS NOT NULL AND stop_lon IS NOT NULL
+          AND (location_type IS NULL OR location_type IN (0, 1))
+          AND parent_station IS NULL
+      `).all();
+    }
+
+    const topN = candidates
       .map(s => ({ ...s, distance_km: haversineKm(lat, lng, s.stop_lat, s.stop_lon) }))
       .sort((a, b) => a.distance_km - b.distance_km)
       .slice(0, limit);
@@ -660,6 +676,21 @@ export async function getUpcomingByRoute(
   const secNow = Math.floor((date - midnight) / 1000);
   const secEnd = secNow + duration;
 
+  // Build canonical stop mapping for diagram positioning
+  const canonicalStops = await getStopsByRoute(routeId, direction, configPath);
+  const stopIdToCanonicalSeq = new Map();
+  for (const s of canonicalStops) {
+    if (s.stop_id != null) stopIdToCanonicalSeq.set(String(s.stop_id), s.stop_sequence);
+  }
+
+  function annotateRows(rows) {
+    for (const r of rows) {
+      const eSec = effectiveRowSec(r);
+      r.minutes_away = (eSec != null) ? Math.max(0, Math.round((eSec - secNow) / 60)) : null;
+      r.canonical_stop_sequence = stopIdToCanonicalSeq.get(String(r.stop_id)) ?? r.stop_sequence ?? null;
+    }
+  }
+
   const sql = `
 WITH filtered AS (
   SELECT
@@ -796,7 +827,8 @@ ORDER BY f.win_sec ASC;
     visible.sort((a, b) =>
       (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
     );
-    return visible;
+    annotateRows(visible);
+    return visible.filter(r => r.minutes_away == null || r.minutes_away <= MAX_MINUTES_AWAY);
   }
 
   const replacements = await withDb(db => {
@@ -891,7 +923,8 @@ ORDER BY f.win_sec ASC;
   visible.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
-  return visible;
+  annotateRows(visible);
+  return visible.filter(r => r.minutes_away == null || r.minutes_away <= MAX_MINUTES_AWAY);
 }
 
 // Keep a row if it's in the normal future window, or if GPS confirms the
@@ -997,8 +1030,8 @@ async function injectUnplannedRailRows(rows, {
       scheduled_departure_time: eta,
       estimated_arrival_time: eta,
       estimated_departure_time: eta,
-      arrival_delay: null,
-      departure_delay: null,
+      arrival_delay: 0,
+      departure_delay: 0,
       real_time_data: 1,
       event_sec: targetSec,
       win_sec: targetSec,
@@ -1009,6 +1042,9 @@ async function injectUnplannedRailRows(rows, {
       vehicle_current_stop_sequence: v.vehicle_current_stop_sequence ?? null,
       vehicle_timestamp: v.timestamp || null,
       vehicle_time_local: epochToLocalHms(v.timestamp),
+      has_rt: false,
+      has_gps: !!(v.lat && v.lon),
+      realtime_updated_at: v.timestamp ? v.timestamp * 1000 : null,
     });
   }
 
@@ -1422,14 +1458,26 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
   }
 
   const allRows = [...tripRows, ...fallbackRows];
+  const startTimestamp = Math.floor(Date.now() / 1000);
+  // Max age for GPS: 10 minutes. Beyond this the position is stale.
+  const GPS_STALE_SECONDS = 600;
+
   return allRows.map(row => {
     const vpos = vposMap.get(row.trip_id);
     if (!vpos?.latitude || !vpos?.longitude) return null;
+
+    // Filter stale GPS positions (vehicles that stopped reporting)
+    if (vpos.timestamp && (startTimestamp - vpos.timestamp) > GPS_STALE_SECONDS) return null;
+
     const referenceTripId = row.schedule_trip_id || row.trip_id;
     const nextStop = pickNextStop(stopEventMap.get(referenceTripId), vpos.currentStopSequence ?? null);
     const minutesAway = nextStop
       ? Math.max(0, Math.round((nextStop._adjustedSec - secNow) / 60))
       : null;
+
+    // Filter ghost vehicles: completed trips where the schedule wraps to tomorrow
+    if (minutesAway != null && minutesAway > MAX_MINUTES_AWAY) return null;
+
     return {
       trip_id: row.trip_id,
       route_id: row.route_id,
@@ -1451,4 +1499,42 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
       minutes_away: minutesAway,
     };
   }).filter(Boolean);
+}
+
+export async function getVehiclesByStop(
+  stopId,
+  duration = 3600,
+  configPath = defaultConfigPath
+) {
+  const startTime = Math.floor(Date.now() / 1000);
+
+  // Determine if this is a station
+  const stop = await getOneStop(stopId, configPath);
+  const rows = stop?.location_type === 1
+    ? await getUpcomingByStation(stopId, startTime, duration, configPath)
+    : await getUpcomingByStop(stopId, startTime, duration, configPath);
+
+  const seen = new Set();
+  return rows
+    .filter(r => {
+      const tid = r.trip_id;
+      if (!tid || seen.has(tid)) return false;
+      seen.add(tid);
+      return r.vehicle_latitude && r.vehicle_longitude;
+    })
+    .map(r => ({
+      trip_id: r.trip_id,
+      route_id: r.route_id,
+      route_short_name: r.route_short_name || '',
+      route_color: r.route_color || '',
+      route_text_color: r.route_text_color || '',
+      route_type: r.route_type ?? 3,
+      trip_headsign: r.trip_headsign || '',
+      direction_id: r.direction_id,
+      lat: r.vehicle_latitude,
+      lon: r.vehicle_longitude,
+      label: r.vehicle_label || '',
+      eta: r.estimated_departure_time || r.scheduled_departure_time ||
+           r.estimated_arrival_time || r.scheduled_arrival_time || '',
+    }));
 }

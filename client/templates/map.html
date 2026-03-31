@@ -410,10 +410,10 @@
       <div class="settings-group">
         <label for="settings-vehicles-limit">
           Live vehicles shown
-          <span class="settings-val" id="settings-vehicles-label">unlimited</span>
+          <span class="settings-val" id="settings-vehicles-label">100</span>
         </label>
         <input type="range" class="form-range" id="settings-vehicles-limit"
-          min="0" max="32" step="1" value="32">
+          min="0" max="32" step="1" value="9">
         <div class="settings-desc">Maximum number of live vehicle markers shown. When limited, the nearest vehicles to the map centre are shown. Lower values improve performance.</div>
       </div>
     </div>
@@ -504,7 +504,7 @@
   // Stops: step 50 → 200, step 100 → 500, step 250 → 1000, step 500 → 2000
   var STOPS_STEPS = [50, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000];
   var stopsLimit = STOPS_STEPS[3]; // default 400
-  var vehiclesLimit = 2000; // default = max step = unlimited
+  var vehiclesLimit = 100; // default 100 nearest vehicles
 
   // Default centre: Brisbane CBD
   var map = L.map('map', { zoomControl: true }).setView([-27.4698, 153.0251], 14);
@@ -677,6 +677,13 @@
   }
 
   document.getElementById('map-sidebar-close').addEventListener('click', closeSidebar);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if (settingsPanel.classList.contains('open')) { closeSettings(); }
+      else if (sidebar.classList.contains('open')) { closeSidebar(); }
+    }
+  });
 
   document.getElementById('map-sidebar-center').addEventListener('click', function () {
     if (currentStopLat && currentStopLon) {

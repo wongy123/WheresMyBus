@@ -8,6 +8,7 @@ import {
   getUpcomingByStation,
   getRoutesByStop,
   getStopPlatforms as getStopPlatformsService,
+  getVehiclesByStop,
 } from "../services/gtfsQueries.service.js";
 // Note: getUpcomingByStop is called directly for non-station stops (location_type != 1)
 // to avoid the redundant getStopPlatforms round-trip inside getUpcomingByStation.
@@ -65,6 +66,12 @@ export async function stopsInBounds(req, res, next) {
     const west  = parseFloat(req.query.west);
     if ([north, south, east, west].some(v => !Number.isFinite(v))) {
       return res.status(400).json({ error: "north, south, east, west are required" });
+    }
+    if (north <= south) {
+      return res.status(400).json({ error: "north must be greater than south" });
+    }
+    if (east <= west) {
+      return res.status(400).json({ error: "east must be greater than west" });
     }
     const limit = Math.min(parseInt(req.query.limit || "750", 10), 2000);
     const types = req.query.types
@@ -159,6 +166,21 @@ export async function getStopTimetable(req, res, next) {
     });
 
     res.json(body);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/stops/:stopId/vehicles?duration=3600
+ */
+export async function getStopVehicles(req, res, next) {
+  try {
+    const stopId = req.params.stopId;
+    if (!stopId) return res.status(400).json({ error: 'stopId is required' });
+    const duration = parseIntParam(req.query.duration) || 3600;
+    const vehicles = await getVehiclesByStop(stopId, duration);
+    res.json({ data: vehicles });
   } catch (err) {
     next(err);
   }
