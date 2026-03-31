@@ -192,7 +192,95 @@
     font-size: .8rem;
   }
 
-  /* ── Filter bar ──────────────────────────────────────────────────────────── */
+  /* ── Settings sidebar ───────────────────────────────────────────────────── */
+  #map-settings {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100%;
+    background: #fff;
+    z-index: 1001;
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: 3px 0 12px rgba(0, 0, 0, .15);
+    display: flex;
+    flex-direction: column;
+  }
+
+  #map-settings.open {
+    transform: translateX(0);
+  }
+
+  #map-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .75rem 1rem .6rem;
+    border-bottom: 1px solid #dee2e6;
+    flex-shrink: 0;
+  }
+
+  #map-settings-header .settings-title {
+    font-weight: 600;
+    font-size: .95rem;
+  }
+
+  #map-settings-body {
+    padding: 1rem;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .settings-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .settings-group label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: .82rem;
+    font-weight: 600;
+    margin-bottom: .4rem;
+    color: #212529;
+  }
+
+  .settings-group label span.settings-val {
+    font-weight: 400;
+    color: #6c757d;
+  }
+
+  .settings-group .settings-desc {
+    font-size: .73rem;
+    color: #6c757d;
+    margin-top: .3rem;
+  }
+
+  #map-settings-btn {
+    position: absolute;
+    bottom: calc(2rem + 2.5rem);
+    left: .75rem;
+    z-index: 1000;
+  }
+
+  @media (max-width: 767px) {
+    #map-settings {
+      top: auto;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 0;
+      transform: none;
+      transition: height .22s ease;
+      box-shadow: 0 -3px 12px rgba(0, 0, 0, .15);
+    }
+
+    #map-settings.open {
+      height: 50vh;
+      transform: none;
+    }
+  }
   #map-filter {
     position: absolute;
     bottom: 2rem;
@@ -242,12 +330,20 @@
       padding-top: 4.5rem;
     }
 
+    .map-fullscreen-btn {
+      top: calc(1rem + 3rem + .5rem) !important; /* below search bar */
+    }
+
     #map-filter {
       bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     }
 
     #map-locate {
       bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    #map-settings-btn {
+      bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
     }
 
     /* Split layout: map top, sidebar bottom */
@@ -292,6 +388,41 @@
 {% block main %}
 <div id="map-wrap">
   <div id="map"></div>
+
+  <!-- Settings sidebar -->
+  <div id="map-settings">
+    <div id="map-settings-header">
+      <span class="settings-title">Map settings</span>
+      <button id="map-settings-close" title="Close" style="background:none;border:none;padding:.2rem;cursor:pointer;color:#6c757d;line-height:1;display:flex;">
+        <span class="material-symbols-outlined" style="font-size:1.2rem;">close</span>
+      </button>
+    </div>
+    <div id="map-settings-body">
+      <div class="settings-group">
+        <label for="settings-stops-limit">
+          Stops shown
+          <span class="settings-val" id="settings-stops-label">400</span>
+        </label>
+        <input type="range" class="form-range" id="settings-stops-limit"
+          min="0" max="10" step="1" value="3">
+        <div class="settings-desc">Maximum number of stop markers loaded when panning the map.</div>
+      </div>
+      <div class="settings-group">
+        <label for="settings-vehicles-limit">
+          Live vehicles shown
+          <span class="settings-val" id="settings-vehicles-label">unlimited</span>
+        </label>
+        <input type="range" class="form-range" id="settings-vehicles-limit"
+          min="0" max="32" step="1" value="32">
+        <div class="settings-desc">Maximum number of live vehicle markers shown. When limited, the nearest vehicles to the map centre are shown. Lower values improve performance.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings button -->
+  <button id="map-settings-btn" class="btn btn-light btn-sm shadow-sm border" title="Map settings">
+    <span class="material-symbols-outlined" style="font-size:1.2rem;line-height:1;display:block;">tune</span>
+  </button>
 
   <!-- Sidebar -->
   <div id="map-sidebar">
@@ -369,6 +500,11 @@
     var BASE_PATH = {{ BASE_PATH | tojson
   }};
   var POLL_MS = 5000;
+  // Non-linear step tables
+  // Stops: step 50 → 200, step 100 → 500, step 250 → 1000, step 500 → 2000
+  var STOPS_STEPS = [50, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000];
+  var stopsLimit = STOPS_STEPS[3]; // default 400
+  var vehiclesLimit = 2000; // default = max step = unlimited
 
   // Default centre: Brisbane CBD
   var map = L.map('map', { zoomControl: true }).setView([-27.4698, 153.0251], 14);
@@ -430,12 +566,12 @@
       '&east=' + b.getEast().toFixed(6) +
       '&west=' + b.getWest().toFixed(6) +
       '&types=' + types +
-      '&limit=400';
+      '&limit=' + stopsLimit;
     fetch(url)
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var stops = d.data || [];
-        if (stops.length >= 400) { clearStopMarkers(); return; }
+        if (stops.length >= stopsLimit) { clearStopMarkers(); return; }
         clearStopMarkers();
         stops.forEach(addStopMarker);
       })
@@ -452,7 +588,13 @@
   var boundsDebounce = null;
   map.on('moveend', function () {
     clearTimeout(boundsDebounce);
-    boundsDebounce = setTimeout(loadBoundsMarkers, 350);
+    boundsDebounce = setTimeout(function () {
+      loadBoundsMarkers();
+      // Re-sort nearest vehicles when the centre changes (only matters when capped)
+      if (globalActive && !globalPaused && vehiclesLimit < VEHICLE_STEPS[VEHICLE_STEPS.length - 1]) {
+        renderGlobalVehicles(lastGlobalVehicles);
+      }
+    }, 350);
   });
 
   // ── Sidebar ───────────────────────────────────────────────────────────────
@@ -883,10 +1025,22 @@
         }
       }
     }
-    window.TRANSIT.updateVehicleMarkers(map, globalVehicleMarkers,
-      vehicles.filter(function (v) { return v.trip_id !== activeTripId && activeTypes.has(v.route_type); }),
-      globalVehicleRenderOpts
-    );
+    var filtered = vehicles.filter(function (v) { return v.trip_id !== activeTripId && activeTypes.has(v.route_type); });
+    var capped;
+    if (vehiclesLimit >= VEHICLE_STEPS[VEHICLE_STEPS.length - 1]) {
+      capped = filtered;
+    } else {
+      // Sort by distance to map centre so the limit keeps the nearest vehicles
+      var centre = map.getCenter();
+      var clat = centre.lat, clng = centre.lng;
+      filtered.sort(function (a, b) {
+        var da = (a.lat - clat) * (a.lat - clat) + (a.lon - clng) * (a.lon - clng);
+        var db = (b.lat - clat) * (b.lat - clat) + (b.lon - clng) * (b.lon - clng);
+        return da - db;
+      });
+      capped = filtered.slice(0, vehiclesLimit);
+    }
+    window.TRANSIT.updateVehicleMarkers(map, globalVehicleMarkers, capped, globalVehicleRenderOpts);
   }
 
   function fetchAndRenderGlobal() {
@@ -939,7 +1093,59 @@
     }
   });
 
-  // ── Locate me ─────────────────────────────────────────────────────────────
+  // ── Settings sidebar ───────────────────────────────────────────────────────
+  var settingsPanel = document.getElementById('map-settings');
+  var stopsSlider = document.getElementById('settings-stops-limit');
+  var stopsLabel = document.getElementById('settings-stops-label');
+  var vehiclesSlider = document.getElementById('settings-vehicles-limit');
+  var vehiclesLabel = document.getElementById('settings-vehicles-label');
+  // Non-linear step table: step 10 up to 100, step 50 up to 500, step 100 up to 2000
+  var VEHICLE_STEPS = [
+    10, 20, 30, 40, 50, 60, 70, 80, 90, 100,
+    150, 200, 250, 300, 350, 400, 450, 500,
+    600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000
+  ];
+  function vehicleSliderToVal(idx) { return VEHICLE_STEPS[idx] || VEHICLE_STEPS[VEHICLE_STEPS.length - 1]; }
+
+  function openSettings() {
+    settingsPanel.classList.add('open');
+  }
+
+  function closeSettings() {
+    settingsPanel.classList.remove('open');
+  }
+
+  document.getElementById('map-settings-btn').addEventListener('click', function () {
+    if (settingsPanel.classList.contains('open')) {
+      closeSettings();
+    } else {
+      openSettings();
+    }
+  });
+
+  document.getElementById('map-settings-close').addEventListener('click', closeSettings);
+
+  function formatVehiclesLabel(val) {
+    return val >= VEHICLE_STEPS[VEHICLE_STEPS.length - 1] ? 'unlimited' : String(val);
+  }
+
+  stopsSlider.addEventListener('input', function () {
+    stopsLimit = STOPS_STEPS[parseInt(this.value, 10)];
+    stopsLabel.textContent = stopsLimit;
+    loadBoundsMarkers();
+  });
+
+  vehiclesSlider.addEventListener('input', function () {
+    vehiclesLimit = vehicleSliderToVal(parseInt(this.value, 10));
+    vehiclesLabel.textContent = formatVehiclesLabel(vehiclesLimit);
+    if (globalActive && !globalPaused) renderGlobalVehicles(lastGlobalVehicles);
+  });
+
+  // Initialise labels to match slider defaults
+  stopsLabel.textContent = stopsLimit;
+  vehiclesLabel.textContent = formatVehiclesLabel(vehiclesLimit);
+
+
   var userMarker = null;
   var userWatchId = null;
   var pendingLocateAction = false;
