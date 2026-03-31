@@ -1,6 +1,7 @@
 # timetable.py
 import os
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 import pytz
 from flask import Blueprint, render_template, request, abort
 from api import api_get
@@ -156,15 +157,23 @@ def hx_timetable_route_diagram(route_id: str):
     )
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
 
-    route = api_get(f"routes/{route_id}") or {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        route_future = pool.submit(api_get, f"routes/{route_id}")
+        stops_future = pool.submit(api_get, f"routes/{route_id}/stops", {"direction": direction})
+        upcoming_future = pool.submit(
+            api_get,
+            f"routes/{route_id}/upcoming",
+            {"direction": direction, "duration": duration, "limit": 100},
+        )
+
+        route = route_future.result() or {}
+        stops_resp = stops_future.result() or {}
+        upcoming_resp = upcoming_future.result() or {}
+
     route_type = route.get("route_type", 3)
     route_color = route.get("route_color") or ""
 
-    stops_resp = api_get(f"routes/{route_id}/stops", {"direction": direction}) or {}
     stops = stops_resp.get("data", [])
-
-    upcoming_resp = api_get(f"routes/{route_id}/upcoming",
-                            {"direction": direction, "duration": duration, "limit": 100}) or {}
     trips = upcoming_resp.get("data", [])
 
     # Annotate each trip with minutes_away to its next stop
