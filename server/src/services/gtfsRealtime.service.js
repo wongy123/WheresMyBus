@@ -25,7 +25,8 @@ function readConfig() {
 }
 
 async function fetchProto(url) {
-  const res = await fetch(url, { cache: 'no-store' });
+  const ms = Number(process.env.GTFS_RT_TIMEOUT_MS) || 10_000;
+  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(ms) });
   if (!res.ok) throw new Error(`gtfsrt_fetch_failed ${res.status}`);
   const buf = new Uint8Array(await res.arrayBuffer());
   return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buf);

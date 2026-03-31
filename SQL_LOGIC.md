@@ -8,7 +8,7 @@ This document describes the SQL executed for every API endpoint. It is intended 
 
 All GTFS static data lives in a **SQLite** database (managed by the `gtfs` npm package, config in `server/config.json`). Real-time data is written to **Redis** by the GTFS-RT polling service (`gtfsRealtime.service.js`) and merged into query results in JavaScript after the SQL returns.
 
-The PostgreSQL database (`db.js`) is used only for user reviews/ratings — it is not involved in timetable or stop/route queries.
+All persistent data lives in SQLite and Redis — there is no PostgreSQL database in this project.
 
 ---
 
@@ -163,7 +163,7 @@ Indexes created: `idx_stop_route_type_stop_id`, `idx_stops_stop_lat`, `idx_stops
 1. Collects all unique `trip_id` values from the result set.
 2. Fetches two Redis keys per trip in parallel:
    - `rt:trip:<tripId>` — stop-level delay data (arrival/departure delays per stop sequence, TTL ~5 min)
-   - `rt:vpos:<tripId>` — vehicle position (lat/lon, `vehicle_current_stop_sequence`, TTL ~30 s)
+   - `rt:vpos:<tripId>` — vehicle position (lat/lon, `vehicle_current_stop_sequence`, TTL ~60 s)
 3. Calls `applyRealtimeToRow(row, rt, vpos)` for each row.
 
 **Stop update matching** in `applyRealtimeToRow`:

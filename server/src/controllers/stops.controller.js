@@ -9,6 +9,8 @@ import {
   getRoutesByStop,
   getStopPlatforms as getStopPlatformsService,
 } from "../services/gtfsQueries.service.js";
+// Note: getUpcomingByStop is called directly for non-station stops (location_type != 1)
+// to avoid the redundant getStopPlatforms round-trip inside getUpcomingByStation.
 import {
   paginateResponse,
   buildPaginationAndLinks,
@@ -129,13 +131,24 @@ export async function getStopTimetable(req, res, next) {
     const stopId = req.params.stopId ?? req.query.stopId;
     if (!stopId) return res.status(400).json({ error: "stopId is required" });
 
+    // Validate the stop exists and determine whether it is a parent station.
+    // This also fixes: non-existent stop IDs returning HTTP 200 with empty data.
+    const stop = await getOneStopService(stopId);
+    if (!stop) return res.status(404).json({ error: "Stop not found" });
+
     const startTime = parseIntParam(req.query.startTime);
     const duration = parseIntParam(req.query.duration);
     const routes = req.query.routes
       ? req.query.routes.split(',').map(r => r.trim()).filter(Boolean)
       : null;
 
-    const rows = await getUpcomingByStation(stopId, startTime, duration);
+    // For parent stations (location_type === 1) use getUpcomingByStation, which
+    // aggregates child platform results. For regular stops call getUpcomingByStop
+    // directly, skipping the getStopPlatforms round-trip that getUpcomingByStation
+    // always performs internally.
+    const rows = stop.location_type === 1
+      ? await getUpcomingByStation(stopId, startTime, duration)
+      : await getUpcomingByStop(stopId, startTime, duration);
     const filtered = routes && routes.length
       ? rows.filter(r => routes.includes(r.route_short_name))
       : rows;

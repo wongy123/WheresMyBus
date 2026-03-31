@@ -27,7 +27,7 @@ Shared JS helpers:
 Flask calls `GET /api/stops/<stop_id>` to get the stop name/code for the page heading.
 If `location_type == 1` (a parent station), it also calls `GET /api/stops/<stop_id>/platforms` to list the platform links at the top of the page.
 
-The timetable table itself is an **empty div** on page load — HTMX fills it immediately via `hx-trigger="load, every 30s"`.
+The timetable table itself is an **empty div** on page load — HTMX fills it immediately via `hx-trigger="load, every 5s"`.
 
 The same fragment is also embedded on the **stop details page** (`/stops/<stop_id>`) with `hx-trigger="load, every 5s"` (faster rate to stay in sync with the vehicle position poll on that page).
 

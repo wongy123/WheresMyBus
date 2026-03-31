@@ -141,7 +141,7 @@ export async function getRouteSchedule(req, res, next) {
 
 /**
  * GET /api/routes/:routeId/upcoming?direction=0&startTime=...&duration=...&page=1&limit=20
- * - direction: 0 or 1 (optional; defaults to 0 if omitted/invalid)
+ * - direction: 0 or 1 (required if provided; omitting uses the service default of 0)
  * - startTime: epoch seconds (optional)
  * - duration: seconds (optional; default 7200 in service)
  */
@@ -152,7 +152,19 @@ export async function getRouteUpcoming(req, res, next) {
       return res.status(400).json({ error: 'routeId is required' });
     }
 
-    const direction = parseDirection(req.query.direction, undefined);
+    // Reject an explicitly-supplied direction that is not 0 or 1 so callers
+    // get a clear error instead of silently receiving direction-0 results.
+    // Note: parseDirection(val, undefined) cannot be used here because JavaScript
+    // replaces an explicit `undefined` argument with the default parameter value (0),
+    // so we validate the raw query string directly before calling parseDirection.
+    let direction;
+    if (req.query.direction !== undefined) {
+      const d = Number.parseInt(req.query.direction, 10);
+      if (d !== 0 && d !== 1) {
+        return res.status(400).json({ error: 'direction must be 0 or 1' });
+      }
+      direction = d;
+    }
     const startTime = parseIntParam(req.query.startTime);
     const duration = parseIntParam(req.query.duration);
 
