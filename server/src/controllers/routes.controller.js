@@ -131,9 +131,28 @@ export async function getRouteSchedule(req, res, next) {
   try {
     const routeId = req.params.routeId;
     const direction = parseDirection(req.query.direction);
+    const page = parseIntParam(req.query.page) || 1;
+    const limit = Math.min(Math.max(parseIntParam(req.query.limit) || 50, 1), 200);
 
     const data = await getRouteScheduleService(routeId, direction);
-    res.json(data);
+
+    // Paginate trips while keeping full stops list
+    const totalTrips = data.trips.length;
+    const start = (page - 1) * limit;
+    const paginatedTrips = data.trips.slice(start, start + limit);
+
+    res.json({
+      stops: data.stops,
+      trips: paginatedTrips,
+      pagination: {
+        page,
+        limit,
+        total: totalTrips,
+        pageCount: Math.ceil(totalTrips / limit),
+        hasNext: start + limit < totalTrips,
+        hasPrev: page > 1,
+      }
+    });
   } catch (err) {
     next(err);
   }

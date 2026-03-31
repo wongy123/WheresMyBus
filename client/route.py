@@ -2,18 +2,11 @@
 import os
 from flask import Blueprint, render_template, request, abort
 from api import api_get
+from helpers import get_route_directions, validate_direction
 
 bp = Blueprint("route", __name__)
 BASE_PATH = os.environ.get("BASE_PATH", "")  # for subpath setups
 SUGGEST_LIMIT_DEFAULT = int(os.environ.get("SUGGEST_LIMIT", "5"))
-
-def _get_route_directions(route_id: str):
-    data = api_get(f"routes/{route_id}/directions") or {}
-    available = [d for d in data.get("available_directions", []) if d in (0, 1)]
-    default = data.get("default_direction", 0)
-    if default not in available:
-        default = available[0] if available else 0
-    return available, default
 
 @bp.route("/routes")
 def routes_index():
@@ -57,7 +50,7 @@ def route_details(route_id: str):
     details = api_get(f"routes/{route_id}")
     if details is None:
         abort(404)
-    available_directions, default_direction = _get_route_directions(route_id)
+    available_directions, default_direction = get_route_directions(route_id)
     return render_template(
         "routes/details.html",
         route=details,

@@ -380,7 +380,7 @@
 
   // Row click → focus map on bus and follow it
   document.getElementById('stop-timetable').addEventListener('click', function (e) {
-    if (e.target.closest('a, button, .tt-time, .rt-icon, .status-badge')) return;
+    if (e.target.closest('a, button, .tt-time, .rt-icon, .gps-icon, .status-badge')) return;
     var row = e.target.closest('tr[data-trip-id]');
     if (!row || !row.dataset.tripId) return;
     var tripId = row.dataset.tripId;

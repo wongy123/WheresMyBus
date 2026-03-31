@@ -7,6 +7,7 @@ import {
   getStopTimetable,
   getStopRoutes,
   getStopPlatforms,
+  getStopVehicles,
 } from "../controllers/stops.controller.js";
 
 const router = Router();
@@ -16,6 +17,7 @@ router.get("/nearby", nearbyStops);
 router.get("/bounds", stopsInBounds);
 router.get("/:stopId/platforms", getStopPlatforms);
 router.get("/:stopId/routes", getStopRoutes);
+router.get("/:stopId/vehicles", getStopVehicles);
 router.get("/:stopId/timetable", getStopTimetable);
 router.get("/:stopId", getOneStop);
 

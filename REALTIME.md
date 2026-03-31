@@ -31,7 +31,7 @@ tick() called immediately on start
   └── setTimeout(tick, pollMs)   ← schedules next tick after completion
 ```
 
-Default poll interval is **10 seconds**, controlled by `GTFS_RT_POLL_SECONDS` env var or `pollSeconds` in `config.json`. `Promise.allSettled` is used so a failure of one feed does not block the other.
+Default poll interval is **3 seconds**, controlled by `GTFS_RT_POLL_SECONDS` env var or `pollSeconds` in `config.json`. `Promise.allSettled` is used so a failure of one feed does not block the other.
 
 ### Feed fetching
 
@@ -247,6 +247,13 @@ After the ghost filter on every stop/route result set, `injectUnplannedRailRows(
 | `direction` | `getUpcomingByRoute` — restricts to one direction |
 | `stopIds` | `getUpcomingByStop`, `getUpcomingByStation` — vehicle must have its `stop_id` within this set |
 | `secNow`, `endSec` | All paths — time-window bounds |
+
+### Additional fields from `getUpcomingByRoute`
+
+`getUpcomingByRoute` also adds two computed fields to each row:
+
+- **`minutes_away`** (integer) — minutes until arrival, derived from the estimated or scheduled arrival time relative to the current time.
+- **`canonical_stop_sequence`** (integer) — the stop's position on the representative stop list for the route/direction, used by the client to place markers on the route diagram.
 
 ### Stale / behind correction (route upcoming)
 
