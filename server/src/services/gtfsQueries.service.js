@@ -41,10 +41,11 @@ function secToHms(sec) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-function epochToHms(epochSeconds) {
+function epochToHms(epochSeconds, tzOffsetHours = 10) {
   if (epochSeconds == null) return null;
   const d = new Date(Number(epochSeconds) * 1000);
-  return secToHms(d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds());
+  const local = new Date(d.getTime() + tzOffsetHours * 3600 * 1000);
+  return secToHms(local.getUTCHours() * 3600 + local.getUTCMinutes() * 60 + local.getUTCSeconds());
 }
 
 function epochToLocalHms(epochSeconds, tzOffsetHours = 10) {
@@ -356,16 +357,18 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
 
   if (searchTerm) {
     // Split into tokens so "Adelaide St Stop 40" matches "Adelaide Street Stop 40"
+    // Each token is matched against both stop_name and stop_code so searches like "001234" work
     const tokens = searchTerm.trim().split(/\s+/).filter(t => t.length > 0);
-    const tokenClauses = tokens.map((_, i) => `stop_name LIKE $tok${i}`).join(' AND ');
+    const tokenClauses = tokens.map((_, i) => `(stop_name LIKE $tok${i} OR stop_code LIKE $tok${i})`).join(' AND ');
     const tokenParams = Object.fromEntries(tokens.map((t, i) => [`tok${i}`, `%${t}%`]));
 
     sql = `
-      SELECT stop_id, stop_name, stop_lat, stop_lon, location_type,
+      SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon, location_type,
         CASE
-          WHEN stop_name LIKE $fullPrefix    THEN 0
-          WHEN stop_name LIKE $fullContains  THEN 1
-          ELSE                                    2
+          WHEN stop_code = $exactCode          THEN 0
+          WHEN stop_name LIKE $fullPrefix      THEN 1
+          WHEN stop_name LIKE $fullContains    THEN 2
+          ELSE                                      3
         END AS sort_rank
       FROM stops
       WHERE ${tokenClauses}
@@ -373,12 +376,13 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
     `;
     params = {
       ...tokenParams,
+      exactCode: searchTerm.trim(),
       fullPrefix: `${searchTerm}%`,
       fullContains: `%${searchTerm}%`,
     };
   } else {
     sql = `
-      SELECT stop_id, stop_name, stop_lat, stop_lon, location_type
+      SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon, location_type
       FROM stops
       ORDER BY stop_name ASC
     `;
