@@ -318,7 +318,8 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
       return { ...r, sort_rank: rank };
     })
     .filter(Boolean)
-    .sort((a, b) => a.sort_rank - b.sort_rank || a.route_short_name.localeCompare(b.route_short_name));
+    .sort((a, b) => a.sort_rank - b.sort_rank || a.route_short_name.localeCompare(b.route_short_name))
+    .map(({ sort_rank, ...rest }) => rest);
 
   return scored;
 }
@@ -389,7 +390,8 @@ export async function getAllStops(searchTerm = '', configPath = defaultConfigPat
     params = {};
   }
 
-  return withDb(db => db.prepare(sql).all(params), configPath);
+  const rows = await withDb(db => db.prepare(sql).all(params), configPath);
+  return rows.map(({ sort_rank, ...rest }) => rest);
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {

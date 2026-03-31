@@ -120,6 +120,7 @@
   var hasCenteredOnUser = false;
   var lastNearbyAt = 0;
   var lastNearbyLatLng = null;
+  var selectedStopId = null;
   var userIcon = L.divIcon({
     className: '',
     html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;text-shadow:0 1px 3px rgba(0,0,0,.4);line-height:1;">person_pin_circle</span>',
@@ -158,7 +159,9 @@
         updateUserLocationMarker(lat, lng);
         if (!hasCenteredOnUser) {
           hasCenteredOnUser = true;
-          map.setView([lat, lng], 15);
+          if (!selectedStopId) {
+            map.setView([lat, lng], 15);
+          }
         }
         refreshNearby(lat, lng, !!forceNearby);
       },
@@ -177,8 +180,14 @@
     valid.forEach(function (s) {
       var popup = '<b>' + s.stop_name + '</b>' +
         '<br><a href="' + basePath + '/stops/' + s.stop_id + '" class="map-popup-link">Select</a>';
-      markerByStopId[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s) }).addTo(map).bindPopup(popup);
+      var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s) }).addTo(map).bindPopup(popup);
+      m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
+      markerByStopId[s.stop_id] = m;
     });
+    if (selectedStopId && markerByStopId[selectedStopId]) {
+      markerByStopId[selectedStopId].openPopup();
+      return;
+    }
     var points = valid.map(function (s) { return [s.stop_lat, s.stop_lon]; });
     if (userLocationMarker) points.push(userLocationMarker.getLatLng());
     if (points.length === 1) {
@@ -191,6 +200,7 @@
   window.stopSearchFocusStop = function (stopId) {
     var m = markerByStopId[stopId];
     if (!m) return;
+    selectedStopId = stopId;
     map.flyTo(m.getLatLng(), 16);
     m.openPopup();
   };
