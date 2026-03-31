@@ -11,10 +11,7 @@ import {
 } from "../services/gtfsQueries.service.js";
 // Note: getUpcomingByStop is called directly for non-station stops (location_type != 1)
 // to avoid the redundant getStopPlatforms round-trip inside getUpcomingByStation.
-import {
-  paginateResponse,
-  buildPaginationAndLinks,
-} from "../utils/paginate.js";
+import { paginateResponse } from "../utils/paginate.js";
 import { parseIntParam } from "../utils/params.js";
 
 /**
