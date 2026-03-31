@@ -240,6 +240,17 @@ function vposKey(tripId) {
   return `rt:vpos:${enc}`;
 }
 
+function effectiveRowSec(row) {
+  const t = row?.estimated_departure_time || row?.estimated_arrival_time ||
+    row?.scheduled_departure_time || row?.scheduled_arrival_time;
+  if (!t) return row?.win_sec ?? null;
+  let sec = hmsToSec(t);
+  if (sec == null) return row?.win_sec ?? null;
+  const winSec = Number(row?.win_sec);
+  if (Number.isFinite(winSec) && winSec - sec > 43200) sec += 86400;
+  return sec;
+}
+
 /* --------------------------------- routes ---------------------------------- */
 
 export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPath) {
@@ -682,6 +693,9 @@ ORDER BY f.win_sec ASC;
   enriched.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
+  const tripIds = [...new Set(enriched.map(r => r.trip_id).filter(Boolean))];
+  const rtTripLookups = await Promise.all(tripIds.map(id => cacheGet(tripKey(id))));
+  const rtTripMap = new Map(tripIds.map((id, i) => [id, rtTripLookups[i]]));
 
   // Find trips where the vehicle position disagrees with the time-window result.
   //
@@ -694,17 +708,35 @@ ORDER BY f.win_sec ASC;
   //   arrival for intermediate stops has already fallen below secNow even though
   //   the bus hasn't physically reached them.  Step back to veh_seq, capped at
   //   MAX_OVERDUE_SEC seconds past secNow to avoid showing very old stops.
+  //
+  // rtAheadByTrip (rt_seq > seq, no GPS): GTFS-RT stop updates are incremental,
+  //   so the first stopUpdate sequence marks the current or next stop even when
+  //   there is no vehicle position. Advance to that stop sequence.
   const MAX_OVERDUE_SEC = 480; // 8 minutes
   const staleByTrip = new Map();
   const behindByTrip = new Map();
+  const rtAheadByTrip = new Map();
   for (const r of enriched) {
-    const vseq = r.vehicle_current_stop_sequence;
+    const vseq = Number(r.vehicle_current_stop_sequence);
+    const rowSeq = Number(r.stop_sequence);
     // 0 is the protobuf default (field not set); treat as unknown, not sequence 0
-    if (vseq == null || vseq === 0) continue;
-    if (vseq > r.stop_sequence) {
-      staleByTrip.set(r.trip_id, vseq);
-    } else if (vseq < r.stop_sequence) {
-      behindByTrip.set(r.trip_id, vseq);
+    if (Number.isFinite(vseq) && vseq > 0 && Number.isFinite(rowSeq)) {
+      if (vseq > rowSeq) {
+        staleByTrip.set(r.trip_id, vseq);
+      } else if (vseq < rowSeq) {
+        behindByTrip.set(r.trip_id, vseq);
+      }
+      continue;
+    }
+
+    const rt = rtTripMap.get(r.trip_id);
+    const rtSeq = Array.isArray(rt?.stopUpdates)
+      ? rt.stopUpdates
+        .map(u => Number(u?.stopSequence))
+        .find(seq => Number.isFinite(seq) && seq > 0)
+      : null;
+    if (rtSeq != null && Number.isFinite(rowSeq) && rtSeq > rowSeq) {
+      rtAheadByTrip.set(r.trip_id, rtSeq);
     }
   }
 
@@ -721,7 +753,7 @@ ORDER BY f.win_sec ASC;
     FROM stop_events_3day
   `;
 
-  const needsReplacement = staleByTrip.size > 0 || behindByTrip.size > 0;
+  const needsReplacement = staleByTrip.size > 0 || behindByTrip.size > 0 || rtAheadByTrip.size > 0;
   if (!needsReplacement) {
     let visible = _filterActiveVehicles(enriched, secNow);
     visible = await injectUnplannedRailRows(visible, {
@@ -741,31 +773,79 @@ ORDER BY f.win_sec ASC;
     const out = [];
 
     for (const [tripId, currentSeq] of staleByTrip) {
+      let next = db.prepare(stopSelectSql + `
+        WHERE trip_id = $tripId
+          AND stop_sequence = $currentSeq
+          AND event_sec >= $minSec
+        LIMIT 1
+      `).get({ tripId, currentSeq, minSec: secNow - MAX_OVERDUE_SEC });
+      if (!next) {
+        // If the exact stop has just fallen outside the freshness window,
+        // still prefer the GPS-reported sequence over jumping ahead.
+        next = db.prepare(stopSelectSql + `
+          WHERE trip_id = $tripId
+            AND stop_sequence = $currentSeq
+          LIMIT 1
+        `).get({ tripId, currentSeq });
+      }
+      if (!next) {
+        // Final fallback: nearest downstream stop still in the active window.
+        next = db.prepare(stopSelectSql + `
+        WHERE trip_id = $tripId
+          AND stop_sequence >= $currentSeq
+          AND win_sec BETWEEN $startSec AND $endSec
+        ORDER BY stop_sequence ASC
+        LIMIT 1
+        `).get({ tripId, currentSeq, startSec: secNow - MAX_LOOKBACK_SEC, endSec: secEnd });
+      }
+      if (next) out.push(next);
+    }
+
+    for (const [tripId, currentSeq] of behindByTrip) {
+      let prev = db.prepare(stopSelectSql + `
+        WHERE trip_id = $tripId
+          AND stop_sequence = $currentSeq
+          AND event_sec >= $minSec
+        LIMIT 1
+      `).get({ tripId, currentSeq, minSec: secNow - MAX_OVERDUE_SEC });
+      if (!prev) {
+        // If the exact stop has become older than MAX_OVERDUE_SEC but GPS still
+        // reports the vehicle at this sequence, prefer that sequence anyway.
+        prev = db.prepare(stopSelectSql + `
+          WHERE trip_id = $tripId
+            AND stop_sequence = $currentSeq
+          LIMIT 1
+        `).get({ tripId, currentSeq });
+      }
+      if (!prev) {
+        // Final fallback: choose the nearest downstream stop in the window.
+        prev = db.prepare(stopSelectSql + `
+          WHERE trip_id = $tripId
+            AND stop_sequence > $currentSeq
+            AND win_sec BETWEEN $startSec AND $endSec
+          ORDER BY stop_sequence ASC
+          LIMIT 1
+        `).get({ tripId, currentSeq, startSec: secNow - MAX_LOOKBACK_SEC, endSec: secEnd });
+      }
+      if (prev) out.push(prev);
+    }
+
+    for (const [tripId, currentSeq] of rtAheadByTrip) {
       const next = db.prepare(stopSelectSql + `
         WHERE trip_id = $tripId
           AND stop_sequence >= $currentSeq
           AND win_sec BETWEEN $startSec AND $endSec
         ORDER BY stop_sequence ASC
         LIMIT 1
-      `).get({ tripId, currentSeq, startSec: secNow, endSec: secEnd });
+      `).get({ tripId, currentSeq, startSec: secNow - MAX_LOOKBACK_SEC, endSec: secEnd });
       if (next) out.push(next);
-    }
-
-    for (const [tripId, currentSeq] of behindByTrip) {
-      const prev = db.prepare(stopSelectSql + `
-        WHERE trip_id = $tripId
-          AND stop_sequence = $currentSeq
-          AND event_sec >= $minSec
-        LIMIT 1
-      `).get({ tripId, currentSeq, minSec: secNow - MAX_OVERDUE_SEC });
-      if (prev) out.push(prev);
     }
 
     return out;
   }, configPath);
 
   const replacementsEnriched = await enrichRowsWithRealtime(replacements);
-  const replacedTrips = new Set([...staleByTrip.keys(), ...behindByTrip.keys()]);
+  const replacedTrips = new Set([...staleByTrip.keys(), ...behindByTrip.keys(), ...rtAheadByTrip.keys()]);
   const result = [
     ...enriched.filter(r => !replacedTrips.has(r.trip_id)),
     ...replacementsEnriched,
@@ -793,6 +873,10 @@ function _filterActiveVehicles(rows, secNow) {
     if (r.vehicle_current_stop_sequence != null) {
       return r.vehicle_current_stop_sequence <= r.stop_sequence;
     }
+    const effectiveSec = effectiveRowSec(r);
+    if (effectiveSec != null) {
+      return effectiveSec >= secNow;
+    }
     return false;
   });
 }
@@ -808,7 +892,17 @@ async function injectUnplannedRailRows(rows, {
   const vposMap = getLatestVehiclePositions();
   if (!vposMap || vposMap.size === 0) return rows;
 
-  const vehicles = await getVehiclePositionsWithRoutes(vposMap, configPath);
+  // Only UNPLANNED vehicles can be injected here — planned vehicles are already
+  // surfaced via the normal SQLite/RT path. Passing only these to
+  // getVehiclePositionsWithRoutes avoids a 380ms stop_events_3day query with
+  // all ~1300 active vehicle trip IDs.
+  const unplannedVposMap = new Map();
+  for (const [tripId, vpos] of vposMap) {
+    if (String(tripId).startsWith('UNPLANNED-')) unplannedVposMap.set(tripId, vpos);
+  }
+  if (unplannedVposMap.size === 0) return rows;
+
+  const vehicles = await getVehiclePositionsWithRoutes(unplannedVposMap, configPath);
   if (!vehicles.length) return rows;
 
   const stopIdSet = stopIds ? new Set(stopIds.map(String)) : null;
@@ -937,6 +1031,16 @@ export async function getUpcomingByStop(
   };
 
   const rows = await withDb(db => db.prepare(sql).all(params), configPath);
+
+  // Clear precomputed RT fields from the SQLite view so stale values don't
+  // persist after Redis trip updates expire. Fresh RT will be re-applied below.
+  for (const r of rows) {
+    r.estimated_arrival_time = null;
+    r.estimated_departure_time = null;
+    r.arrival_delay = null;
+    r.departure_delay = null;
+    r.real_time_data = 0;
+  }
 
   // Enrich with realtime (cache)
   const enriched = await enrichRowsWithRealtime(rows);
@@ -1180,25 +1284,32 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
       }
     }
 
+    // Only query stop_events_3day for planned trips — UNPLANNED trips have no
+    // static schedule rows, so including them wastes significant time (the IN
+    // clause with 1000+ IDs triggers a full view scan).
     const stopEventTripIds = [...new Set([
       ...tripRows.map(row => row.trip_id),
       ...fallbackRows.map(row => row.schedule_trip_id || row.trip_id),
-    ])];
-    const stopEventPlaceholders = stopEventTripIds.map(() => '?').join(',');
-    const stopEventRows = db.prepare(`
-      SELECT
-        trip_id,
-        stop_id,
-        stop_name,
-        stop_sequence,
-        win_sec,
-        arrival_time AS scheduled_arrival_time,
-        departure_time AS scheduled_departure_time,
-        estimated_arrival_time,
-        estimated_departure_time
-      FROM stop_events_3day
-      WHERE trip_id IN (${stopEventPlaceholders})
-    `).all(...stopEventTripIds);
+    ])].filter(id => !String(id).startsWith('UNPLANNED-'));
+    const stopEventRows = stopEventTripIds.length > 0
+      ? (() => {
+        const stopEventPlaceholders = stopEventTripIds.map(() => '?').join(',');
+        return db.prepare(`
+            SELECT
+              trip_id,
+              stop_id,
+              stop_name,
+              stop_sequence,
+              win_sec,
+              arrival_time AS scheduled_arrival_time,
+              departure_time AS scheduled_departure_time,
+              estimated_arrival_time,
+              estimated_departure_time
+            FROM stop_events_3day
+            WHERE trip_id IN (${stopEventPlaceholders})
+          `).all(...stopEventTripIds);
+      })()
+      : [];
 
     return { tripRows, fallbackRows, stopEventRows };
   }, configPath);
@@ -1227,15 +1338,23 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
       _adjustedSec: adjustedEventSec(row),
     }));
 
-    // Prefer stops that are still upcoming or effectively current, rather than
-    // stale earlier stops in the same trip which would produce 23h-style ETAs.
+    if (currentStopSequence != null && currentStopSequence > 0) {
+      // Trust GPS stop sequence first: if the exact stop exists in the trip,
+      // return it even when timetable times are stale.
+      const exact = annotated.find(row => Number(row.stop_sequence) === Number(currentStopSequence));
+      if (exact) return exact;
+
+      // Otherwise pick the nearest downstream scheduled stop by sequence.
+      const bySequence = annotated
+        .filter(row => Number(row.stop_sequence) >= Number(currentStopSequence))
+        .sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence));
+      if (bySequence.length) return bySequence[0];
+    }
+
+    // No usable sequence hint: prefer stops that are still upcoming or
+    // effectively current, then fall back to all rows.
     var candidates = annotated.filter(row => row._adjustedSec >= (secNow - 60));
     if (!candidates.length) candidates = annotated;
-
-    if (currentStopSequence != null && currentStopSequence > 0) {
-      const bySequence = candidates.filter(row => row.stop_sequence >= currentStopSequence);
-      if (bySequence.length) candidates = bySequence;
-    }
 
     candidates.sort((a, b) => a._adjustedSec - b._adjustedSec || a.stop_sequence - b.stop_sequence);
     return candidates[0] || null;
