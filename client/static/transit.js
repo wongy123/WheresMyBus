@@ -129,7 +129,7 @@
       if (!container) return;
       var _origHeight = '';
       var btn = document.createElement('button');
-      btn.className = 'btn btn-sm btn-light border shadow-sm d-flex align-items-center';
+      btn.className = 'btn btn-sm btn-light border shadow-sm d-flex align-items-center map-fullscreen-btn';
       btn.style.cssText = 'position:absolute;z-index:1001;top:8px;right:8px;pointer-events:auto;padding:3px 6px;';
       btn.title = 'Toggle fullscreen';
       var icon = document.createElement('span');
