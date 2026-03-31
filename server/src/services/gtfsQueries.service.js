@@ -8,6 +8,10 @@ import { withDb } from '../utils/dbQuery.js';
 
 const defaultConfigPath = '../../config.json';
 
+// Vehicle GPS positions older than this are considered stale and not trusted
+// for overdue-stop filtering (second safeguard after trip-update check).
+const STALE_GPS_SEC = 300; // 5 minutes
+
 /* ----------------------------- helpers: RT merge ---------------------------- */
 
 // time helpers
@@ -153,6 +157,17 @@ function applyRealtimeToRow(row, rt, vpos) {
 
   if (appliedRT || vpos) {
     enriched.real_time_data = 1;
+  }
+
+  // Expose the minimum stop sequence present in trip updates. Filters use this
+  // to detect whether the bus has already passed a given stop: if
+  // rt_min_stop_sequence > stop_sequence, all remaining updates are ahead of
+  // that stop, meaning the bus has departed.
+  if (rt.stopUpdates?.length) {
+    const seqs = rt.stopUpdates
+      .map(u => Number(u.stopSequence))
+      .filter(s => Number.isFinite(s) && s > 0);
+    if (seqs.length) enriched.rt_min_stop_sequence = Math.min(...seqs);
   }
 
   enriched.realtime_updated_at = rt.updatedAt ?? null;
@@ -719,8 +734,13 @@ ORDER BY f.win_sec ASC;
   for (const r of enriched) {
     const vseq = Number(r.vehicle_current_stop_sequence);
     const rowSeq = Number(r.stop_sequence);
-    // 0 is the protobuf default (field not set); treat as unknown, not sequence 0
-    if (Number.isFinite(vseq) && vseq > 0 && Number.isFinite(rowSeq)) {
+    // 0 is the protobuf default (field not set); treat as unknown, not sequence 0.
+    // Only trust GPS stop sequence if it is fresh — a stale fix may be many stops
+    // behind reality and would mislead the stale/behind correction below.
+    const epochNow = Math.floor(Date.now() / 1000);
+    const gpsIsFresh = r.vehicle_timestamp != null &&
+      (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC;
+    if (Number.isFinite(vseq) && vseq > 0 && Number.isFinite(rowSeq) && gpsIsFresh) {
       if (vseq > rowSeq) {
         staleByTrip.set(r.trip_id, vseq);
       } else if (vseq < rowSeq) {
@@ -729,6 +749,10 @@ ORDER BY f.win_sec ASC;
       continue;
     }
 
+    // GPS is absent or stale — use the RT trip update's minimum stop sequence as
+    // a position hint instead. GTFS-RT feeds only include stops from the vehicle's
+    // current position onwards, so the first stopUpdate sequence is effectively
+    // the current or next stop.
     const rt = rtTripMap.get(r.trip_id);
     const rtSeq = Array.isArray(rt?.stopUpdates)
       ? rt.stopUpdates
@@ -868,10 +892,19 @@ ORDER BY f.win_sec ASC;
 // vehicle hasn't yet passed this stop (late-running, no trip-update delay).
 // Drops overdue rows with no GPS evidence of being still active.
 function _filterActiveVehicles(rows, secNow) {
+  const epochNow = Math.floor(Date.now() / 1000);
   return rows.filter(r => {
     if (r.win_sec >= secNow) return true;
+    // First line of defense: trip updates show bus is at or beyond a stop
+    // sequence that is already past ours — it has departed this stop.
+    if (r.rt_min_stop_sequence != null && r.rt_min_stop_sequence > r.stop_sequence) {
+      return false;
+    }
+    // Second safeguard: trust vpos stop sequence only if GPS is fresh.
     if (r.vehicle_current_stop_sequence != null) {
-      return r.vehicle_current_stop_sequence <= r.stop_sequence;
+      const gpsIsFresh = r.vehicle_timestamp != null &&
+        (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC;
+      if (gpsIsFresh) return r.vehicle_current_stop_sequence <= r.stop_sequence;
     }
     const effectiveSec = effectiveRowSec(r);
     if (effectiveSec != null) {
@@ -1051,8 +1084,16 @@ export async function getUpcomingByStop(
   //     this stop (late bus still approaching). Rows without GPS data are dropped
   //     from the overdue window to avoid surfacing cancelled/completed services.
   let visible = enriched.filter(r => {
+    // First line of defense: trip updates confirm bus is already past this stop.
+    if (r.rt_min_stop_sequence != null && r.rt_min_stop_sequence > r.stop_sequence) {
+      return false;
+    }
+    // Second safeguard: trust vpos stop sequence only if GPS is fresh.
     if (r.vehicle_current_stop_sequence != null) {
-      return r.vehicle_current_stop_sequence <= r.stop_sequence;
+      const epochNow = Math.floor(Date.now() / 1000);
+      const gpsIsFresh = r.vehicle_timestamp != null &&
+        (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC;
+      if (gpsIsFresh) return r.vehicle_current_stop_sequence <= r.stop_sequence;
     }
     return r.win_sec >= startSec;
   });
@@ -1156,8 +1197,16 @@ export async function getUpcomingByStation(
 
   const enriched = await enrichRowsWithRealtime(rows);
   let visible = enriched.filter(r => {
+    // First line of defense: trip updates confirm bus is already past this stop.
+    if (r.rt_min_stop_sequence != null && r.rt_min_stop_sequence > r.stop_sequence) {
+      return false;
+    }
+    // Second safeguard: trust vpos stop sequence only if GPS is fresh.
     if (r.vehicle_current_stop_sequence != null) {
-      return r.vehicle_current_stop_sequence <= r.stop_sequence;
+      const epochNow = Math.floor(Date.now() / 1000);
+      const gpsIsFresh = r.vehicle_timestamp != null &&
+        (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC;
+      if (gpsIsFresh) return r.vehicle_current_stop_sequence <= r.stop_sequence;
     }
     return r.win_sec >= startSec;
   });

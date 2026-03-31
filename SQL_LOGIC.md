@@ -333,10 +333,16 @@ This gives one row per trip — the **next upcoming stop** for that trip within 
 
 **Step 3 — stale/behind correction:**
 
-After enrichment, `vehicle_current_stop_sequence` (from GTFS-RT position feed) is compared against the `stop_sequence` returned by the CTE:
+After enrichment, each row's position hint is resolved using a two-source strategy:
+
+1. **GPS freshness gate**: `vehicle_current_stop_sequence` (from the VehiclePositions feed) is only trusted if `vehicle_timestamp` is within the last **5 minutes** (`STALE_GPS_SEC = 300`). If the GPS fix is older, the vpos sequence is ignored and the trip update is used instead.
+2. **Trip update fallback**: the minimum `stopSequence` across all `stopUpdates` in the trip's RT data (`rt_min_stop_sequence`) serves as the position hint when GPS is stale or absent. GTFS-RT feeds are incremental — they only include stops from the vehicle's current position onwards — so the first entry's sequence reliably identifies where the bus is.
+
+`vehicle_current_stop_sequence` (when fresh) or `rt_min_stop_sequence` (when GPS is stale) is then compared against the `stop_sequence` returned by the CTE:
 
 - **Stale** (`veh_seq > stop_sequence`): the vehicle has physically passed the displayed stop. Replace with the row where `stop_sequence >= veh_seq` (next stop the vehicle is heading to).
 - **Behind** (`veh_seq < stop_sequence`): the time-window has jumped ahead of the vehicle — delay data is stale/underestimated. Step back to `stop_sequence = veh_seq`, but only if `event_sec >= (secNow - 480)` (capped at 8 minutes overdue, avoids showing very old stops).
+- **RT ahead** (`rt_min_stop_sequence > stop_sequence`, no fresh GPS): trip updates indicate the bus is already past the displayed stop. Advance to the first stop at `stop_sequence >= rt_min_stop_sequence` within the time window. This path also handles buses whose VehiclePositions entry has gone stale but whose TripUpdates feed is still active.
 
 These corrections require additional SQL lookups against `stop_events_3day` for the affected trips.
 
@@ -500,7 +506,11 @@ WHERE se.stop_id = $stopId
 ORDER BY se.win_sec, se.route_short_name, se.trip_id, se.stop_sequence
 ```
 
-After RT enrichment, a **ghost filter** removes rows where `vehicle_current_stop_sequence > stop_sequence` — the bus has physically departed from this stop even if its scheduled time is still in the window.
+After RT enrichment, a **ghost filter** removes rows that the bus has already departed. Two checks are applied in order:
+
+1. **Trip update check** (first line of defence): if `rt_min_stop_sequence > stop_sequence`, the bus's trip updates start beyond this stop, meaning it has already passed. The row is dropped regardless of GPS state.
+2. **GPS freshness check** (second safeguard): if `vehicle_current_stop_sequence` is present and the GPS fix is fresh (within 5 minutes, compared using Unix epoch time), the row is kept only if `vehicle_current_stop_sequence <= stop_sequence`. Stale GPS fixes are ignored to avoid ghost entries from buses whose VehiclePositions feed has frozen.
+3. **Scheduled time fallback**: if neither RT source is usable, overdue rows (`win_sec < startSec`) are dropped.
 
 Results are re-sorted by effective display time: `estimated_departure || estimated_arrival || scheduled_departure || scheduled_arrival` parsed to seconds. This matches the time actually shown in the UI and avoids missorting caused by `arrival_delay` (which reflects the vehicle's current GPS stop, not the queried stop).
 
@@ -514,7 +524,7 @@ WHERE se.stop_id IN (platform_id_1, platform_id_2, ...)
 
 Additional station-specific behaviour:
 - RT data from `stop_events_*` views is **cleared** before Redis enrichment (estimated times reset to `null`, `real_time_data = 0`) — this prevents stale SQLite-baked RT data from bleeding through for trips no longer in Redis.
-- Ghost filter: same as path A (position-based).
+- Ghost filter: same three-stage check as path A (trip update → GPS freshness → scheduled time).
 - Time ghost filter: also removes rows where `effectiveSec < startSec - 60` (arrived more than 60 s ago).
 - `platform_code` added to each row from the platforms lookup.
 - Re-sort: same effective-display-time sort as path A.

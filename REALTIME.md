@@ -179,6 +179,10 @@ Once a matching `stopTimeUpdate` (called `su`) is found:
 
 Set to `1` on the row if **either** a trip update or a vehicle position was found. This flag drives the "sensors" icon in the UI and gates the client-side on-time check.
 
+#### `rt_min_stop_sequence`
+
+When `rt` is present and has at least one `stopUpdate` entry, `rt_min_stop_sequence` is set to the minimum `stopSequence` across all entries. Because GTFS-RT feeds are incremental (only stops from the vehicle's current position onwards), this value reliably identifies where the bus is — even when the VehiclePositions entry is absent or stale. It is used by the ghost filter and stale/behind correction as a fallback position hint.
+
 #### `realtime_updated_at` / `realtime_updated_local`
 
 `realtime_updated_at` is set from `rt.updatedAt` — the `Date.now()` timestamp captured at parse time (not the feed's own timestamp). `realtime_updated_local` is the human-readable GMT+10 equivalent.
@@ -189,23 +193,35 @@ Set to `1` on the row if **either** a trip update or a vehicle position was foun
 
 ### Ghost filter (stop timetable)
 
-Applied via `_filterActiveVehicles` in `getUpcomingByStop` and `getUpcomingByStation` after enrichment:
+Applied via `_filterActiveVehicles` in `getUpcomingByStop` and `getUpcomingByStation` after enrichment. Two RT sources are checked in order to determine whether a bus has already departed a stop:
+
+1. **Trip update check** (`rt_min_stop_sequence`, first line of defence): `applyRealtimeToRow` now computes `rt_min_stop_sequence` — the minimum `stopSequence` across all `stopUpdates` in the trip's GTFS-RT data. Because GTFS-RT feeds are incremental (only stops from the vehicle's current position onwards are included), the first entry's sequence is effectively where the bus is now. If `rt_min_stop_sequence > stop_sequence`, the bus has already passed this stop and the row is dropped.
+
+2. **GPS freshness check** (`vehicle_current_stop_sequence`, second safeguard): if the GPS fix is fresh (i.e. `Date.now()/1000 - vehicle_timestamp <= STALE_GPS_SEC` where `STALE_GPS_SEC = 300`), `vehicle_current_stop_sequence` is used. If `vehicle_current_stop_sequence > stop_sequence` the row is dropped; if `<= stop_sequence` it is kept. Stale GPS fixes (older than 5 minutes) are ignored entirely to prevent ghost entries from buses whose VehiclePositions entry has frozen while the bus kept moving.
+
+3. **Scheduled time fallback**: if neither RT source is usable, overdue rows (`win_sec < secNow`) are dropped.
 
 ```javascript
 function _filterActiveVehicles(rows, secNow) {
+  const epochNow = Math.floor(Date.now() / 1000);
   return rows.filter(r => {
     if (r.win_sec >= secNow) return true;
-    if (r.vehicle_current_stop_sequence != null) {
-      return r.vehicle_current_stop_sequence <= r.stop_sequence;
+    if (r.rt_min_stop_sequence != null && r.rt_min_stop_sequence > r.stop_sequence) {
+      return false;
     }
+    if (r.vehicle_current_stop_sequence != null) {
+      const gpsIsFresh = r.vehicle_timestamp != null &&
+        (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC;
+      if (gpsIsFresh) return r.vehicle_current_stop_sequence <= r.stop_sequence;
+    }
+    const effectiveSec = effectiveRowSec(r);
+    if (effectiveSec != null) return effectiveSec >= secNow;
     return false;
   });
 }
 ```
 
-If `vehicle_current_stop_sequence > stop_sequence`, the vehicle has physically departed from (or passed) this stop even though its scheduled time is still within the query window. The row is removed from the response. Overdue rows (past `secNow`) with no GPS data are also dropped — only GPS-confirmed late runners are kept.
-
-`getUpcomingByStation` uses a similar position ghost filter.
+`getUpcomingByStation` uses the same filter logic.
 
 ### Unplanned rail injection (`injectUnplannedRailRows`)
 
@@ -234,11 +250,15 @@ After the ghost filter on every stop/route result set, `injectUnplannedRailRows(
 
 ### Stale / behind correction (route upcoming)
 
-Applied in `getUpcomingByRoute` after enrichment. This addresses cases where the time-window CTE returns a stop that disagrees with where the vehicle actually is according to the position feed.
+Applied in `getUpcomingByRoute` after enrichment. This addresses cases where the time-window CTE returns a stop that disagrees with where the vehicle actually is according to the RT feeds.
 
-`vehicle_current_stop_sequence` is compared against `stop_sequence` for each enriched row:
+#### GPS freshness gate
 
-**Stale** (`veh_seq > stop_sequence`):
+`vehicle_current_stop_sequence` from the VehiclePositions feed is only trusted if the GPS fix is fresh (`epochNow - vehicle_timestamp <= STALE_GPS_SEC = 300 s`). A frozen GPS position (bus stopped reporting but kept moving) would pull the row into the wrong correction bucket. When the GPS is stale or absent, the minimum `stopSequence` from the trip's `stopUpdates` (`rt_min_stop_sequence`) is used as the position hint instead — the `rtAheadByTrip` path below handles this case.
+
+#### Correction buckets
+
+**Stale** (`veh_seq > stop_sequence`, fresh GPS):
 The vehicle has physically passed the stop the time window returned. A replacement query fetches the stop at `stop_sequence >= veh_seq` within the same time window:
 
 ```sql
@@ -249,7 +269,7 @@ ORDER BY stop_sequence ASC
 LIMIT 1
 ```
 
-**Behind** (`veh_seq < stop_sequence`):
+**Behind** (`veh_seq < stop_sequence`, fresh GPS):
 The time window has jumped ahead of the vehicle — the delay in the trip update is stale or underestimated, so intermediate stops' estimated arrivals fell below `secNow`. Steps back to the stop the vehicle is actually heading to, but only if that stop is within 8 minutes overdue (`MAX_OVERDUE_SEC = 480`):
 
 ```sql
@@ -258,6 +278,19 @@ WHERE trip_id = $tripId
   AND event_sec >= $minSec          -- minSec = secNow - 480
 LIMIT 1
 ```
+
+**RT ahead** (`rt_min_stop_sequence > stop_sequence`, no fresh GPS):
+Trip updates indicate the bus is already past the displayed stop but there is no fresh GPS to classify it as stale/behind. Advances to the first upcoming stop at `stop_sequence >= rt_min_stop_sequence`:
+
+```sql
+WHERE trip_id = $tripId
+  AND stop_sequence >= $currentSeq
+  AND win_sec BETWEEN $startSec AND $endSec
+ORDER BY stop_sequence ASC
+LIMIT 1
+```
+
+This path handles buses whose VehiclePositions entry has gone stale (frozen GPS) while the TripUpdates feed remains active — they still appear on the route diagram at the correct position.
 
 Replacement rows are RT-enriched again with a second `enrichRowsWithRealtime` call, then the corrected rows replace their original counterparts in the final result before sorting.
 
