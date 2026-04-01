@@ -216,13 +216,12 @@
   color: var(--rt-color-fresh);
 }
 
-.gps-icon .material-symbols-outlined {
-  color: #0d6efd;
+.rt-icon.invisible,
+.gps-icon.invisible {
+  pointer-events: none;
+  cursor: default;
 }
 
-/* ─────────────────────────────────────────────
-   Timetable table
-   ───────────────────────────────────────────── */
 .tt-time {
   cursor: pointer;
 }
@@ -293,9 +292,9 @@
     padding-top: .1rem;
   }
 
-  /* Leg/platform: hidden on mobile */
-  .tt-table-responsive .tt-seq-cell,
-  .tt-table-responsive .tt-platform-cell { display: none !important; }
+  /* Leg/seq: hidden on mobile; platform: shown inline, vertically centered */
+  .tt-table-responsive .tt-seq-cell { display: none !important; }
+  .tt-table-responsive .tt-platform-cell { align-self: center; }
 }
 
 #tt-results .table td,

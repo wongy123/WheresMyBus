@@ -36,26 +36,20 @@
               data-bs-toggle="popover" data-bs-placement="top"
               data-bs-content="{{ badge_popup }}"
               style="cursor:pointer;">{{ info.label }}</span>
-        {% if it.real_time_data and info.status in ['late','early','ontime'] %}
-          <span class="rt-icons">
-            {% if it.has_rt %}
-            <span class="rt-icon" tabindex="0"
-                  data-bs-toggle="popover" data-bs-placement="top"
-                  data-updated-at="{{ it.realtime_updated_at or '' }}"
-                  title="Trip update">
-              <span class="material-symbols-outlined">sensors</span>
-            </span>
-            {% endif %}
-            {% if it.has_gps %}
-            <span class="gps-icon" tabindex="0"
-                  data-bs-toggle="popover" data-bs-placement="top"
-                  data-vehicle-ts="{{ it.vehicle_timestamp or '' }}"
-                  title="GPS position">
-              <span class="material-symbols-outlined">my_location</span>
-            </span>
-            {% endif %}
+        <span class="rt-icons">
+          <span class="{{ '' if it.has_rt else 'invisible' }} rt-icon" tabindex="0"
+                data-bs-toggle="popover" data-bs-placement="top"
+                data-updated-at="{{ it.realtime_updated_at or '' }}"
+                title="Trip update">
+            <span class="material-symbols-outlined">sensors</span>
           </span>
-        {% endif %}
+          <span class="{{ '' if it.has_gps else 'invisible' }} gps-icon" tabindex="0"
+                data-bs-toggle="popover" data-bs-placement="top"
+                data-vehicle-ts="{{ it.vehicle_timestamp or '' }}"
+                title="GPS position">
+            <span class="material-symbols-outlined">my_location</span>
+          </span>
+        </span>
       </div>
     </td>
   </tr>
@@ -87,26 +81,20 @@
               data-bs-toggle="popover" data-bs-placement="top"
               data-bs-content="{{ badge_popup }}"
               style="cursor:pointer;">{{ info.label }}</span>
-        {% if it.real_time_data and info.status in ['late','early','ontime'] %}
-          <span class="rt-icons ms-2">
-            {% if it.has_rt %}
-            <span class="rt-icon" tabindex="0"
-                  data-bs-toggle="popover" data-bs-placement="top"
-                  data-updated-at="{{ it.realtime_updated_at or '' }}"
-                  title="Trip update">
-              <span class="material-symbols-outlined">sensors</span>
-            </span>
-            {% endif %}
-            {% if it.has_gps %}
-            <span class="gps-icon" tabindex="0"
-                  data-bs-toggle="popover" data-bs-placement="top"
-                  data-vehicle-ts="{{ it.vehicle_timestamp or '' }}"
-                  title="GPS position">
-              <span class="material-symbols-outlined">my_location</span>
-            </span>
-            {% endif %}
+        <span class="rt-icons ms-2">
+          <span class="{{ '' if it.has_rt else 'invisible' }} rt-icon" tabindex="0"
+                data-bs-toggle="popover" data-bs-placement="top"
+                data-updated-at="{{ it.realtime_updated_at or '' }}"
+                title="Trip update">
+            <span class="material-symbols-outlined">sensors</span>
           </span>
-        {% endif %}
+          <span class="{{ '' if it.has_gps else 'invisible' }} gps-icon" tabindex="0"
+                data-bs-toggle="popover" data-bs-placement="top"
+                data-vehicle-ts="{{ it.vehicle_timestamp or '' }}"
+                title="GPS position">
+            <span class="material-symbols-outlined">my_location</span>
+          </span>
+        </span>
       </div>
     </td>
   </tr>
