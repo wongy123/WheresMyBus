@@ -418,6 +418,7 @@
       if (!this.value.trim()) {
         searchResultsEl.style.display = 'none';
         if (userWatchId == null) window.homeHideMap();
+        if (window.innerWidth < 768) window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     });
     searchResultsEl.addEventListener('htmx:afterSwap', function () {
