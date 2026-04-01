@@ -76,6 +76,122 @@ function epochMsToLocalHms(epochMs, tzOffsetHours = 10) {
 }
 
 
+// Haversine distance in meters between two lat/lon pairs.
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6_371_000;
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// For vehicles whose GTFS-RT currentStopSequence=1 is bogus (vehicle is >2km from
+// stop 1), the RT delay is anchored to the wrong position and produces stale ETAs.
+// This function recomputes estimated times using the vehicle's actual GPS position:
+//   real_delay = secNow - scheduled_dep(nearest_gps_stop)
+//   estimated_dep(target_stop) = scheduled_dep(target_stop) + real_delay
+// Only applied when GPS-derived delay is materially lower than RT delay (>=5 min diff),
+// ensuring we don't override genuinely late buses.
+async function applyGpsCorrectedDelays(rows, secNow, configPath) {
+  const epochNow = Math.floor(Date.now() / 1000);
+
+  // Collect trips that may have bogus seq=1 (GPS fresh, vpos_seq=1, has coordinates)
+  const candidateTrips = new Map(); // trip_id -> {lat, lon, rt_delay}
+  for (const r of rows) {
+    if (r.vehicle_current_stop_sequence !== 1) continue;
+    if (!r.vehicle_latitude || !r.vehicle_longitude) continue;
+    if (!r.vehicle_timestamp || (epochNow - r.vehicle_timestamp) > STALE_GPS_SEC) continue;
+    if (candidateTrips.has(r.trip_id)) continue;
+    const rtDelay = r.departure_delay ?? r.arrival_delay ?? null;
+    candidateTrips.set(r.trip_id, {
+      lat: Number(r.vehicle_latitude),
+      lon: Number(r.vehicle_longitude),
+      rtDelay,
+    });
+  }
+  if (candidateTrips.size === 0) return;
+
+  // Load all stop coords + scheduled times for candidate trips in one query
+  const tripIds = [...candidateTrips.keys()];
+  const stopTimes = await withDb(db => {
+    const ph = tripIds.map(() => '?').join(',');
+    return db.prepare(`
+      SELECT st.trip_id, st.stop_sequence, st.departure_time, s.stop_lat, s.stop_lon
+      FROM stop_times st
+      JOIN stops s ON s.stop_id = st.stop_id
+      WHERE st.trip_id IN (${ph})
+      ORDER BY st.trip_id, st.stop_sequence
+    `).all(...tripIds);
+  }, configPath);
+
+  // Group by trip
+  const byTrip = new Map();
+  for (const st of stopTimes) {
+    if (!byTrip.has(st.trip_id)) byTrip.set(st.trip_id, []);
+    byTrip.get(st.trip_id).push(st);
+  }
+
+  // Compute GPS-corrected delay per trip
+  const gpsCorrectedDelay = new Map(); // trip_id -> real_delay_seconds
+  for (const [tripId, gps] of candidateTrips) {
+    const stops = byTrip.get(tripId);
+    if (!stops?.length) continue;
+
+    // Check distance to stop 1 — if within 2km, seq=1 is plausible, skip
+    const stop1 = stops.find(s => s.stop_sequence === 1);
+    if (!stop1 || stop1.stop_lat == null) continue;
+    // Depot bus protection: if trip hasn't started yet, bus is at depot/layover — skip correction
+    const stop1Sec = hmsToSec(stop1.departure_time);
+    if (stop1Sec != null && stop1Sec > secNow) continue;
+    const dist1 = haversineM(gps.lat, gps.lon, Number(stop1.stop_lat), Number(stop1.stop_lon));
+    if (dist1 <= 2000) continue;
+
+    // Find nearest stop to GPS
+    let nearest = null, nearestDist = Infinity;
+    for (const s of stops) {
+      if (s.stop_lat == null || s.stop_lon == null) continue;
+      const d = haversineM(gps.lat, gps.lon, Number(s.stop_lat), Number(s.stop_lon));
+      if (d < nearestDist) { nearestDist = d; nearest = s; }
+    }
+    if (!nearest) continue;
+
+    const schedSec = hmsToSec(nearest.departure_time);
+    if (schedSec == null) continue;
+
+    // Sanity check: nearest GPS stop must be in the past — bus should have reached it.
+    // If nearest stop is still in the future, the bus is likely a depot vehicle whose GPS
+    // happens to be near a future stop on the route (e.g. parked in the CBD).
+    if (schedSec > secNow) continue;
+
+    const realDelay = secNow - schedSec;
+
+    // Only substitute if GPS-derived delay is materially less than RT delay (5+ min diff).
+    // If the bus is genuinely late, keep the RT delay.
+    const MIN_IMPROVEMENT_SEC = 300;
+    if (gps.rtDelay != null && (gps.rtDelay - realDelay) < MIN_IMPROVEMENT_SEC) continue;
+
+    gpsCorrectedDelay.set(tripId, realDelay);
+  }
+
+  // Apply corrected delay to all rows for affected trips
+  for (const r of rows) {
+    const corrected = gpsCorrectedDelay.get(r.trip_id);
+    if (corrected == null) continue;
+    const schedDep = hmsToSec(r.scheduled_departure_time);
+    if (schedDep != null) {
+      r.estimated_departure_time = secToHms(schedDep + corrected);
+      r.departure_delay = corrected;
+    }
+    const schedArr = hmsToSec(r.scheduled_arrival_time);
+    if (schedArr != null) {
+      r.estimated_arrival_time = secToHms(schedArr + corrected);
+      r.arrival_delay = corrected;
+    }
+  }
+}
+
 function applyRealtimeToRow(row, rt, vpos) {
   if (!rt && !vpos) return row;
 
@@ -679,15 +795,50 @@ export async function getUpcomingByRoute(
   // Build canonical stop mapping for diagram positioning
   const canonicalStops = await getStopsByRoute(routeId, direction, configPath);
   const stopIdToCanonicalSeq = new Map();
+  const stopIdToCoords = new Map();
   for (const s of canonicalStops) {
-    if (s.stop_id != null) stopIdToCanonicalSeq.set(String(s.stop_id), s.stop_sequence);
+    if (s.stop_id != null) {
+      stopIdToCanonicalSeq.set(String(s.stop_id), s.stop_sequence);
+      if (s.stop_lat != null && s.stop_lon != null) {
+        stopIdToCoords.set(String(s.stop_id), { lat: Number(s.stop_lat), lon: Number(s.stop_lon), seq: s.stop_sequence });
+      }
+    }
+  }
+
+  // Find the nearest canonical stop sequence for a given GPS position.
+  function _gpsToStopSequence(vLat, vLon) {
+    let bestDist = Infinity, bestSeq = null;
+    for (const { lat, lon, seq } of stopIdToCoords.values()) {
+      const dLat = (vLat - lat) * 111_320;
+      const dLon = (vLon - lon) * 111_320 * Math.cos(vLat * Math.PI / 180);
+      const d = dLat * dLat + dLon * dLon; // squared meters, fine for comparison
+      if (d < bestDist) { bestDist = d; bestSeq = seq; }
+    }
+    return bestSeq;
   }
 
   function annotateRows(rows) {
+    const epochNow = Math.floor(Date.now() / 1000);
     for (const r of rows) {
       const eSec = effectiveRowSec(r);
       r.minutes_away = (eSec != null) ? Math.max(0, Math.round((eSec - secNow) / 60)) : null;
       r.canonical_stop_sequence = stopIdToCanonicalSeq.get(String(r.stop_id)) ?? r.stop_sequence ?? null;
+
+      // If the TripUpdate predicts the bus is still far away but GPS shows it's
+      // already at (or past) this stop, override minutes_away to 0.
+      // This corrects stale delay predictions from non-incremental feeds.
+      // Skip for trips that haven't started (depot buses near mid-route stops).
+      if (r.minutes_away != null && r.minutes_away > 1 &&
+          r.vehicle_latitude != null && r.vehicle_longitude != null &&
+          r.vehicle_timestamp != null && (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC) {
+        const tripNotStarted = Number(r.stop_sequence) === 1 && r.win_sec > secNow;
+        if (!tripNotStarted) {
+          const gpsSeq = _gpsToStopSequence(Number(r.vehicle_latitude), Number(r.vehicle_longitude));
+          if (gpsSeq != null && gpsSeq >= Number(r.stop_sequence)) {
+            r.minutes_away = 0;
+          }
+        }
+      }
     }
   }
 
@@ -768,15 +919,42 @@ ORDER BY f.win_sec ASC;
   const staleByTrip = new Map();
   const behindByTrip = new Map();
   const rtAheadByTrip = new Map();
+  const epochNow = Math.floor(Date.now() / 1000);
   for (const r of enriched) {
-    const vseq = Number(r.vehicle_current_stop_sequence);
+    let vseq = Number(r.vehicle_current_stop_sequence);
     const rowSeq = Number(r.stop_sequence);
     // 0 is the protobuf default (field not set); treat as unknown, not sequence 0.
     // Only trust GPS stop sequence if it is fresh — a stale fix may be many stops
     // behind reality and would mislead the stale/behind correction below.
-    const epochNow = Math.floor(Date.now() / 1000);
     const gpsIsFresh = r.vehicle_timestamp != null &&
       (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC;
+
+    // Validate reported stop sequence against GPS proximity: some TransLink
+    // vehicles always report currentStopSequence=1 regardless of position.
+    // If the vehicle's GPS is far from the reported stop, override with the
+    // nearest canonical stop to get correct stale/behind decisions.
+    if (Number.isFinite(vseq) && vseq > 0 && gpsIsFresh &&
+        r.vehicle_latitude != null && r.vehicle_longitude != null) {
+      const reportedCoords = stopIdToCoords.get(String(r.stop_id));
+      if (reportedCoords) {
+        const dLat = (Number(r.vehicle_latitude) - reportedCoords.lat) * 111_320;
+        const dLon = (Number(r.vehicle_longitude) - reportedCoords.lon) * 111_320 *
+          Math.cos(Number(r.vehicle_latitude) * Math.PI / 180);
+        const distSq = dLat * dLat + dLon * dLon;
+        // 2km threshold (squared: 4_000_000)
+        if (distSq > 4_000_000) {
+          // Skip GPS override for trips that haven't started yet — the bus
+          // may be at a depot near mid-route stops. Trust vseq=1 when the
+          // scheduled departure from stop 1 is still in the future.
+          const tripNotStarted = vseq === 1 && r.win_sec > secNow;
+          if (!tripNotStarted) {
+            const gpsSeq = _gpsToStopSequence(Number(r.vehicle_latitude), Number(r.vehicle_longitude));
+            if (gpsSeq != null) vseq = gpsSeq;
+          }
+        }
+      }
+    }
+
     if (Number.isFinite(vseq) && vseq > 0 && Number.isFinite(rowSeq) && gpsIsFresh) {
       if (vseq > rowSeq) {
         staleByTrip.set(r.trip_id, vseq);
@@ -789,14 +967,15 @@ ORDER BY f.win_sec ASC;
     // GPS is absent or stale — use the RT trip update's minimum stop sequence as
     // a position hint instead. GTFS-RT feeds only include stops from the vehicle's
     // current position onwards, so the first stopUpdate sequence is effectively
-    // the current or next stop.
+    // the current or next stop. However, some feeds include ALL stops (full
+    // schedule), so only trust this if min_seq > 1.
     const rt = rtTripMap.get(r.trip_id);
     const rtSeq = Array.isArray(rt?.stopUpdates)
       ? rt.stopUpdates
         .map(u => Number(u?.stopSequence))
         .find(seq => Number.isFinite(seq) && seq > 0)
       : null;
-    if (rtSeq != null && Number.isFinite(rowSeq) && rtSeq > rowSeq) {
+    if (rtSeq != null && rtSeq > 1 && Number.isFinite(rowSeq) && rtSeq > rowSeq) {
       rtAheadByTrip.set(r.trip_id, rtSeq);
     }
   }
@@ -824,11 +1003,20 @@ ORDER BY f.win_sec ASC;
       endSec: secEnd,
       configPath,
     });
+    await applyGpsCorrectedDelays(visible, secNow, configPath);
     visible.sort((a, b) =>
       (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
     );
     annotateRows(visible);
-    return visible.filter(r => r.minutes_away == null || r.minutes_away <= MAX_MINUTES_AWAY);
+    return visible.filter(r => {
+      if (r.minutes_away != null && r.minutes_away > MAX_MINUTES_AWAY) return false;
+      // Exclude scheduled rows from alternate trip patterns (e.g. short-run trips
+      // whose first stop maps to a mid-route canonical position). They appear as
+      // confusing mid-route entries in the diagram.
+      if (!r.vehicle_label && r.stop_sequence === 1 &&
+          r.canonical_stop_sequence != null && r.canonical_stop_sequence > 1) return false;
+      return true;
+    });
   }
 
   const replacements = await withDb(db => {
@@ -920,11 +1108,17 @@ ORDER BY f.win_sec ASC;
     endSec: secEnd,
     configPath,
   });
+  await applyGpsCorrectedDelays(visible, secNow, configPath);
   visible.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
   annotateRows(visible);
-  return visible.filter(r => r.minutes_away == null || r.minutes_away <= MAX_MINUTES_AWAY);
+  return visible.filter(r => {
+    if (r.minutes_away != null && r.minutes_away > MAX_MINUTES_AWAY) return false;
+    if (!r.vehicle_label && r.stop_sequence === 1 &&
+        r.canonical_stop_sequence != null && r.canonical_stop_sequence > 1) return false;
+    return true;
+  });
 }
 
 // Keep a row if it's in the normal future window, or if GPS confirms the
@@ -1119,6 +1313,10 @@ export async function getUpcomingByStop(
 
   // Enrich with realtime (cache)
   const enriched = await enrichRowsWithRealtime(rows);
+
+  // For vehicles with bogus currentStopSequence=1, the RT delay is anchored to
+  // the wrong position. Recompute estimated times from actual GPS position.
+  await applyGpsCorrectedDelays(enriched, startSec, configPath);
 
   // Keep a row if:
   //   - scheduled in the normal future window (win_sec >= startSec), OR
@@ -1387,17 +1585,20 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
         const stopEventPlaceholders = stopEventTripIds.map(() => '?').join(',');
         return db.prepare(`
             SELECT
-              trip_id,
-              stop_id,
-              stop_name,
-              stop_sequence,
-              win_sec,
-              arrival_time AS scheduled_arrival_time,
-              departure_time AS scheduled_departure_time,
-              estimated_arrival_time,
-              estimated_departure_time
-            FROM stop_events_3day
-            WHERE trip_id IN (${stopEventPlaceholders})
+              se.trip_id,
+              se.stop_id,
+              se.stop_name,
+              se.stop_sequence,
+              se.win_sec,
+              se.arrival_time AS scheduled_arrival_time,
+              se.departure_time AS scheduled_departure_time,
+              se.estimated_arrival_time,
+              se.estimated_departure_time,
+              s.stop_lat,
+              s.stop_lon
+            FROM stop_events_3day se
+            LEFT JOIN stops s ON s.stop_id = se.stop_id
+            WHERE se.trip_id IN (${stopEventPlaceholders})
           `).all(...stopEventTripIds);
       })()
       : [];
@@ -1421,7 +1622,17 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
     return sec < (secNow - 1800) ? sec + 86400 : sec;
   }
 
-  function pickNextStop(rows, currentStopSequence) {
+  // Haversine distance in meters between two lat/lon pairs.
+  // (delegates to module-level haversineM)
+  function _haversineM(lat1, lon1, lat2, lon2) {
+    return haversineM(lat1, lon1, lat2, lon2);
+  }
+
+  // Maximum distance (meters) between vehicle GPS and the reported stop before
+  // we distrust the GTFS-RT currentStopSequence and fall back to GPS proximity.
+  const MAX_STOP_DISTANCE_M = 2000;
+
+  function pickNextStop(rows, currentStopSequence, vehicleLat, vehicleLon) {
     if (!rows || rows.length === 0) return null;
 
     const annotated = rows.map(row => ({
@@ -1429,21 +1640,63 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
       _adjustedSec: adjustedEventSec(row),
     }));
 
-    if (currentStopSequence != null && currentStopSequence > 0) {
-      // Trust GPS stop sequence first: if the exact stop exists in the trip,
-      // return it even when timetable times are stale.
-      const exact = annotated.find(row => Number(row.stop_sequence) === Number(currentStopSequence));
-      if (exact) return exact;
+    const hasGps = vehicleLat != null && vehicleLon != null;
 
-      // Otherwise pick the nearest downstream scheduled stop by sequence.
-      const bySequence = annotated
-        .filter(row => Number(row.stop_sequence) >= Number(currentStopSequence))
-        .sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence));
-      if (bySequence.length) return bySequence[0];
+    if (currentStopSequence != null && currentStopSequence > 0) {
+      const exact = annotated.find(row => Number(row.stop_sequence) === Number(currentStopSequence));
+
+      // Validate the reported stop against GPS: if the vehicle is far from
+      // the reported stop, the feed's currentStopSequence is unreliable
+      // (TransLink sometimes reports seq=1 for the entire trip).
+      if (exact && hasGps && exact.stop_lat != null && exact.stop_lon != null) {
+        const dist = _haversineM(vehicleLat, vehicleLon, Number(exact.stop_lat), Number(exact.stop_lon));
+        if (dist <= MAX_STOP_DISTANCE_M) return exact;
+
+        // Depot bus protection: if the feed reports seq=1 and the trip's
+        // first stop departure is still in the future, the bus is likely
+        // waiting at a depot — don't GPS-override to a random mid-route stop.
+        if (Number(currentStopSequence) === 1) {
+          const firstStop = annotated
+            .filter(r => Number(r.stop_sequence) === 1)
+            .sort((a, b) => a._adjustedSec - b._adjustedSec)[0];
+          if (firstStop && firstStop._adjustedSec > secNow) return exact;
+        }
+
+        // Fall through to GPS-based matching below
+      } else if (exact && !hasGps) {
+        return exact;
+      }
+
+      // If GPS didn't invalidate, try nearest downstream by sequence
+      if (!hasGps) {
+        const bySequence = annotated
+          .filter(row => Number(row.stop_sequence) >= Number(currentStopSequence))
+          .sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence));
+        if (bySequence.length) return bySequence[0];
+      }
     }
 
-    // No usable sequence hint: prefer stops that are still upcoming or
-    // effectively current, then fall back to all rows.
+    // GPS-based proximity: find the nearest stop, then pick the next upcoming
+    // stop at or after it so the display shows where the vehicle is heading.
+    if (hasGps) {
+      const withDist = annotated
+        .filter(row => row.stop_lat != null && row.stop_lon != null)
+        .map(row => ({
+          ...row,
+          _dist: _haversineM(vehicleLat, vehicleLon, Number(row.stop_lat), Number(row.stop_lon)),
+        }));
+      if (withDist.length) {
+        withDist.sort((a, b) => a._dist - b._dist);
+        const nearestSeq = Number(withDist[0].stop_sequence);
+        // Pick the first upcoming stop at or after the nearest (heading forward)
+        const upcoming = annotated
+          .filter(row => Number(row.stop_sequence) >= nearestSeq)
+          .sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence));
+        if (upcoming.length) return upcoming[0];
+      }
+    }
+
+    // Fallback: prefer stops that are still upcoming by time.
     var candidates = annotated.filter(row => row._adjustedSec >= (secNow - 60));
     if (!candidates.length) candidates = annotated;
 
@@ -1470,7 +1723,12 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
     if (vpos.timestamp && (startTimestamp - vpos.timestamp) > GPS_STALE_SECONDS) return null;
 
     const referenceTripId = row.schedule_trip_id || row.trip_id;
-    const nextStop = pickNextStop(stopEventMap.get(referenceTripId), vpos.currentStopSequence ?? null);
+    const nextStop = pickNextStop(
+      stopEventMap.get(referenceTripId),
+      vpos.currentStopSequence ?? null,
+      vpos.latitude,
+      vpos.longitude,
+    );
     const minutesAway = nextStop
       ? Math.max(0, Math.round((nextStop._adjustedSec - secNow) / 60))
       : null;
