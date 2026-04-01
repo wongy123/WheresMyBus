@@ -397,7 +397,14 @@
     for (var i = 0; i < _lastStopVehicles.length; i++) {
       if (_lastStopVehicles[i].trip_id === tripId) { vehicle = _lastStopVehicles[i]; break; }
     }
-    if (!vehicle) return;
+    if (!vehicle) {
+      // No vehicle position — clear any existing selection
+      activeTripId = null;
+      _clearActiveShape();
+      _highlightActiveRow(null);
+      map.closePopup();
+      return;
+    }
     activeTripId = tripId;
     isFollowing = true;
     var rt = routeTypeMap[vehicle.route_id] != null ? routeTypeMap[vehicle.route_id] : 3;
