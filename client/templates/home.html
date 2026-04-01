@@ -410,10 +410,19 @@
 
     // Show/hide search results dropdown; hide map when search is cleared
     var searchResultsEl = document.getElementById('home-search-results');
-    document.getElementById('home-search').addEventListener('input', function () {
+    var searchInput = document.getElementById('home-search');
+    searchInput.addEventListener('input', function () {
       if (!this.value.trim()) {
         searchResultsEl.style.display = 'none';
         if (userWatchId == null) window.homeHideMap();
+      }
+    });
+    // On mobile, scroll the search bar into view when focused so the keyboard doesn't cover it
+    searchInput.addEventListener('focus', function () {
+      if (window.innerWidth < 768) {
+        setTimeout(function () {
+          searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
       }
     });
     searchResultsEl.addEventListener('htmx:afterSwap', function () {

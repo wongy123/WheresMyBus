@@ -155,9 +155,9 @@
 .typeahead-list strong,
 .list-group.shadow-sm strong {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
 }
 
 /* ─────────────────────────────────────────────

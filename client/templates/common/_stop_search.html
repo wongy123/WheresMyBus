@@ -187,6 +187,14 @@
   startLiveLocationTracking(statusEl, true);
   });
 
+  // On mobile, scroll the search input into view when focused
+  var searchEl = document.getElementById({{ (uid ~ '-typeahead') | tojson }});
+  searchEl.addEventListener('focus', function () {
+    if (window.innerWidth < 768) {
+      setTimeout(function () { searchEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300);
+    }
+  });
+
   window.addEventListener('pagehide', function () {
     if (userWatchId != null && navigator.geolocation) {
       navigator.geolocation.clearWatch(userWatchId);
