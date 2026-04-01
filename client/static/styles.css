@@ -281,9 +281,11 @@
   .tt-table-responsive td:nth-child(1) { font-weight: 600; }
 
   /* Platform + Status: grouped on the right; platform loses its auto margin,
-     status keeps it so the pair is pushed to the far right together */
-  .tt-table-responsive .tt-platform-cell { margin-left: auto; align-self: center; }
-  .tt-table-responsive td:last-child { margin-left: 0; align-self: center; }
+     status keeps it so the pair is pushed to the far right together.
+     Status has a fixed min-width so the platform badge stays at a consistent
+     horizontal position regardless of ETA text length. */
+  .tt-table-responsive .tt-platform-cell { margin-left: auto; align-self: center; margin-right: .35rem; }
+  .tt-table-responsive td:last-child { margin-left: 0; align-self: center; min-width: 5.5rem; }
 
   /* Headsign: full-width second line */
   .tt-table-responsive .tt-headsign-cell {
