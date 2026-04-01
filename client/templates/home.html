@@ -170,7 +170,7 @@
               searchCol.style.transition = ''; // clear so it doesn't linger into homeHideMap
               // Scroll search input into view now that the map has settled into place
               var inp = document.getElementById('home-search');
-              if (inp) inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              if (inp) inp.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 720);
           });
         });
