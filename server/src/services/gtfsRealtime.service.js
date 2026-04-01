@@ -145,7 +145,8 @@ async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl, alertsUr
   const tuMap  = tuFeed ? buildTripUpdateMap(tuFeed) : new Map();
   const vpMap  = vpFeed ? buildVehiclePosMap(vpFeed) : new Map();
   const alerts = alFeed ? buildAlertsArray(alFeed)   : [];
-  latestVposMap = vpMap;
+  // Only replace in-memory positions when the feed succeeds — don't wipe on failure
+  if (vpFeed) latestVposMap = vpMap;
 
   console.log(`[gtfsrt] tripUpdates=${tuMap.size} vehiclePositions=${vpMap.size} alerts=${alerts.length}`);
 
