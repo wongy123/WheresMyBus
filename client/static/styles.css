@@ -1,59 +1,134 @@
 /* static/styles.css */
 
-/* Transit type colours — sourced from Translink/Queensland Rail official branding.
-   Three tiers per mode:
-     color   = brand colour, used for CSS text classes and vehicle markers
-     stop    = light pastel, used for individual platform/stop map markers
-     station = rich/dark shade, used for interchange/station map markers        */
+/* ─────────────────────────────────────────────
+   App-level design tokens
+   ───────────────────────────────────────────── */
 :root {
-  --transit-rail-color: #C4262E;
-  /* Queensland Rail red */
-  --transit-rail-stop: #f0a0a0;
-  /* neutral light red — distinct from bus pink */
-  --transit-rail-station: #8b1217;
+  /* Brand colour — used for navbar and primary accents */
+  --wmb-brand:        #0a5c6e;
+  --wmb-brand-dark:   #074450;
+  --wmb-brand-rgb:    10, 92, 110;
 
-  --transit-tram-color: #FFD200;
-  /* Translink G:link yellow */
-  --transit-tram-stop: #fff2a8;
-  --transit-tram-station: #c8a400;
+  /* Transit type colours — sourced from Translink/Queensland Rail official branding.
+     Three tiers per mode:
+       color   = brand colour, used for CSS text classes and vehicle markers
+       stop    = light pastel, used for individual platform/stop map markers
+       station = rich/dark shade, used for interchange/station map markers        */
+  --transit-rail-color:    #C4262E;   /* Queensland Rail red */
+  --transit-rail-stop:     #f0a0a0;   /* neutral light red — distinct from bus pink */
+  --transit-rail-station:  #8b1217;
 
-  --transit-ferry-color: #00447C;
-  /* Translink ferry navy */
-  --transit-ferry-stop: #6aace0;
+  --transit-tram-color:    #FFD200;   /* Translink G:link yellow */
+  --transit-tram-stop:     #fff2a8;
+  --transit-tram-station:  #c8a400;
+
+  --transit-ferry-color:   #00447C;   /* Translink ferry navy */
+  --transit-ferry-stop:    #6aace0;
   --transit-ferry-station: #002b52;
 
-  --transit-bus-color: #E463A4;
-  /* Translink bus pink */
-  --transit-bus-stop: #f5b0e8;
-  /* light magenta — distinct from rail red */
-  --transit-bus-station: #b5186b;
+  --transit-bus-color:     #E463A4;   /* Translink bus pink */
+  --transit-bus-stop:      #f5b0e8;   /* light magenta — distinct from rail red */
+  --transit-bus-station:   #b5186b;
 
   /* Real-time data freshness indicator colours */
-  --rt-color-fresh: #198754;
-  /* on-time / just updated */
-  --rt-color-warning: #fd7e14;
-  /* updated 2–3 min ago */
-  --rt-color-stale: #dc3545;
-  /* updated >3 min ago */
+  --rt-color-fresh:   #198754;  /* on-time / just updated */
+  --rt-color-warning: #fd7e14;  /* updated 2–3 min ago */
+  --rt-color-stale:   #dc3545;  /* updated >3 min ago */
 }
 
-.transit-rail-color {
-  color: var(--transit-rail-color);
+/* ─────────────────────────────────────────────
+   Transit text colour helpers
+   ───────────────────────────────────────────── */
+.transit-rail-color  { color: var(--transit-rail-color); }
+.transit-tram-color  { color: var(--transit-tram-station); }   /* #FFD200 unreadable on white */
+.transit-ferry-color { color: var(--transit-ferry-color); }
+.transit-bus-color   { color: var(--transit-bus-color); }
+
+/* ─────────────────────────────────────────────
+   Navbar
+   ───────────────────────────────────────────── */
+.navbar-wmb {
+  background-color: var(--wmb-brand) !important;
 }
 
-.transit-tram-color {
-  color: var(--transit-tram-station);
+.navbar-wmb .navbar-brand {
+  font-weight: 700;
+  letter-spacing: -.01em;
+  font-size: 1.15rem;
 }
 
-/* #FFD200 is unreadable on white */
-.transit-ferry-color {
-  color: var(--transit-ferry-color);
+.navbar-wmb .nav-link {
+  color: rgba(255, 255, 255, .78);
+  font-size: .875rem;
+  padding-left: .6rem;
+  padding-right: .6rem;
 }
 
-.transit-bus-color {
-  color: var(--transit-bus-color);
+.navbar-wmb .nav-link:hover,
+.navbar-wmb .nav-link:focus {
+  color: #fff !important;
 }
 
+.navbar-wmb .nav-link.active {
+  color: #fff !important;
+  font-weight: 600;
+  border-bottom: 2px solid rgba(255, 255, 255, .6);
+}
+
+/* ─────────────────────────────────────────────
+   Home hero
+   ───────────────────────────────────────────── */
+.home-hero {
+  background: linear-gradient(135deg, rgba(var(--wmb-brand-rgb), .06) 0%, transparent 60%);
+  border-radius: 1rem;
+  padding: 2rem 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.home-hero h1 {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -.025em;
+  color: #1a1a2e;
+}
+
+.home-hero .lead {
+  font-size: 1rem;
+  color: #5c6a7a;
+}
+
+/* ─────────────────────────────────────────────
+   Cards
+   ───────────────────────────────────────────── */
+.card-hoverable {
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.card-hoverable:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .1) !important;
+}
+
+.card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: .75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--wmb-brand-rgb), .1);
+  color: var(--wmb-brand);
+  margin-bottom: .75rem;
+}
+
+.card-icon svg,
+.card-icon .material-symbols-outlined {
+  color: var(--wmb-brand);
+}
+
+/* ─────────────────────────────────────────────
+   Typeahead
+   ───────────────────────────────────────────── */
 .typeahead-list {
   display: block;
   background: #fff;
@@ -62,10 +137,14 @@
   z-index: 1000;
 }
 
+/* ─────────────────────────────────────────────
+   Map
+   ───────────────────────────────────────────── */
 .map-container {
   position: relative;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid #dee2e6;
+  overflow: hidden;
 }
 
 .map-popup-link {
@@ -73,7 +152,7 @@
   margin-top: 4px;
   padding: 2px 10px;
   font-size: .8rem;
-  background: #0d6efd;
+  background: var(--wmb-brand);
   color: #fff !important;
   border-radius: 4px;
   text-decoration: none !important;
@@ -84,6 +163,90 @@
   color: #6c757d;
 }
 
+/* ─────────────────────────────────────────────
+   Real-time icons (extracted from inline styles)
+   ───────────────────────────────────────────── */
+.rt-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.rt-icon,
+.gps-icon {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.rt-icon .material-symbols-outlined {
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--rt-color-fresh);
+}
+
+.gps-icon .material-symbols-outlined {
+  font-size: 1rem;
+  line-height: 1;
+  color: #0d6efd;
+}
+
+/* ─────────────────────────────────────────────
+   Timetable table
+   ───────────────────────────────────────────── */
+.tt-time {
+  cursor: pointer;
+}
+
+/* No horizontal scroll — time/route/status columns are compact, headsign wraps. */
+.tt-table-responsive {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.tt-table-responsive .table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Fixed narrow columns */
+.tt-table-responsive .table th:nth-child(1),
+.tt-table-responsive .table td:nth-child(1) { width: 4.5rem; }   /* Time */
+
+.tt-table-responsive .table th:nth-child(2),
+.tt-table-responsive .table td:nth-child(2) { width: 4rem; }     /* Route badge */
+
+/* Headsign: fills remaining space, wraps */
+.tt-headsign,
+.rr-headsign,
+.rr-stop {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
+
+/* Status column: just wide enough for badge + rt icons */
+.tt-table-responsive .table th:last-child,
+.tt-table-responsive .table td:last-child { width: 7rem; }
+
+/* On very small screens, hide the Leg/sequence column */
+@media (max-width: 575.98px) {
+  .tt-table-responsive .table .tt-seq-cell,
+  .tt-table-responsive .table th.tt-seq-col {
+    display: none;
+  }
+}
+
+#tt-results .table td,
+#tt-results .table th {
+  vertical-align: middle;
+}
+
+/* ─────────────────────────────────────────────
+   Misc utilities
+   ───────────────────────────────────────────── */
 .z-10 {
   z-index: 10;
 }
@@ -122,7 +285,32 @@
   border-color: #ced4da !important;
 }
 
-#tt-results .table td,
-#tt-results .table th {
-  vertical-align: middle;
+/* Route filter badge buttons (stops/details.html) */
+.route-filter-btn {
+  transition: opacity .15s;
+  cursor: pointer;
+  min-height: 2rem;
+  padding: .3rem .7rem;
+  font-size: .85rem;
+}
+
+#route-filter-badges.has-filter .route-filter-btn:not(.active) {
+  opacity: 0.3;
+}
+
+.route-filter-btn.active {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, .45);
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: #6c757d;
+}
+
+.empty-state .material-symbols-outlined {
+  font-size: 2.5rem;
+  opacity: .4;
+  margin-bottom: .5rem;
 }

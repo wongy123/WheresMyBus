@@ -15,7 +15,7 @@
   {% set badge_popup = ('est ' ~ est[:5] ~ ' · sched ' ~ sch[:5]) if (est and sch and est[:5] != sch[:5]) else (sch[:5] if sch else '') %}
   <tr data-route="{{ it.route_short_name }}" data-trip-id="{{ it.trip_id or '' }}">
     <td class="text-nowrap">
-      <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle" style="cursor:pointer;">
+      <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle">
         <span class="tt-min fw-semibold"></span><span class="tt-abs d-none text-body-secondary">{{ main_time }}</span>
       </span>
     </td>
@@ -26,34 +26,32 @@
     </td>
     <td><div class="tt-headsign">{{ it.trip_headsign }}</div></td>
     {% if has_platforms %}
-    <td class="text-nowrap">
+    <td class="text-nowrap tt-platform-cell">
       {% if it.platform_code %}<span class="badge text-bg-secondary">{{ it.platform_code }}</span>{% endif %}
     </td>
     {% endif %}
     <td>
-      <div class="d-flex align-items-center justify-content-between w-100">
+      <div class="d-flex align-items-center w-100">
         <span class="badge {{ info.cls }} status-badge" tabindex="0"
               data-bs-toggle="popover" data-bs-placement="top"
               data-bs-content="{{ badge_popup }}"
               style="cursor:pointer;">{{ info.label }}</span>
         {% if it.real_time_data and info.status in ['late','early','ontime'] %}
-          <span class="rt-icons" style="display:inline-flex; align-items:center; gap:2px; margin-left:4px;">
+          <span class="rt-icons">
             {% if it.has_rt %}
             <span class="rt-icon" tabindex="0"
                   data-bs-toggle="popover" data-bs-placement="top"
                   data-updated-at="{{ it.realtime_updated_at or '' }}"
-                  title="Trip update"
-                  style="cursor:pointer; display:inline-flex; align-items:center;">
-              <span class="material-symbols-outlined" style="font-size:1rem; line-height:1; color:#198754;">sensors</span>
+                  title="Trip update">
+              <span class="material-symbols-outlined">sensors</span>
             </span>
             {% endif %}
             {% if it.has_gps %}
             <span class="gps-icon" tabindex="0"
                   data-bs-toggle="popover" data-bs-placement="top"
                   data-vehicle-ts="{{ it.vehicle_timestamp or '' }}"
-                  title="GPS position"
-                  style="cursor:pointer; display:inline-flex; align-items:center;">
-              <span class="material-symbols-outlined" style="font-size:1rem; line-height:1; color:#0d6efd;">my_location</span>
+                  title="GPS position">
+              <span class="material-symbols-outlined">my_location</span>
             </span>
             {% endif %}
           </span>
@@ -76,37 +74,35 @@
   {% set totstops = it.total_stops or it.stop_count or it.last_stop_sequence %}
   <tr>
     <td class="text-nowrap">
-      <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle" style="cursor:pointer;">
+      <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle">
         <span class="tt-min fw-semibold"></span><span class="tt-abs d-none text-body-secondary">{{ main_time }}</span>
       </span>
     </td>
     <td><div class="rr-stop"><a href="{{ BASE_PATH }}/stops/{{ it.stop_id }}" class="text-decoration-none text-body">{{ it.stop_name }}</a></div></td>
     <td><div class="rr-headsign">{{ it.trip_headsign }}</div></td>
-    <td class="text-nowrap d-none d-sm-table-cell">{% if totstops %}{{ seq }} / {{ totstops }}{% else %}#{{ seq }}{% endif %}</td>
+    <td class="text-nowrap tt-seq-cell d-none d-sm-table-cell">{% if totstops %}{{ seq }} / {{ totstops }}{% else %}#{{ seq }}{% endif %}</td>
     <td>
-      <div class="d-flex align-items-center justify-content-between w-100">
+      <div class="d-flex align-items-center w-100">
         <span class="badge {{ info.cls }} status-badge" tabindex="0"
               data-bs-toggle="popover" data-bs-placement="top"
               data-bs-content="{{ badge_popup }}"
               style="cursor:pointer;">{{ info.label }}</span>
         {% if it.real_time_data and info.status in ['late','early','ontime'] %}
-          <span class="rt-icons ms-2" style="display:inline-flex; align-items:center; gap:2px;">
+          <span class="rt-icons ms-2">
             {% if it.has_rt %}
             <span class="rt-icon" tabindex="0"
                   data-bs-toggle="popover" data-bs-placement="top"
                   data-updated-at="{{ it.realtime_updated_at or '' }}"
-                  title="Trip update"
-                  style="cursor:pointer; display:inline-flex; align-items:center;">
-              <span class="material-symbols-outlined" style="font-size:1rem; line-height:1; color:#198754;">sensors</span>
+                  title="Trip update">
+              <span class="material-symbols-outlined">sensors</span>
             </span>
             {% endif %}
             {% if it.has_gps %}
             <span class="gps-icon" tabindex="0"
                   data-bs-toggle="popover" data-bs-placement="top"
                   data-vehicle-ts="{{ it.vehicle_timestamp or '' }}"
-                  title="GPS position"
-                  style="cursor:pointer; display:inline-flex; align-items:center;">
-              <span class="material-symbols-outlined" style="font-size:1rem; line-height:1; color:#0d6efd;">my_location</span>
+                  title="GPS position">
+              <span class="material-symbols-outlined">my_location</span>
             </span>
             {% endif %}
           </span>

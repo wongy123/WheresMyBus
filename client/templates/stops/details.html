@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 {% endblock %}
 {% block content %}
-<div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-1">
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
   <h1 class="h4 mb-0">{{ stop.stop_name }}</h1>
 </div>
 {% if parent_station %}
@@ -17,9 +17,9 @@
 </div>
 {% endif %}
 <div class="text-muted small mb-3">
-  Stop ID: <code>{{ stop.stop_id }}</code>
-  {% if stop.stop_code %} &bull; Code: <code>{{ stop.stop_code }}</code>{% endif %}
-  {% if stop.zone_id %} &bull; Zone: {{ stop.zone_id }}{% endif %}
+  <span class="me-2">Stop ID: <code>{{ stop.stop_id }}</code></span>
+  {% if stop.stop_code %}<span class="me-2">&bull; Code: <code>{{ stop.stop_code }}</code></span>{% endif %}
+  {% if stop.zone_id %}<span>&bull; Zone: <span class="badge text-bg-light border">{{ stop.zone_id }}</span></span>{% endif %}
 </div>
 
 <div hx-get="{{ BASE_PATH }}/hx/alerts/banner?stop_id={{ stop.stop_id }}"
@@ -27,36 +27,19 @@
      hx-swap="outerHTML"></div>
 
 {% if routes %}
-<style>
-  .route-filter-btn {
-    transition: opacity .15s;
-    cursor: pointer;
-    min-height: 2rem;
-    padding: 0.25rem 0.6rem;
-  }
-
-  #route-filter-badges.has-filter .route-filter-btn:not(.active) {
-    opacity: 0.3;
-  }
-
-  .route-filter-btn.active {
-    box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, .45);
-  }
-
-</style>
 <div class="mb-4">
-  <div class="fw-semibold small mb-2">
+  <div class="fw-semibold small mb-2 text-muted text-uppercase" style="letter-spacing:.04em;font-size:.75rem;">
     Routes serving this {{ 'station' if stop.location_type == 1 else 'stop' }}
-    <span id="route-filter-hint" style="display:none;">
-      — <a href="#" id="route-filter-clear" class="text-muted fw-normal small">clear filter</a>
+    <span id="route-filter-hint" class="d-none">
+      — <a href="#" id="route-filter-clear" class="text-muted fw-normal">clear filter</a>
     </span>
   </div>
   <div class="d-flex flex-wrap gap-1" id="route-filter-badges">
     {% for r in routes %}
     {% set bg = '#' + (r.route_color or 'CCCCCC') %}
     {% set fg = '#' + (r.route_text_color or '000000') %}
-    <button type="button" class="route-filter-btn badge rounded-pill px-2 py-1 border-0"
-      style="background-color: {{ bg }}; color: {{ fg }}; font-size: .85rem;" data-route="{{ r.route_short_name }}"
+    <button type="button" class="route-filter-btn badge rounded-pill border-0"
+      style="background-color: {{ bg }}; color: {{ fg }};" data-route="{{ r.route_short_name }}"
       title="Filter to {{ r.route_short_name }}">
       {{ r.route_short_name }}
     </button>
@@ -74,7 +57,7 @@
         .map(function (b) { return b.dataset.route; });
       var anyActive = activeRoutes.length > 0;
       badgesEl.classList.toggle('has-filter', anyActive);
-      hintEl.style.display = anyActive ? '' : 'none';
+      hintEl.classList.toggle('d-none', !anyActive);
 
       if (ttEl) {
         ttEl.classList.toggle('filter-active', anyActive);

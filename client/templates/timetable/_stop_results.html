@@ -11,18 +11,14 @@
 {% set has_platforms = rows | selectattr('platform_code', 'defined') | selectattr('platform_code') | list | length > 0 %}
 <span hidden data-tt-page="{{ page }}" data-tt-page-count="{{ page_count }}"></span>
 {% if rows %}
-  <style>
-    .tt-headsign { overflow-x: auto; white-space: nowrap; max-width: {{ '24vw' if has_platforms else '38vw' }}; }
-    @media (min-width: 768px) { .tt-headsign { max-width: none; white-space: normal; overflow-x: visible; } }
-  </style>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle">
+  <div class="tt-table-responsive">
+    <table class="table table-sm align-middle mb-2">
       <thead class="table-light">
         <tr>
           <th scope="col">Time</th>
           <th scope="col">Route</th>
           <th scope="col">Headsign</th>
-          {% if has_platforms %}<th scope="col" class="text-nowrap">Plat.</th>{% endif %}
+          {% if has_platforms %}<th scope="col">Plat.</th>{% endif %}
           <th scope="col">Status</th>
         </tr>
       </thead>
@@ -36,7 +32,10 @@
   {% set page_base = (BASE_PATH ~ '/hx/timetable/stop/' ~ stop_id ~ '?duration=' ~ duration ~ '&limit=' ~ limit ~ '&hx_target=' ~ (hx_target | urlencode)) if use_htmx else ('?duration=' ~ duration ~ '&limit=' ~ limit) %}
   {{ timetable_pagination(page, page_count, limit, page_base, total=total, hx_target=hx_target if use_htmx else None) }}
 {% else %}
-  <div class="alert alert-light border">No upcoming services in this window.</div>
+  <div class="empty-state py-4">
+    <div><span class="material-symbols-outlined">event_busy</span></div>
+    <div class="small">No upcoming services in this window.</div>
+  </div>
 {% endif %}
 <script>
 (function () {

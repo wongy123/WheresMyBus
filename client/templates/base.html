@@ -11,6 +11,30 @@
     rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet">
+  <style>
+    :root {
+      --bs-primary: var(--wmb-brand);
+      --bs-primary-rgb: var(--wmb-brand-rgb);
+      --bs-link-color: var(--wmb-brand);
+      --bs-link-hover-color: var(--wmb-brand-dark);
+    }
+    .btn-primary {
+      background-color: var(--wmb-brand);
+      border-color: var(--wmb-brand);
+    }
+    .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+      background-color: var(--wmb-brand-dark);
+      border-color: var(--wmb-brand-dark);
+    }
+    .btn-outline-primary {
+      color: var(--wmb-brand);
+      border-color: var(--wmb-brand);
+    }
+    .btn-outline-primary:hover {
+      background-color: var(--wmb-brand);
+      border-color: var(--wmb-brand);
+    }
+  </style>
   <script>window.API_BASE_URL = {{ API_BASE_URL | tojson }};</script>
   <script src="{{ url_for('static', filename='transit.js') }}"></script>
   <script src="{{ url_for('static', filename='timetable.js') }}"></script>
@@ -18,21 +42,25 @@
 </head>
 
 <body class="d-flex flex-column min-vh-100">
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  {% set _p = request.path %}
+  <nav class="navbar navbar-expand-lg navbar-dark navbar-wmb">
     <div class="container">
-      <a class="navbar-brand" href="{{ BASE_PATH }}/">Where's My Bus</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+      <a class="navbar-brand d-flex align-items-center gap-2" href="{{ BASE_PATH }}/">
+        <span class="material-symbols-outlined" style="font-size:1.3rem;line-height:1;">directions_bus</span>
+        Where's My Bus
+      </a>
+      <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
         aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
 
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-          <li class="nav-item"><a class="nav-link" href="{{ BASE_PATH }}/stops">Stops</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ BASE_PATH }}/routes">Routes</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ BASE_PATH }}/map">Map</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ BASE_PATH }}/alerts">Alerts</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ BASE_PATH }}/about">About</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if '/stops' in _p else '' }}" href="{{ BASE_PATH }}/stops">Stops</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if '/routes' in _p else '' }}" href="{{ BASE_PATH }}/routes">Routes</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if '/map' in _p else '' }}" href="{{ BASE_PATH }}/map">Map</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if '/alerts' in _p else '' }}" href="{{ BASE_PATH }}/alerts">Alerts</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if '/about' in _p else '' }}" href="{{ BASE_PATH }}/about">About</a></li>
         </ul>
 
       </div>
@@ -48,9 +76,22 @@
   </main>
   {% endblock %}
 
-  <footer class="bg-light py-3 mt-auto border-top">
-    <div class="container text-center small text-muted">
-      Where's My Bus by Angus Wong
+  <footer class="py-4 mt-auto border-top" style="background:#f8f9fa;">
+    <div class="container">
+      <div class="row align-items-center g-2">
+        <div class="col-md-6 text-center text-md-start">
+          <span class="fw-semibold small" style="color:var(--wmb-brand)">
+            <span class="material-symbols-outlined align-middle me-1" style="font-size:.95rem;line-height:1.5">directions_bus</span>Where's My Bus
+          </span>
+          <span class="text-muted small ms-1">by Angus Wong</span>
+        </div>
+        <div class="col-md-6 d-flex flex-wrap justify-content-center justify-content-md-end gap-3 small">
+          <a href="{{ BASE_PATH }}/about" class="text-muted text-decoration-none">About</a>
+          <a href="https://translink.com.au" target="_blank" rel="noopener" class="text-muted text-decoration-none">Translink ↗</a>
+          <a href="https://translink.com.au/about-translink/open-data" target="_blank" rel="noopener" class="text-muted text-decoration-none">Open Data ↗</a>
+          <span class="text-muted">Data © Translink SEQ</span>
+        </div>
+      </div>
     </div>
   </footer>
 

@@ -27,15 +27,15 @@
 
 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
   <div class="d-flex align-items-center gap-3">
-    <span class="badge rounded-pill px-3 py-2 fs-5" style="background-color: {{ bg }}; color: {{ fg }};">
+    <span class="badge rounded-pill px-3 py-2 fw-bold" style="background-color: {{ bg }}; color: {{ fg }}; font-size: 1.1rem;">
       {{ route.route_short_name }}
     </span>
     <div>
       <h1 class="h4 mb-1">{{ route.route_long_name }}</h1>
-      <div class="text-muted small">
-        <span class="me-2">Route ID: <code>{{ route.route_id }}</code></span>
+      <div class="text-muted small d-flex align-items-center gap-2 flex-wrap">
+        <span>ID: <code>{{ route.route_id }}</code></span>
         {% if route.route_type is not none %}
-        <span class="badge text-bg-secondary">{{ type_labels.get(route.route_type, 'Type ' ~ route.route_type) }}</span>
+        <span class="badge text-bg-light border">{{ type_labels.get(route.route_type, 'Type ' ~ route.route_type) }}</span>
         {% endif %}
       </div>
     </div>

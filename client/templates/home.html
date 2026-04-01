@@ -5,9 +5,9 @@
 {% endblock %}
 {% block content %}
 
-<div class="text-center mb-3 pt-2">
-  <h1 class="display-5 fw-bold mb-1">Where's My Bus?</h1>
-  <p class="lead text-muted mb-0">Real-time timetables for South East Queensland public transport.</p>
+<div class="home-hero text-center">
+  <h1 class="mb-2">Where's My Bus?</h1>
+  <p class="lead mb-0">Real-time timetables for South East Queensland public transport.</p>
 </div>
 
 <div class="row g-3 align-items-start mb-4">
@@ -54,37 +54,37 @@
 
 <div class="row g-4 mt-1">
   <div class="col-md-6">
-    <div class="card h-100 border-0 shadow-sm">
+    <div class="card h-100 border-0 shadow-sm card-hoverable">
       <div class="card-body">
-        <div class="mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor"
-            class="bi bi-signpost-2 text-primary" viewBox="0 0 16 16">
+        <div class="card-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor"
+            class="bi bi-signpost-2" viewBox="0 0 16 16">
             <path
               d="M7 1.414V2H2a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h5v1H2.5a1 1 0 0 0-.8.4L.725 8.7a.5.5 0 0 0 0 .6l.975 1.3a1 1 0 0 0 .8.4H7v5h2v-5h5.5a1 1 0 0 0 .8-.4l.975-1.3a.5.5 0 0 0 0-.6L15.3 7.4a1 1 0 0 0-.8-.4H9V6h4a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H9v-.586a1 1 0 0 0-2 0" />
           </svg>
         </div>
-        <h5 class="card-title">Stops</h5>
+        <h5 class="card-title fw-semibold">Stops</h5>
         <p class="card-text text-muted small">Search for any bus stop, train station, or ferry terminal across the SEQ
           network.</p>
-        <a href="{{ BASE_PATH }}/stops" class="btn btn-outline-primary btn-sm">Browse Stops</a>
+        <a href="{{ BASE_PATH }}/stops" class="btn btn-primary btn-sm stretched-link">Browse Stops →</a>
       </div>
     </div>
   </div>
 
   <div class="col-md-6">
-    <div class="card h-100 border-0 shadow-sm">
+    <div class="card h-100 border-0 shadow-sm card-hoverable">
       <div class="card-body">
-        <div class="mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor"
-            class="bi bi-map text-primary" viewBox="0 0 16 16">
+        <div class="card-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor"
+            class="bi bi-map" viewBox="0 0 16 16">
             <path fill-rule="evenodd"
               d="M15.817.113A.5.5 0 0 1 16 .5v14a.5.5 0 0 1-.402.49l-5 1a.502.502 0 0 1-.196 0L5.5 15.01l-4.902.98A.5.5 0 0 1 0 15.5v-14a.5.5 0 0 1 .402-.49l5-1a.5.5 0 0 1 .196 0L10.5.99l4.902-.98a.5.5 0 0 1 .415.103M10 1.91l-4-.8v12.98l4 .8zm1 12.98 4-.8V1.11l-4 .8zm-6-.98V1.11l-4 .8v12.98z" />
           </svg>
         </div>
-        <h5 class="card-title">Routes</h5>
+        <h5 class="card-title fw-semibold">Routes</h5>
         <p class="card-text text-muted small">Browse all bus, train, and ferry routes in SEQ. Search by number, name,
           or train line.</p>
-        <a href="{{ BASE_PATH }}/routes" class="btn btn-outline-primary btn-sm">Browse Routes</a>
+        <a href="{{ BASE_PATH }}/routes" class="btn btn-primary btn-sm stretched-link">Browse Routes →</a>
       </div>
     </div>
   </div>
