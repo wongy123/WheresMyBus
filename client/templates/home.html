@@ -24,24 +24,24 @@
           hx-swap="innerHTML" />
         <div id="home-search-results" class="typeahead-list shadow-sm" style="display:none;"></div>
       </div>
-    </div>
 
-    <div class="mt-3 d-flex justify-content-center align-items-center gap-2">
-      <button id="home-nearby-btn" class="btn btn-outline-secondary btn-sm" type="button">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1"
-          viewBox="0 0 16 16">
-          <path
-            d="M12.166 8.94c-.524 1.062-1.234 2.12-1.96 3.07A32 32 0 0 1 8 14.58a32 32 0 0 1-2.206-2.57c-.726-.95-1.436-2.008-1.96-3.07C3.304 7.867 3 6.862 3 6a5 5 0 0 1 10 0c0 .862-.305 1.867-.834 2.94M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10" />
-          <path d="M8 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4m0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6" />
-        </svg>
-        Use my location
-      </button>
-      <span id="home-nearby-status" class="text-muted small"></span>
+      <div class="mt-3 d-flex justify-content-center align-items-center gap-2">
+        <button id="home-nearby-btn" class="btn btn-outline-secondary btn-sm" type="button">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1"
+            viewBox="0 0 16 16">
+            <path
+              d="M12.166 8.94c-.524 1.062-1.234 2.12-1.96 3.07A32 32 0 0 1 8 14.58a32 32 0 0 1-2.206-2.57c-.726-.95-1.436-2.008-1.96-3.07C3.304 7.867 3 6.862 3 6a5 5 0 0 1 10 0c0 .862-.305 1.867-.834 2.94M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10" />
+            <path d="M8 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4m0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6" />
+          </svg>
+          Use my location
+        </button>
+        <span id="home-nearby-status" class="text-muted small"></span>
+      </div>
+
+      <p class="mt-3 text-muted small text-center">Try "City Hall", "Garden City", or enter a stop code.</p>
     </div>
 
     <div id="home-nearby-results" style="max-height: 320px; overflow-y: auto;"></div>
-
-    <p class="mt-3 text-muted small">Try "City Hall", "Garden City", or enter a stop code.</p>
   </div>
 
   {# ── Right: map (hidden until first search/location) ── #}
@@ -165,7 +165,10 @@
             mapCol.style.transition = 'opacity 0.7s cubic-bezier(0.4,0,0.2,1), transform 0.7s cubic-bezier(0.4,0,0.2,1)';
             mapCol.style.opacity = '1';
             mapCol.style.transform = 'none';
-            setTimeout(function () { map.invalidateSize(); }, 720);
+            setTimeout(function () {
+              map.invalidateSize();
+              searchCol.style.transition = ''; // clear so it doesn't linger into homeHideMap
+            }, 720);
           });
         });
       }
@@ -180,6 +183,9 @@
       var searchCol = document.getElementById('home-search-col');
       var large = isLg();
 
+      // Capture search position NOW while map is still in flow and order-2 still applied
+      var searchBefore = !large ? searchCol.getBoundingClientRect() : null;
+
       mapCol.style.transition = 'opacity 0.7s cubic-bezier(0.4,0,0.2,1), transform 0.7s cubic-bezier(0.4,0,0.2,1)';
       mapCol.style.opacity = '0';
       mapCol.style.transform = large ? 'translateX(20px)' : 'translateY(-10px)';
@@ -188,33 +194,60 @@
         searchCol.style.transition = 'flex-basis 0.7s cubic-bezier(0.4,0,0.2,1), max-width 0.7s cubic-bezier(0.4,0,0.2,1)';
         searchCol.style.flexBasis = '100%';
         searchCol.style.maxWidth = '100%';
-      } else {
-        // FLIP in reverse: record position, remove order-2, apply offsetting transform, animate to 0
-        var before = searchCol.getBoundingClientRect();
-        searchCol.classList.remove('order-2');
-        searchCol.getBoundingClientRect(); // force reflow
-        var after = searchCol.getBoundingClientRect();
-        var deltaY = before.top - after.top;
-        searchCol.style.transform = 'translateY(' + deltaY + 'px)';
-        requestAnimationFrame(function () {
-          requestAnimationFrame(function () {
-            searchCol.style.transition = 'transform 0.7s cubic-bezier(0.4,0,0.2,1)';
-            searchCol.style.transform = 'none';
-          });
-        });
-      }
 
-      setTimeout(function () {
-        mapCol.classList.add('d-none');
-        mapCol.style.transition = '';
-        mapCol.style.opacity = '';
-        mapCol.style.transform = '';
-        searchCol.classList.remove('order-lg-1');
-        searchCol.style.transition = '';
-        searchCol.style.transform = '';
-        searchCol.style.flexBasis = '';
-        searchCol.style.maxWidth = '';
-      }, 720);
+        setTimeout(function () {
+          mapCol.classList.add('d-none');
+          mapCol.style.transition = '';
+          mapCol.style.opacity = '';
+          mapCol.style.transform = '';
+          searchCol.classList.remove('order-lg-1');
+          searchCol.style.transition = '';
+          searchCol.style.flexBasis = '';
+          searchCol.style.maxWidth = '';
+        }, 720);
+
+      } else {
+        // Mobile: after fade, keep map in the flow (opacity 0, no d-none yet) so its
+        // height still occupies space. Lock that height, then animate it to 0 while
+        // FLIP-ing the search bar back up — content rises in sync, no jump.
+        setTimeout(function () {
+          mapCol.style.transition = '';
+          mapCol.style.transform = '';
+          // keep opacity at 0 — map invisible but still in flow
+
+          var mapHeight = mapCol.offsetHeight;
+          mapCol.style.height = mapHeight + 'px';
+          mapCol.style.overflow = 'hidden';
+
+          // FLIP: reorder, measure delta, offset search to its old visual position
+          searchCol.classList.remove('order-2');
+          searchCol.getBoundingClientRect(); // force reflow
+          var searchAfter = searchCol.getBoundingClientRect();
+          var deltaY = searchBefore.top - searchAfter.top;
+          searchCol.style.transition = ''; // clear leftover transition so snap is instant
+          searchCol.style.transform = 'translateY(' + deltaY + 'px)';
+
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              searchCol.style.transition = 'transform 0.7s cubic-bezier(0.4,0,0.2,1)';
+              searchCol.style.transform = 'translateY(0)';
+              mapCol.style.transition = 'height 0.7s cubic-bezier(0.4,0,0.2,1)';
+              mapCol.style.height = '0';
+
+              setTimeout(function () {
+                mapCol.classList.add('d-none');
+                mapCol.style.height = '';
+                mapCol.style.overflow = '';
+                mapCol.style.opacity = '';
+                mapCol.style.transition = '';
+                searchCol.classList.remove('order-lg-1');
+                searchCol.style.transition = '';
+                searchCol.style.transform = '';
+              }, 720);
+            });
+          });
+        }, 720);
+      }
     };
 
     // ── Route overlay ──
