@@ -9,18 +9,14 @@
 {% set total = pg.get('total', 0) %}
 
 {% if rows %}
-  <style>
-    .rr-stop, .rr-headsign { overflow-x: auto; white-space: nowrap; max-width: 36vw; }
-    @media (min-width: 768px) { .rr-stop, .rr-headsign { max-width: none; white-space: normal; overflow-x: visible; } }
-  </style>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle">
+  <div class="tt-table-responsive">
+    <table class="table table-sm align-middle mb-2">
       <thead class="table-light">
         <tr>
           <th scope="col">Time</th>
           <th scope="col">Stop</th>
           <th scope="col">Headsign</th>
-          <th scope="col" class="d-none d-sm-table-cell">Leg</th>
+          <th scope="col" class="tt-seq-col d-none d-sm-table-cell">Leg</th>
           <th scope="col">Status</th>
         </tr>
       </thead>
@@ -33,7 +29,10 @@
   {% set page_base = '?direction=' ~ direction ~ '&duration=' ~ duration ~ '&limit=' ~ limit %}
   {{ timetable_pagination(page, page_count, limit, page_base, total=total) }}
 {% else %}
-  <div class="alert alert-light border">No upcoming services in this window.</div>
+  <div class="empty-state py-4">
+    <div><span class="material-symbols-outlined">event_busy</span></div>
+    <div class="small">No upcoming services in this window.</div>
+  </div>
 {% endif %}
 <script>
 (function () {

@@ -187,6 +187,26 @@
   startLiveLocationTracking(statusEl, true);
   });
 
+  // On mobile, scroll the search input into view once the keyboard has finished appearing
+  var searchEl = document.getElementById({{ (uid ~ '-typeahead') | tojson }});
+  searchEl.addEventListener('focus', function () {
+    if (window.innerWidth >= 768) return;
+    var doScroll = function () { searchEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+    if (window.visualViewport) {
+      var fired = false;
+      var onVVResize = function () {
+        if (fired) return;
+        fired = true;
+        window.visualViewport.removeEventListener('resize', onVVResize);
+        doScroll();
+      };
+      window.visualViewport.addEventListener('resize', onVVResize);
+      setTimeout(function () { onVVResize(); }, 600); // fallback if keyboard already open
+    } else {
+      setTimeout(doScroll, 400);
+    }
+  });
+
   window.addEventListener('pagehide', function () {
     if (userWatchId != null && navigator.geolocation) {
       navigator.geolocation.clearWatch(userWatchId);

@@ -4,8 +4,9 @@ import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-const RT_VPOS_TTL_SEC  = Number(process.env.GTFS_RT_TTL_SECONDS       || 60);   // vehicle positions
-const RT_TRIP_TTL_SEC  = Number(process.env.GTFS_RT_TRIP_TTL_SECONDS  || 300);  // delay / stop-update data
+const RT_VPOS_TTL_SEC   = Number(process.env.GTFS_RT_TTL_SECONDS        || 60);   // vehicle positions
+const RT_TRIP_TTL_SEC   = Number(process.env.GTFS_RT_TRIP_TTL_SECONDS   || 300);  // delay / stop-update data
+const RT_ALERTS_TTL_SEC = Number(process.env.GTFS_RT_ALERTS_TTL_SECONDS || 60);   // service alerts
 
 function readConfig() {
   try {
@@ -13,12 +14,14 @@ function readConfig() {
     return {
       tripUpdatesUrl: process.env.GTFS_RT_TRIP_UPDATES_URL || cfg.tripUpdatesUrl,
       vehiclePositionsUrl: process.env.GTFS_RT_VEHICLE_POSITIONS_URL || cfg.vehiclePositionsUrl,
+      alertsUrl: process.env.GTFS_RT_ALERTS_URL || cfg.alertsUrl,
       pollSeconds: Number(process.env.GTFS_RT_POLL_SECONDS || cfg.pollSeconds || 10),
     };
   } catch {
     return {
       tripUpdatesUrl: process.env.GTFS_RT_TRIP_UPDATES_URL,
       vehiclePositionsUrl: process.env.GTFS_RT_VEHICLE_POSITIONS_URL,
+      alertsUrl: process.env.GTFS_RT_ALERTS_URL,
       pollSeconds: Number(process.env.GTFS_RT_POLL_SECONDS || 10),
     };
   }
@@ -77,20 +80,74 @@ function buildVehiclePosMap(feed) {
   return map;
 }
 
-async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl }) {
+const EFFECT_LABEL = {
+  1: 'No service', 2: 'Reduced service', 3: 'Significant delays',
+  4: 'Detour', 5: 'Additional service', 6: 'Modified service',
+  7: 'Other effect', 9: 'Stop moved', 10: 'No effect', 11: 'Accessibility issue',
+};
+const EFFECT_SEVERITY = {
+  1: 'danger', 2: 'danger', 3: 'danger',
+  4: 'warning', 6: 'warning', 7: 'warning', 9: 'warning',
+  5: 'info', 10: 'info', 11: 'info',
+};
+const CAUSE_LABEL = {
+  1: 'Unknown', 2: 'Other', 3: 'Technical problem', 4: 'Strike',
+  5: 'Demonstration', 6: 'Accident', 7: 'Holiday', 8: 'Weather',
+  9: 'Maintenance', 10: 'Construction', 11: 'Police activity', 12: 'Medical emergency',
+};
+
+function buildAlertsArray(feed) {
+  const alerts = [];
+  for (const e of feed.entity || []) {
+    const a = e.alert;
+    if (!a) continue;
+    const routeIds = [];
+    const stopIds  = [];
+    for (const ent of a.informedEntity || []) {
+      if (ent.routeId) routeIds.push(String(ent.routeId));
+      if (ent.stopId)  stopIds.push(String(ent.stopId));
+    }
+    const effect = a.effect != null ? Number(a.effect) : null;
+    const cause  = a.cause  != null ? Number(a.cause)  : null;
+    const periods = (a.activePeriod || []).map(p => ({
+      start: p.start != null ? Number(p.start) : null,
+      end:   p.end   != null ? Number(p.end)   : null,
+    }));
+    alerts.push({
+      id:             e.id ? String(e.id) : null,
+      headerText:     a.headerText?.translation?.[0]?.text  || null,
+      description:    a.descriptionText?.translation?.[0]?.text || null,
+      url:            a.url?.translation?.[0]?.text || null,
+      effect,
+      effectLabel:    effect != null ? (EFFECT_LABEL[effect]    || String(effect)) : null,
+      effectSeverity: effect != null ? (EFFECT_SEVERITY[effect] || 'secondary')    : 'secondary',
+      cause,
+      causeLabel:     cause  != null ? (CAUSE_LABEL[cause]      || String(cause))  : null,
+      activePeriod: periods,
+      routeIds,
+      stopIds,
+    });
+  }
+  return alerts;
+}
+
+async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl, alertsUrl }) {
   let tuFeed = null;
   let vpFeed = null;
+  let alFeed = null;
 
   await Promise.allSettled([
-    (async () => { if (tripUpdatesUrl) tuFeed = await fetchProto(tripUpdatesUrl); })(),
+    (async () => { if (tripUpdatesUrl)      tuFeed = await fetchProto(tripUpdatesUrl); })(),
     (async () => { if (vehiclePositionsUrl) vpFeed = await fetchProto(vehiclePositionsUrl); })(),
+    (async () => { if (alertsUrl)           alFeed = await fetchProto(alertsUrl); })(),
   ]);
 
-  const tuMap = tuFeed ? buildTripUpdateMap(tuFeed) : new Map();
-  const vpMap = vpFeed ? buildVehiclePosMap(vpFeed) : new Map();
+  const tuMap  = tuFeed ? buildTripUpdateMap(tuFeed) : new Map();
+  const vpMap  = vpFeed ? buildVehiclePosMap(vpFeed) : new Map();
+  const alerts = alFeed ? buildAlertsArray(alFeed)   : [];
   latestVposMap = vpMap;
 
-  console.log(`[gtfsrt] tripUpdates=${tuMap.size} vehiclePositions=${vpMap.size}`);
+  console.log(`[gtfsrt] tripUpdates=${tuMap.size} vehiclePositions=${vpMap.size} alerts=${alerts.length}`);
 
   if (tuMap.size === 0 && vpMap.size === 0) {
     console.warn('[gtfsrt] both feeds empty or failed – check URLs/permissions');
@@ -109,8 +166,9 @@ async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl }) {
     writes.push(cacheSet(vposKey(tripId), { tripId, ...b }, RT_VPOS_TTL_SEC).then(() => { wroteVpos++; }));
   }
   writes.push(cacheSet('rt:feed:ts', { ts: now }, RT_VPOS_TTL_SEC));
+  if (alerts.length > 0) writes.push(cacheSet('rt:alerts', alerts, RT_ALERTS_TTL_SEC));
   await Promise.all(writes);
-  console.log(`[gtfsrt] wrote rt:trip:* keys=${wroteTrip} rt:vpos:* keys=${wroteVpos}`);
+  console.log(`[gtfsrt] wrote rt:trip:* keys=${wroteTrip} rt:vpos:* keys=${wroteVpos} alerts=${alerts.length}`);
 }
 
 function tripKey(tripId) {

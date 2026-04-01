@@ -1,12 +1,15 @@
 {% extends "base.html" %}
+{% block title %}About{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-8">
 
-    <h1 class="h3 mb-1">About Where's My Bus</h1>
-    <p class="text-muted small mb-4">A Brisbane transit tracker built out of frustration.</p>
+    <div class="mb-4">
+      <h1 class="h2 mb-1">About Where's My Bus</h1>
+      <p class="text-muted mb-0">A Brisbane transit tracker built out of frustration.</p>
+    </div>
 
-    <h2 class="h5 mt-4 mb-2">Why I built this</h2>
+    <h2 class="h5 fw-semibold mt-4 mb-2 border-bottom pb-1">Why I built this</h2>
     <p>
       I am sick of buses that are scheduled to arrive on Google Maps just disappearing out of nowhere.
       You're standing at the stop, the app says two minutes, and then it's gone. No explanation, no
@@ -17,7 +20,7 @@
       And the new Translink app is rubbish. I just want to know when my bus is actually going to show up.
     </p>
 
-    <h2 class="h5 mt-4 mb-2">How it started</h2>
+    <h2 class="h5 fw-semibold mt-4 mb-2 border-bottom pb-1">How it started</h2>
     <p>
       This started like many of my projects as a university assessment for <strong>CAB432</strong>
       (Cloud Computing) at QUT. The original version ran on AWS with the whole ecosystem: RDS,
@@ -25,53 +28,53 @@
     </p>
     <p>
       After the unit was completed I decided to migrate it off AWS and self-host it on an old office PC running
-      <a href="https://www.proxmox.com" class="text-decoration-none" target="_blank" rel="noopener">Proxmox</a>
-      . Redis and the Node.js API run in containers, with the Flask frontend sitting alongside them.
+      <a href="https://www.proxmox.com" target="_blank" rel="noopener">Proxmox</a>.
+      Redis and the Node.js API run in containers, with the Flask frontend sitting alongside them.
       GTFS static data lives in SQLite on disk.
     </p>
 
-    <h2 class="h5 mt-4 mb-2">How it works</h2>
-    <p>
-      The backend is a <strong>Node.js/Express</strong> API pulling from two sources:
-    </p>
-    <ul>
-      <li>
+    <h2 class="h5 fw-semibold mt-4 mb-2 border-bottom pb-1">How it works</h2>
+    <p>The backend is a <strong>Node.js/Express</strong> API pulling from two sources:</p>
+    <ul class="mb-3">
+      <li class="mb-1">
         <strong>GTFS static data</strong> — Translink's published timetables (stops, routes, trips,
         shapes) loaded into SQLite.
       </li>
       <li>
-        <strong>GTFS-RT feeds</strong> — Translink's real-time trip updates and vehicle positions,
-        polled every 10 seconds and cached in Redis. Delay data is kept for up to 5 minutes so a
-        brief GPS dropout doesn't throw away a known delay. Vehicle positions expire after 60 seconds.
+        <strong>GTFS-RT feeds</strong> — Translink's real-time trip updates, vehicle positions, and
+        service alerts, polled every few seconds and cached in Redis.
       </li>
     </ul>
     <p>
       The frontend is <strong>Python/Flask</strong> with
-      <a href="https://htmx.org" class="text-decoration-none" target="_blank" rel="noopener">HTMX</a>
+      <a href="https://htmx.org" target="_blank" rel="noopener">HTMX</a>
       for live updates and
-      <a href="https://leafletjs.com" class="text-decoration-none" target="_blank" rel="noopener">Leaflet</a>
-      for maps. Timetable and diagram views refresh every few seconds in the background.
-    </p>
-    <p>
-      I went with Flask and server-side rendering for a couple of reasons. First, I want every stop,
-      route and timetable to have its own URL you can actually navigate to, bookmark, or share.
-      Second, there is a lot of logic involved in processing and displaying the data, and it is just
-      more efficient to do that on the server rather than shipping it all to the browser.
-      HTMX handles the partial page updates without needing a full SPA framework on top of that.
-    </p>
-    <p>
-      Each row in the timetable shows a colour-coded indicator for how fresh the real-time data is.
-      Green means it just updated, amber means a couple of minutes old, red means it is getting stale.
-      Tap it to see exactly when it was last updated.
+      <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>
+      for maps. Timetable views refresh every 5 seconds in the background.
     </p>
 
-    <h2 class="h5 mt-4 mb-2">Coverage</h2>
+    <div class="card border-0 bg-light rounded-3 p-3 my-4 small">
+      <div class="fw-semibold mb-2">Real-time freshness indicator</div>
+      <div class="d-flex flex-wrap gap-3">
+        <span><span class="badge text-bg-success">●</span> Just updated</span>
+        <span><span class="badge text-bg-warning text-dark">●</span> 2–3 minutes old</span>
+        <span><span class="badge text-bg-danger">●</span> Getting stale (&gt;3 min)</span>
+      </div>
+      <div class="text-muted mt-2">Tap any freshness dot in the timetable to see the exact update time.</div>
+    </div>
+
+    <h2 class="h5 fw-semibold mt-4 mb-2 border-bottom pb-1">Coverage</h2>
     <p>
-      I originally built this with buses in mind since that is what I use every day, but because it
-      uses the Translink GTFS API it actually works for the whole SEQ network. Trains, ferries, and
-      the G:link light rail on the Gold Coast all show up with real-time data too, which was a nice bonus.
+      Built with buses in mind but covers the entire SEQ network — trains, ferries, and
+      the G:link light rail on the Gold Coast all show real-time data too.
     </p>
-    <p class="text-muted small">
+
+    <div class="d-flex gap-2 mt-4 flex-wrap">
+      <a href="{{ BASE_PATH }}/stops" class="btn btn-primary">Find a stop →</a>
+      <a href="{{ BASE_PATH }}/routes" class="btn btn-outline-secondary">Browse routes</a>
+    </div>
+
+    <p class="text-muted small mt-4">
       Not affiliated with or endorsed by Translink or the Queensland Department of Transport and Main Roads.
     </p>
 
