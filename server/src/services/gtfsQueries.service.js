@@ -353,7 +353,10 @@ async function enrichRowsWithRealtime(rows) {
   const out = [];
   for (const r of rows) {
     const t = r.trip_id || r.tripId;
-    const directVpos = t ? vposMap.get(t) : null;
+    // Redis direct hit → freshest cached position
+    // In-memory latestVposMap by trip ID → survives Redis TTL expiry between GPS broadcasts
+    // Label-based fallback → trains only, when trip ID doesn't match
+    const directVpos = t ? (vposMap.get(t) || latestVposMap.get(t)) : null;
     const fallbackVpos = !directVpos ? fallbackVposForRow(r) : null;
     out.push(applyRealtimeToRow(r, t ? rtMap.get(t) : null, directVpos || fallbackVpos));
   }
