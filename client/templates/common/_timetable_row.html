@@ -24,8 +24,7 @@
         <span class="badge rounded-pill" style="background-color: {{ bg }}; color: {{ fg }};">{{ it.route_short_name }}</span>
       </a>
     </td>
-    <td><div class="tt-headsign">{{ it.trip_headsign }}</div></td>
-    {% if has_platforms %}
+    <td class="tt-headsign-cell"><div class="tt-headsign">{{ it.trip_headsign }}</div></td>
     <td class="text-nowrap tt-platform-cell">
       {% if it.platform_code %}<span class="badge text-bg-secondary">{{ it.platform_code }}</span>{% endif %}
     </td>

@@ -135,6 +135,29 @@
   border: 1px solid rgba(0, 0, 0, .125);
   border-radius: .5rem;
   z-index: 1000;
+  overflow-x: hidden;
+}
+
+/* Flex children inside search result items must not expand beyond container */
+.typeahead-list .list-group-item,
+.list-group.shadow-sm .list-group-item {
+  overflow: hidden;
+}
+
+.typeahead-list .list-group-item > span:first-child,
+.list-group.shadow-sm .list-group-item > span:first-child,
+.typeahead-list .list-group-item > div.flex-grow-1,
+.list-group.shadow-sm .list-group-item > div.flex-grow-1 {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.typeahead-list strong,
+.list-group.shadow-sm strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ─────────────────────────────────────────────
@@ -171,6 +194,7 @@
   align-items: center;
   gap: 3px;
   margin-left: 4px;
+  vertical-align: middle;
 }
 
 .rt-icon,
@@ -178,17 +202,21 @@
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  line-height: 1;
+}
+
+.rt-icon .material-symbols-outlined,
+.gps-icon .material-symbols-outlined {
+  font-size: 1rem;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .rt-icon .material-symbols-outlined {
-  font-size: 1rem;
-  line-height: 1;
   color: var(--rt-color-fresh);
 }
 
 .gps-icon .material-symbols-outlined {
-  font-size: 1rem;
-  line-height: 1;
   color: #0d6efd;
 }
 
@@ -199,10 +227,9 @@
   cursor: pointer;
 }
 
-/* No horizontal scroll — time/route/status columns are compact, headsign wraps. */
+/* No horizontal scroll — fixed columns; headsign wraps. */
 .tt-table-responsive {
   width: 100%;
-  overflow-x: hidden;
 }
 
 .tt-table-responsive .table {
@@ -210,14 +237,12 @@
   width: 100%;
 }
 
-/* Fixed narrow columns */
 .tt-table-responsive .table th:nth-child(1),
-.tt-table-responsive .table td:nth-child(1) { width: 4.5rem; }   /* Time */
+.tt-table-responsive .table td:nth-child(1) { width: 4.5rem; }
 
 .tt-table-responsive .table th:nth-child(2),
-.tt-table-responsive .table td:nth-child(2) { width: 4rem; }     /* Route badge */
+.tt-table-responsive .table td:nth-child(2) { width: 4rem; }
 
-/* Headsign: fills remaining space, wraps */
 .tt-headsign,
 .rr-headsign,
 .rr-stop {
@@ -227,16 +252,50 @@
   min-width: 0;
 }
 
-/* Status column: just wide enough for badge + rt icons */
 .tt-table-responsive .table th:last-child,
 .tt-table-responsive .table td:last-child { width: 7rem; }
 
-/* On very small screens, hide the Leg/sequence column */
+/* On mobile: headsign on its own line via flex layout */
 @media (max-width: 575.98px) {
-  .tt-table-responsive .table .tt-seq-cell,
-  .tt-table-responsive .table th.tt-seq-col {
-    display: none;
+  .tt-table-responsive thead { display: none; }
+
+  .tt-table-responsive table,
+  .tt-table-responsive tbody { display: block; }
+
+  .tt-table-responsive tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .2rem .4rem;
+    padding: .4rem .25rem;
+    border-bottom: 1px solid #dee2e6;
   }
+
+  .tt-table-responsive td {
+    display: block;
+    border: none;
+    padding: 0;
+    width: auto !important;    /* override fixed widths */
+  }
+
+  /* Time + Route: auto-width on first line */
+  .tt-table-responsive td:nth-child(1) { font-weight: 600; }
+
+  /* Status: pushed to right on first line */
+  .tt-table-responsive td:last-child { margin-left: auto; }
+
+  /* Headsign: full-width second line */
+  .tt-table-responsive .tt-headsign-cell {
+    flex: 0 0 100%;
+    order: 10;
+    font-size: .8rem;
+    color: #6c757d;
+    padding-top: .1rem;
+  }
+
+  /* Leg/platform: hidden on mobile */
+  .tt-table-responsive .tt-seq-cell,
+  .tt-table-responsive .tt-platform-cell { display: none !important; }
 }
 
 #tt-results .table td,
