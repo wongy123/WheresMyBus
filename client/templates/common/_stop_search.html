@@ -42,7 +42,7 @@
     var basePath = {{ base_path | tojson
   }};
   var dest = {{ dest | tojson }};
-  var hrefBase = dest === 'timetable' ? basePath + '/timetable/stop' : basePath + '/stops';
+  var hrefBase = basePath + '/stops';
 
   var map = L.map({{ (uid ~ '-map') | tojson }}).setView([-27.47, 153.02], 12);
   var userLocationMarker = null;

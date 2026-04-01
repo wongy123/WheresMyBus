@@ -1,1 +1,8 @@
 .env
+
+# AI tool configs
+.claude/
+.playwright-mcp/
+
+# Test artifacts
+test-results/

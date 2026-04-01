@@ -1,11 +1,11 @@
 {% extends "base.html" %}
+{% block title %}{{ stop.stop_name }}{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 {% endblock %}
 {% block content %}
 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-1">
   <h1 class="h4 mb-0">{{ stop.stop_name }}</h1>
-  <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/stop/{{ stop.stop_id }}">View Full Timetable</a>
 </div>
 {% if parent_station %}
 <div class="mb-2">
@@ -27,6 +27,8 @@
   .route-filter-btn {
     transition: opacity .15s;
     cursor: pointer;
+    min-height: 2rem;
+    padding: 0.25rem 0.6rem;
   }
 
   #route-filter-badges.has-filter .route-filter-btn:not(.active) {
@@ -37,9 +39,6 @@
     box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, .45);
   }
 
-  #stop-timetable.filter-active nav {
-    display: none !important;
-  }
 </style>
 <div class="mb-4">
   <div class="fw-semibold small mb-2">
@@ -67,23 +66,19 @@
 
     function applyFilter() {
       var ttEl = document.getElementById('stop-timetable');
-      var anyActive = !!badgesEl.querySelector('.route-filter-btn.active');
+      var activeRoutes = Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
+        .map(function (b) { return b.dataset.route; });
+      var anyActive = activeRoutes.length > 0;
       badgesEl.classList.toggle('has-filter', anyActive);
       hintEl.style.display = anyActive ? '' : 'none';
 
       if (ttEl) {
         ttEl.classList.toggle('filter-active', anyActive);
-        // Instantly show/hide rows — no server round-trip needed.
-        var active = new Set(
-          Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
-            .map(function (b) { return b.dataset.route; })
-        );
-        var tbody = ttEl.querySelector('table tbody');
-        if (tbody) {
-          tbody.querySelectorAll('tr[data-route]').forEach(function (tr) {
-            tr.style.display = (anyActive && !active.has(tr.dataset.route)) ? 'none' : '';
-          });
-        }
+        // Store active routes and re-fetch from server (gets all pages for filtered route)
+        ttEl.dataset.ttRoutes = activeRoutes.join(',');
+        var pageEl = ttEl.querySelector('[data-tt-page]');
+        if (pageEl) pageEl.dataset.ttPage = '1';
+        htmx.trigger(ttEl, 'filterChange');
       }
       if (window._renderFilteredVehicles) window._renderFilteredVehicles();
     }
@@ -92,16 +87,12 @@
       var btn = e.target.closest('.route-filter-btn');
       if (!btn) return;
       btn.classList.toggle('active');
-      var _ps = document.querySelector('#stop-timetable [data-tt-page]');
-      if (_ps) _ps.dataset.ttPage = '1';
       applyFilter();
     });
 
     document.getElementById('route-filter-clear').addEventListener('click', function (e) {
       e.preventDefault();
       badgesEl.querySelectorAll('.route-filter-btn.active').forEach(function (b) { b.classList.remove('active'); });
-      var _ps = document.querySelector('#stop-timetable [data-tt-page]');
-      if (_ps) _ps.dataset.ttPage = '1';
       applyFilter();
     });
 
@@ -109,14 +100,38 @@
       if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') applyFilter();
     });
   }());
+
+  function setTtWindow(btn, duration) {
+    document.querySelectorAll('.tt-window-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var tt = document.getElementById('stop-timetable');
+    tt.dataset.ttDuration = duration;
+    var pageEl = tt.querySelector('[data-tt-page]');
+    if (pageEl) pageEl.dataset.ttPage = '1';
+    htmx.trigger(tt, 'windowChange');
+  }
 </script>
 {% endif %}
 
-<h2 class="h5 mb-2">Upcoming Services</h2>
+<div class="d-flex align-items-center justify-content-between mb-2">
+  <h2 class="h5 mb-0">Upcoming Services</h2>
+  <div class="btn-group btn-group-sm" role="group" aria-label="Time window">
+    <button type="button" class="btn btn-outline-secondary tt-window-btn active" onclick="setTtWindow(this,'3600')">1h</button>
+    <button type="button" class="btn btn-outline-secondary tt-window-btn" onclick="setTtWindow(this,'7200')">2h</button>
+    <button type="button" class="btn btn-outline-secondary tt-window-btn" onclick="setTtWindow(this,'14400')">4h</button>
+  </div>
+</div>
 <div id="stop-timetable"
-  hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?duration=3600&limit=10&hx_target=%23stop-timetable"
-  hx-trigger="load, every 5s" hx-target="this" hx-swap="innerHTML"
-  hx-vals='js:{"page": document.querySelector("#stop-timetable [data-tt-page]")?.dataset.ttPage || "1"}'
+  data-tt-duration="3600"
+  data-tt-routes=""
+  hx-get="{{ BASE_PATH }}/hx/timetable/stop/{{ stop.stop_id }}?hx_target=%23stop-timetable"
+  hx-trigger="load, every 5s, windowChange, filterChange" hx-target="this" hx-swap="innerHTML"
+  hx-vals='js:{
+    "page": document.querySelector("#stop-timetable [data-tt-page]")?.dataset.ttPage || "1",
+    "duration": document.getElementById("stop-timetable")?.dataset.ttDuration || "3600",
+    "routes": document.getElementById("stop-timetable")?.dataset.ttRoutes || "",
+    "limit": document.getElementById("stop-timetable")?.dataset.ttRoutes ? "50" : (({"3600":"10","7200":"20","14400":"30"})[document.getElementById("stop-timetable")?.dataset.ttDuration] || "10")
+  }'
   aria-live="polite">
   <div class="text-muted small d-flex align-items-center gap-2">
     <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
