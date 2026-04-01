@@ -22,6 +22,10 @@
   {% if stop.zone_id %} &bull; Zone: {{ stop.zone_id }}{% endif %}
 </div>
 
+<div hx-get="{{ BASE_PATH }}/hx/alerts/banner?stop_id={{ stop.stop_id }}"
+     hx-trigger="load"
+     hx-swap="outerHTML"></div>
+
 {% if routes %}
 <style>
   .route-filter-btn {

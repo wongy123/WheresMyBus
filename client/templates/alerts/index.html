@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "common/_pagination.html" import timetable_pagination %}
+{% block title %}Service Alerts{% endblock %}
+{% block content %}
+
+{% set severity_icons = {
+  'danger':    'error',
+  'warning':   'warning',
+  'info':      'info',
+  'secondary': 'notifications'
+} %}
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+  <h1 class="h3 mb-0">Service Alerts</h1>
+  {% if pagination.total is defined %}
+  <span class="badge text-bg-secondary">{{ pagination.total }} active</span>
+  {% endif %}
+</div>
+
+{% if not alerts %}
+<div class="alert alert-success d-flex align-items-center gap-2" role="alert">
+  <span class="material-symbols-outlined">check_circle</span>
+  <span>No active service alerts. All services are operating normally.</span>
+</div>
+{% else %}
+
+<div class="d-flex flex-column gap-3 mb-4" id="alerts-list">
+  {% for alert in alerts %}
+  {% set sev = alert.effectSeverity or 'secondary' %}
+  <div class="card border-{{ sev }} border-start border-top-0 border-end-0 border-bottom-0 border-3 shadow-sm">
+    <div class="card-body">
+      <div class="d-flex align-items-start gap-2">
+        <span class="material-symbols-outlined text-{{ sev }} mt-1 flex-shrink-0" aria-hidden="true"
+          style="font-size:1.25rem">{{ severity_icons.get(sev, 'notifications') }}</span>
+        <div class="flex-grow-1 min-width-0">
+          <div class="fw-semibold mb-1">
+            {{ alert.headerText or '(No summary)' }}
+          </div>
+
+          <div class="d-flex flex-wrap gap-1 mb-2">
+            {% if alert.effectLabel %}
+            <span class="badge text-bg-{{ sev }}">{{ alert.effectLabel }}</span>
+            {% endif %}
+            {% if alert.causeLabel %}
+            <span class="badge text-bg-secondary">{{ alert.causeLabel }}</span>
+            {% endif %}
+          </div>
+
+          {% if alert.routeIds or alert.stopIds %}
+          <div class="d-flex flex-wrap gap-1 mb-2">
+            {% for rid in alert.routeIds[:8] %}
+            <a href="{{ BASE_PATH }}/routes/{{ rid }}"
+               class="badge text-decoration-none text-bg-light border">{{ rid }}</a>
+            {% endfor %}
+            {% if alert.routeIds | length > 8 %}
+            <span class="badge text-bg-light border text-muted">+{{ alert.routeIds | length - 8 }} more routes</span>
+            {% endif %}
+            {% for sid in alert.stopIds[:6] %}
+            <a href="{{ BASE_PATH }}/stops/{{ sid }}"
+               class="badge text-decoration-none text-bg-light border">Stop {{ sid }}</a>
+            {% endfor %}
+            {% if alert.stopIds | length > 6 %}
+            <span class="badge text-bg-light border text-muted">+{{ alert.stopIds | length - 6 }} more stops</span>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          {% if alert.url %}
+          <a href="{{ alert.url }}" target="_blank" rel="noopener"
+             class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1">
+            <span class="material-symbols-outlined" style="font-size:.9rem;line-height:1;">open_in_new</span>
+            View on Translink
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% set page_count = pagination.pageCount or 1 %}
+{% set total = pagination.total or 0 %}
+{% if page_count > 1 %}
+{{ timetable_pagination(
+     page=page,
+     page_count=page_count,
+     limit=limit,
+     page_base=BASE_PATH ~ '/alerts?limit=' ~ limit,
+     total=total
+   ) }}
+{% endif %}
+
+{% endif %}
+{% endblock %}

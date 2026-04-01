@@ -1,0 +1,31 @@
+{# templates/common/_alerts_banner.html
+   Compact alert callout for stop/route detail pages.
+   Used via HTMX: hx-get="/hx/alerts/banner?route_id=X"
+#}
+{% if alerts %}
+{% set top = alerts | sort(attribute='effectSeverity') | first %}
+{% set sev = top.effectSeverity or 'secondary' %}
+{% set sev_map = {'danger': 'danger', 'warning': 'warning', 'info': 'info', 'secondary': 'secondary'} %}
+<div class="alert alert-{{ sev_map.get(sev, 'secondary') }} py-2 px-3 d-flex align-items-start gap-2 mb-3" role="alert">
+  <span class="material-symbols-outlined flex-shrink-0 mt-1" aria-hidden="true"
+    style="font-size:1.1rem;line-height:1.4">{% if sev == 'danger' %}error{% elif sev == 'warning' %}warning{% else %}info{% endif %}</span>
+  <div class="flex-grow-1 small">
+    {% for alert in alerts %}
+    <div {% if not loop.first %}class="mt-1 pt-1 border-top border-{{ sev_map.get(alert.effectSeverity, 'secondary') }} border-opacity-25"{% endif %}>
+      <span class="fw-semibold">{{ alert.headerText or '(No summary)' }}</span>
+      {% if alert.effectLabel %}
+      <span class="badge text-bg-{{ alert.effectSeverity or 'secondary' }} ms-1" style="font-size:.7rem">{{ alert.effectLabel }}</span>
+      {% endif %}
+      {% if alert.url %}
+      <a href="{{ alert.url }}" target="_blank" rel="noopener" class="ms-1 text-nowrap">Details ↗</a>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if alerts | length > 0 %}
+    <div class="mt-1">
+      <a href="{{ BASE_PATH }}/alerts" class="text-nowrap">View all alerts →</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
