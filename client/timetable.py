@@ -1,49 +1,26 @@
 # timetable.py
 import os
 from concurrent.futures import ThreadPoolExecutor
-from flask import Blueprint, render_template, request, abort
+from flask import Blueprint, render_template, request, abort, redirect, url_for
 from api import api_get
 from helpers import get_route_directions, validate_direction
 
 bp = Blueprint("timetable", __name__)
 DEFAULT_DURATION = int(os.environ.get("DURATION_SECONDS", "7200"))  # 2h
 
-# ---------- Entry ----------
+# ---------- Entry (redirected to home) ----------
 @bp.route("/timetable")
 def timetable_index():
-    return render_template("timetable/index.html")
+    return redirect("/", 301)
 
-# ---------- Shareable pages ----------
+# ---------- Legacy pages → redirect to detail pages ----------
 @bp.route("/timetable/stop/<stop_id>")
 def timetable_by_stop(stop_id: str):
-    stop = api_get(f"stops/{stop_id}")
-    if stop is None:
-        abort(404)
-    duration = request.args.get("duration", type=int) or DEFAULT_DURATION
-    page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 10, type=int)
-    platforms = []
-    if stop.get("location_type") == 1:
-        platforms_data = api_get(f"stops/{stop_id}/platforms") or {}
-        platforms = platforms_data.get("data", [])
-    return render_template("timetable/stop.html", stop=stop, duration=duration, page=page, limit=limit, platforms=platforms)
+    return redirect(f"/stops/{stop_id}", 301)
 
 @bp.route("/timetable/route/<route_id>")
 def timetable_by_route(route_id: str):
-    route = api_get(f"routes/{route_id}")
-    if route is None:
-        abort(404)
-    direction = request.args.get("direction", default=0, type=int)
-    duration = request.args.get("duration", type=int) or 3600
-    page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 10, type=int)
-    available_directions, default_direction = get_route_directions(route_id)
-    direction = validate_direction(direction, available_directions)
-    return render_template("timetable/route.html",
-                           route=route, direction=direction, duration=duration,
-                           page=page, limit=limit,
-                           available_directions=available_directions,
-                           default_direction=default_direction)
+    return redirect(f"/routes/{route_id}", 301)
 
 # ---------- HTMX fragments ----------
 @bp.get("/hx/timetable/stop/<stop_id>")

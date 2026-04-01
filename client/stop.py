@@ -1,6 +1,7 @@
 # stop.py
 import os
-from flask import Blueprint, render_template, request, abort, jsonify
+from concurrent.futures import ThreadPoolExecutor
+from flask import Blueprint, render_template, request, abort, jsonify, redirect
 from api import api_get
 
 bp = Blueprint("stop", __name__)
@@ -33,6 +34,20 @@ def stops_suggest():
         href_prefix=href_prefix, suggest_id=suggest_id, suggest_url=suggest_url,
         BASE_PATH=BASE_PATH,
     )
+
+@bp.get("/hx/search/combined")
+def hx_search_combined():
+    q = (request.args.get("q") or "").strip()
+    stops, routes = [], []
+    if q:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            sf = pool.submit(api_get, "stops/search", {"q": q, "limit": 4})
+            rf = pool.submit(api_get, "routes/search", {"q": q, "limit": 3})
+            stops = (sf.result() or {}).get("data", [])
+            routes = (rf.result() or {}).get("data", [])
+    return render_template("common/_search_combined.html",
+                           q=q, stops=stops, routes=routes, BASE_PATH=BASE_PATH)
+
 
 @bp.get("/hx/stops/nearby")
 def stops_nearby():

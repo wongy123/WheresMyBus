@@ -121,7 +121,12 @@
     document.querySelectorAll('.tt-time').forEach(function (el) {
       var minEl = el.querySelector('.tt-min');
       var absEl = el.querySelector('.tt-abs');
-      minEl.textContent = w.fmtMins(w.minsFromNow(el.dataset.time));
+      // Prefer server-computed minutes_away (timezone-safe); fall back to
+      // client-side calculation for rows that don't provide it.
+      var minsAway = el.dataset.minsAway !== undefined && el.dataset.minsAway !== ''
+        ? parseInt(el.dataset.minsAway, 10)
+        : w.minsFromNow(el.dataset.time);
+      minEl.textContent = w.fmtMins(minsAway);
       el.addEventListener('click', function () {
         minEl.classList.toggle('d-none');
         absEl.classList.toggle('d-none');

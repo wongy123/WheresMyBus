@@ -891,6 +891,17 @@ ORDER BY f.win_sec ASC;
 
   const rows = await withDb(db => db.prepare(sql).all(params), configPath);
 
+  // Clear SQL view's precomputed RT fields before re-enriching from Redis,
+  // consistent with getUpcomingByStop/getUpcomingByStation. Without this,
+  // stale delays baked into the view persist after the Redis TTL expires.
+  for (const r of rows) {
+    r.estimated_arrival_time = null;
+    r.estimated_departure_time = null;
+    r.arrival_delay = null;
+    r.departure_delay = null;
+    r.real_time_data = 0;
+  }
+
   // Enrich with realtime (cache) then re-sort by effective time
   const enriched = await enrichRowsWithRealtime(rows);
   enriched.sort((a, b) =>
@@ -1023,20 +1034,27 @@ ORDER BY f.win_sec ASC;
     const out = [];
 
     for (const [tripId, currentSeq] of staleByTrip) {
+      // Use win_sec (not event_sec) to filter by day — stop_events_3day has
+      // yesterday/today/tomorrow rows with identical event_sec values. Without
+      // this, LIMIT 1 with no ORDER BY can return yesterday's row (win_sec < 0).
       let next = db.prepare(stopSelectSql + `
         WHERE trip_id = $tripId
           AND stop_sequence = $currentSeq
-          AND event_sec >= $minSec
+          AND win_sec >= $minWinSec
+        ORDER BY win_sec ASC
         LIMIT 1
-      `).get({ tripId, currentSeq, minSec: secNow - MAX_OVERDUE_SEC });
+      `).get({ tripId, currentSeq, minWinSec: secNow - MAX_OVERDUE_SEC });
       if (!next) {
         // If the exact stop has just fallen outside the freshness window,
         // still prefer the GPS-reported sequence over jumping ahead.
+        // ABS(win_sec - secNow) picks the row closest to now, ensuring
+        // today's row wins over yesterday's or tomorrow's.
         next = db.prepare(stopSelectSql + `
           WHERE trip_id = $tripId
             AND stop_sequence = $currentSeq
+          ORDER BY ABS(win_sec - $secNow) ASC
           LIMIT 1
-        `).get({ tripId, currentSeq });
+        `).get({ tripId, currentSeq, secNow });
       }
       if (!next) {
         // Final fallback: nearest downstream stop still in the active window.
@@ -1052,20 +1070,24 @@ ORDER BY f.win_sec ASC;
     }
 
     for (const [tripId, currentSeq] of behindByTrip) {
+      // Use win_sec (not event_sec) — same day-bucket fix as staleByTrip above.
       let prev = db.prepare(stopSelectSql + `
         WHERE trip_id = $tripId
           AND stop_sequence = $currentSeq
-          AND event_sec >= $minSec
+          AND win_sec >= $minWinSec
+        ORDER BY win_sec ASC
         LIMIT 1
-      `).get({ tripId, currentSeq, minSec: secNow - MAX_OVERDUE_SEC });
+      `).get({ tripId, currentSeq, minWinSec: secNow - MAX_OVERDUE_SEC });
       if (!prev) {
         // If the exact stop has become older than MAX_OVERDUE_SEC but GPS still
         // reports the vehicle at this sequence, prefer that sequence anyway.
+        // ABS(win_sec - secNow) picks today's row over yesterday's or tomorrow's.
         prev = db.prepare(stopSelectSql + `
           WHERE trip_id = $tripId
             AND stop_sequence = $currentSeq
+          ORDER BY ABS(win_sec - $secNow) ASC
           LIMIT 1
-        `).get({ tripId, currentSeq });
+        `).get({ tripId, currentSeq, secNow });
       }
       if (!prev) {
         // Final fallback: choose the nearest downstream stop in the window.
@@ -1359,6 +1381,12 @@ export async function getUpcomingByStop(
     return s;
   };
   visible.sort((a, b) => effectiveSec(a) - effectiveSec(b));
+  // Compute server-side minutes_away so the client doesn't need to derive it
+  // from a Brisbane HH:MM string using browser local time (timezone-unsafe).
+  for (const r of visible) {
+    const eSec = effectiveRowSec(r);
+    r.minutes_away = eSec != null ? Math.max(0, Math.round((eSec - startSec) / 60)) : null;
+  }
   // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
   for (const r of visible) {
     r.scheduled_arrival_time = normalizeHms(r.scheduled_arrival_time);
@@ -1468,6 +1496,12 @@ export async function getUpcomingByStation(
     return s;
   };
   visible.sort((a, b) => effectiveSecStn(a) - effectiveSecStn(b));
+  // Compute server-side minutes_away so the client doesn't need to derive it
+  // from a Brisbane HH:MM string using browser local time (timezone-unsafe).
+  for (const r of visible) {
+    const eSec = effectiveRowSec(r);
+    r.minutes_away = eSec != null ? Math.max(0, Math.round((eSec - startSec) / 60)) : null;
+  }
   // Normalize GTFS overflow scheduled times for display (e.g. "24:50:00" → "00:50:00")
   for (const r of visible) {
     r.scheduled_arrival_time = normalizeHms(r.scheduled_arrival_time);

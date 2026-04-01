@@ -1,0 +1,72 @@
+{# Combined stop + route search results for the home page search bar.
+   Called by /hx/search/combined?q=...
+   Clicking item → shows on map (homeSelectStop / homeShowRoute).
+   "Select" button inside each item → navigates to detail page. #}
+{% if q %}
+<div class="list-group shadow-sm" role="listbox" style="max-height:420px;overflow-y:auto;">
+  {% if stops %}
+  <div class="list-group-item py-1 px-3"
+    style="background:#f8f9fa;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6c757d;pointer-events:none;cursor:default;">
+    Stops
+  </div>
+  {% for s in stops %}
+  {% set is_place = s.location_type == 1 %}
+  <div class="list-group-item list-group-item-action d-flex align-items-center justify-content-between py-2 gap-2"
+    style="cursor:pointer;"
+    role="option"
+    onclick="window.homeSelectStop && window.homeSelectStop(this.dataset.stopId)"
+    data-stop-id="{{ s.stop_id }}">
+    <span class="me-2">
+      <strong class="d-block lh-sm">{{ s.stop_name }}</strong>
+      <small class="text-muted">{{ 'Stop ' ~ s.stop_code if s.stop_code else 'ID: ' ~ s.stop_id }}</small>
+    </span>
+    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+      {% if is_place %}<span class="badge text-bg-info">Interchange</span>{% endif %}
+      <a href="{{ BASE_PATH }}/stops/{{ s.stop_id }}" class="btn btn-sm btn-primary"
+        onclick="event.stopPropagation()">Select</a>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if routes %}
+  <div class="list-group-item py-1 px-3"
+    style="background:#f8f9fa;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6c757d;pointer-events:none;cursor:default;">
+    Routes
+  </div>
+  {% for r in routes %}
+  {% set bg = '#' + (r.route_color or 'CCCCCC') %}
+  {% set fg = '#' + (r.route_text_color or '000000') %}
+  <div class="list-group-item list-group-item-action d-flex align-items-center justify-content-between py-2 gap-2"
+    style="cursor:pointer;"
+    role="option"
+    onclick="window.homeShowRoute && window.homeShowRoute(this.dataset.routeId, this.dataset.routeColor, this.dataset.routeShort, +this.dataset.routeType, this.dataset.routeLong)"
+    data-route-id="{{ r.route_id }}"
+    data-route-color="{{ r.route_color or '' }}"
+    data-route-short="{{ r.route_short_name }}"
+    data-route-type="{{ r.route_type or 3 }}"
+    data-route-long="{{ r.route_long_name }}">
+    <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+      <span class="badge rounded-pill px-2 py-1 flex-shrink-0"
+        style="background-color:{{ bg }};color:{{ fg }};font-size:.8rem;">{{ r.route_short_name }}</span>
+      <strong class="lh-sm text-truncate">{{ r.route_long_name }}</strong>
+    </div>
+    <a href="{{ BASE_PATH }}/routes/{{ r.route_id }}" class="btn btn-sm btn-primary flex-shrink-0"
+      onclick="event.stopPropagation()">Select</a>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if not stops and not routes %}
+  <div class="list-group-item text-muted small py-2">No stops or routes match "{{ q }}".</div>
+  {% endif %}
+</div>
+{% endif %}
+<script>
+(function () {
+  var stops = {{ stops | tojson }};
+  var routes = {{ routes | tojson }};
+  if (typeof window.stopSearchUpdateMap === 'function') window.stopSearchUpdateMap(stops);
+  if ((stops.length || routes.length) && typeof window.homeRevealMap === 'function') window.homeRevealMap();
+}());
+</script>

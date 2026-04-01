@@ -5,35 +5,47 @@
 {% endblock %}
 {% block content %}
 
-<div class="py-4 text-center">
-  <h1 class="display-5 fw-bold mb-2">Where's My Bus?</h1>
-  <p class="lead text-muted mb-4">Real-time timetables for South East Queensland public transport.</p>
-
-  <div class="d-flex justify-content-center align-items-center gap-2 flex-wrap mb-2">
-    <button id="home-nearby-btn" class="btn btn-primary btn-lg" type="button">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-geo-alt me-2"
-        viewBox="0 0 16 16">
-        <path
-          d="M12.166 8.94c-.524 1.062-1.234 2.12-1.96 3.07A32 32 0 0 1 8 14.58a32 32 0 0 1-2.206-2.57c-.726-.95-1.436-2.008-1.96-3.07C3.304 7.867 3 6.862 3 6a5 5 0 0 1 10 0c0 .862-.305 1.867-.834 2.94M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10" />
-        <path d="M8 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4m0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6" />
-      </svg>
-      Find stops near me
-    </button>
-  </div>
-  <div class="text-center mb-3">
-    <span id="home-nearby-status" class="text-muted small"></span>
-  </div>
+<div class="text-center mb-3 pt-2">
+  <h1 class="display-5 fw-bold mb-1">Where's My Bus?</h1>
+  <p class="lead text-muted mb-0">Real-time timetables for South East Queensland public transport.</p>
 </div>
 
-<div id="home-map-row" class="row g-3 align-items-start mb-4 d-none">
-  {# Left: results list (below map on mobile) #}
-  <div class="col-lg-5 order-2 order-lg-1" style="position:relative; z-index:2;">
-    <div id="home-nearby-results" style="max-height: 340px; overflow-y: auto;"></div>
-    <p class="mt-3 text-muted small">Click "Find stops near me" to see stops on the map.</p>
+<div class="row g-3 align-items-start mb-4">
+  {# ── Left: search + nearby (starts full-width; shrinks when map appears) ── #}
+  <div id="home-search-col" class="col-12 col-lg-12" style="position:relative; z-index:2;">
+    <div class="mx-auto" style="max-width:480px;">
+      <div class="position-relative">
+        <input id="home-search" name="q" type="search" class="form-control"
+          placeholder="Search stops or routes…" autocomplete="off"
+          aria-label="Search stops or routes"
+          hx-get="{{ BASE_PATH }}/hx/search/combined"
+          hx-trigger="input changed delay:250ms, search"
+          hx-target="#home-search-results"
+          hx-swap="innerHTML" />
+        <div id="home-search-results" class="typeahead-list shadow-sm" style="display:none;"></div>
+      </div>
+    </div>
+
+    <div class="mt-3 d-flex justify-content-center align-items-center gap-2">
+      <button id="home-nearby-btn" class="btn btn-outline-secondary btn-sm" type="button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1"
+          viewBox="0 0 16 16">
+          <path
+            d="M12.166 8.94c-.524 1.062-1.234 2.12-1.96 3.07A32 32 0 0 1 8 14.58a32 32 0 0 1-2.206-2.57c-.726-.95-1.436-2.008-1.96-3.07C3.304 7.867 3 6.862 3 6a5 5 0 0 1 10 0c0 .862-.305 1.867-.834 2.94M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10" />
+          <path d="M8 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4m0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6" />
+        </svg>
+        Use my location
+      </button>
+      <span id="home-nearby-status" class="text-muted small"></span>
+    </div>
+
+    <div id="home-nearby-results" style="max-height: 320px; overflow-y: auto;"></div>
+
+    <p class="mt-3 text-muted small">Try "City Hall", "Garden City", or enter a stop code.</p>
   </div>
 
-  {# Right: map (above results on mobile) #}
-  <div class="col-lg-7 order-1 order-lg-2" style="position:relative; z-index:1;">
+  {# ── Right: map (hidden until first search/location) ── #}
+  <div id="home-map-col" class="col-lg-7 order-1 order-lg-2 d-none" style="position:relative; z-index:1;">
     <div id="home-map" class="map-container" style="height: 350px;"></div>
   </div>
 </div>
@@ -41,27 +53,7 @@
 <hr class="my-2">
 
 <div class="row g-4 mt-1">
-  <div class="col-md-4">
-    <div class="card h-100 border-0 shadow-sm">
-      <div class="card-body">
-        <div class="mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor"
-            class="bi bi-calendar3 text-primary" viewBox="0 0 16 16">
-            <path
-              d="M14 0H2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2M1 3.857C1 3.384 1.448 3 2 3h12c.552 0 1 .384 1 .857v10.286c0 .473-.448.857-1 .857H2c-.552 0-1-.384-1-.857z" />
-            <path
-              d="M6.5 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2m3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2m3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2m-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2m3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2m3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2m-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2m3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2" />
-          </svg>
-        </div>
-        <h5 class="card-title">Timetable</h5>
-        <p class="card-text text-muted small">View upcoming services at any stop or for any route, with live delay
-          information where available.</p>
-        <a href="{{ BASE_PATH }}/timetable" class="btn btn-outline-primary btn-sm">Open Timetable</a>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="card h-100 border-0 shadow-sm">
       <div class="card-body">
         <div class="mb-3">
@@ -79,7 +71,7 @@
     </div>
   </div>
 
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="card h-100 border-0 shadow-sm">
       <div class="card-body">
         <div class="mb-3">
@@ -90,8 +82,8 @@
           </svg>
         </div>
         <h5 class="card-title">Routes</h5>
-        <p class="card-text text-muted small">Browse all bus, train, and ferry routes in SEQ. Search by number, name, or
-          train line.</p>
+        <p class="card-text text-muted small">Browse all bus, train, and ferry routes in SEQ. Search by number, name,
+          or train line.</p>
         <a href="{{ BASE_PATH }}/routes" class="btn btn-outline-primary btn-sm">Browse Routes</a>
       </div>
     </div>
@@ -101,129 +93,320 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   (function () {
-    var basePath = {{ BASE_PATH | tojson
-  }};
-
-  var map = L.map('home-map').setView([-27.47, 153.02], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19
-  }).addTo(map);
-
-  function makeIcon(s) {
-    return window.TRANSIT.makeStopIcon(s);
-  }
-
-  var markerByStopId = {};
-  var userLocationMarker = null;
-  var userWatchId = null;
-  var hasCenteredOnUser = false;
-  var lastNearbyAt = 0;
-  var lastNearbyLatLng = null;
-  var selectedStopId = null;
-  var userIcon = L.divIcon({
-    className: '',
-    html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;text-shadow:0 1px 3px rgba(0,0,0,.4);line-height:1;">person_pin_circle</span>',
-    iconSize: [32, 32], iconAnchor: [16, 32]
-  });
-
-  function updateUserLocationMarker(lat, lng) {
-    if (userLocationMarker) {
-      userLocationMarker.setLatLng([lat, lng]);
-    } else {
-      userLocationMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map).bindPopup('<b>Your location</b>');
-    }
-  }
-
-  function refreshNearby(lat, lng, force) {
-    var now = Date.now();
-    var point = L.latLng(lat, lng);
-    if (!force && lastNearbyLatLng && (now - lastNearbyAt) < 8000 && map.distance(lastNearbyLatLng, point) < 40) {
-      return;
-    }
-    lastNearbyAt = now;
-    lastNearbyLatLng = point;
-    htmx.ajax('GET',
-      basePath + '/hx/stops/nearby?dest=details&lat=' + lat + '&lng=' + lng,
-      { target: '#home-nearby-results', swap: 'innerHTML' }
-    );
-  }
-
-  function startLiveLocationTracking(statusEl, forceNearby) {
-    if (userWatchId != null) return;
-    userWatchId = navigator.geolocation.watchPosition(
-      function (pos) {
-        statusEl.textContent = '';
-        var lat = pos.coords.latitude;
-        var lng = pos.coords.longitude;
-        updateUserLocationMarker(lat, lng);
-        if (!hasCenteredOnUser) {
-          hasCenteredOnUser = true;
-          if (!selectedStopId) {
-            map.setView([lat, lng], 15);
-          }
-        }
-        refreshNearby(lat, lng, !!forceNearby);
-      },
-      function (err) {
-        statusEl.textContent = 'Could not get location: ' + err.message;
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
-    );
-  }
-
-  window.stopSearchUpdateMap = function (stops) {
-    Object.values(markerByStopId).forEach(function (m) { map.removeLayer(m); });
-    markerByStopId = {};
-    var valid = (stops || []).filter(function (s) { return s.stop_lat && s.stop_lon; });
-    if (!valid.length) return;
-    valid.forEach(function (s) {
-      var popup = '<b>' + s.stop_name + '</b>' +
-        '<br><a href="' + basePath + '/stops/' + s.stop_id + '" class="map-popup-link">Select</a>';
-      var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s) }).addTo(map).bindPopup(popup);
-      m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
-      markerByStopId[s.stop_id] = m;
+    var basePath = {{ BASE_PATH | tojson }};
+    var userIcon = L.divIcon({
+      className: '',
+      html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;text-shadow:0 1px 3px rgba(0,0,0,.4);line-height:1;">person_pin_circle</span>',
+      iconSize: [32, 32], iconAnchor: [16, 32]
     });
-    if (selectedStopId && markerByStopId[selectedStopId]) {
-      markerByStopId[selectedStopId].openPopup();
-      return;
-    }
-    var points = valid.map(function (s) { return [s.stop_lat, s.stop_lon]; });
-    if (userLocationMarker) points.push(userLocationMarker.getLatLng());
-    if (points.length === 1) {
-      map.setView(points[0], 16);
-      return;
-    }
-    map.fitBounds(L.latLngBounds(points), { padding: [30, 30], maxZoom: 16 });
-  };
 
-  window.stopSearchFocusStop = function (stopId) {
-    var m = markerByStopId[stopId];
-    if (!m) return;
-    selectedStopId = stopId;
-    map.flyTo(m.getLatLng(), 16);
-    m.openPopup();
-  };
+    var map = L.map('home-map').setView([-27.47, 153.02], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }).addTo(map);
 
-  document.getElementById('home-nearby-btn').addEventListener('click', function () {
-    var statusEl = document.getElementById('home-nearby-status');
-    if (!navigator.geolocation) { statusEl.textContent = 'Geolocation not supported.'; return; }
-    statusEl.textContent = 'Getting location…';
-    document.getElementById('home-map-row').classList.remove('d-none');
-    map.invalidateSize();
-    hasCenteredOnUser = false;
-    // Hide hint text
-    var hint = document.querySelector('#home-nearby-results + p');
-    if (hint) hint.style.display = 'none';
-    startLiveLocationTracking(statusEl, true);
-  });
+    var markerByStopId = {};
+    var nearbyMarkerById = {};
+    var userLocationMarker = null;
+    var userWatchId = null;
+    var hasCenteredOnUser = false;
+    var lastNearbyAt = 0;
+    var lastNearbyLatLng = null;
+    var selectedStopId = null;
+    var mapRevealed = false;
+    var isLg = function () { return window.innerWidth >= 992; };
 
-  window.addEventListener('pagehide', function () {
-    if (userWatchId != null && navigator.geolocation) {
-      navigator.geolocation.clearWatch(userWatchId);
-      userWatchId = null;
+    // ── Reveal map with slide animation ──
+    window.homeRevealMap = function () {
+      if (mapRevealed) return;
+      mapRevealed = true;
+
+      var mapCol = document.getElementById('home-map-col');
+      var searchCol = document.getElementById('home-search-col');
+      var large = isLg();
+
+      // Prepare map col invisible before unhiding
+      mapCol.style.opacity = '0';
+      mapCol.style.transform = large ? 'translateX(20px)' : 'translateY(-10px)';
+      mapCol.classList.remove('d-none');
+
+      if (large) {
+        searchCol.classList.add('order-lg-1');
+        // Pin current width so browser has a "from" value to transition from
+        searchCol.style.flexBasis = '100%';
+        searchCol.style.maxWidth = '100%';
+
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            searchCol.style.transition = 'flex-basis 0.7s cubic-bezier(0.4,0,0.2,1), max-width 0.7s cubic-bezier(0.4,0,0.2,1)';
+            searchCol.style.flexBasis = '41.66667%';
+            searchCol.style.maxWidth = '41.66667%';
+            mapCol.style.transition = 'opacity 0.7s cubic-bezier(0.4,0,0.2,1), transform 0.7s cubic-bezier(0.4,0,0.2,1)';
+            mapCol.style.opacity = '1';
+            mapCol.style.transform = 'none';
+            setTimeout(function () { map.invalidateSize(); }, 720);
+          });
+        });
+      } else {
+        // FLIP: record search position before reorder, apply offsetting transform,
+        // then animate it sliding down into its new position
+        var before = searchCol.getBoundingClientRect();
+        searchCol.classList.add('order-2');
+        searchCol.getBoundingClientRect(); // force reflow
+        var after = searchCol.getBoundingClientRect();
+        var deltaY = before.top - after.top;
+        searchCol.style.transform = 'translateY(' + deltaY + 'px)';
+
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            searchCol.style.transition = 'transform 0.7s cubic-bezier(0.4,0,0.2,1)';
+            searchCol.style.transform = 'none';
+            mapCol.style.transition = 'opacity 0.7s cubic-bezier(0.4,0,0.2,1), transform 0.7s cubic-bezier(0.4,0,0.2,1)';
+            mapCol.style.opacity = '1';
+            mapCol.style.transform = 'none';
+            setTimeout(function () { map.invalidateSize(); }, 720);
+          });
+        });
+      }
+    };
+
+    // ── Hide map with slide animation (search cleared, no active location) ──
+    window.homeHideMap = function () {
+      if (!mapRevealed) return;
+      mapRevealed = false;
+
+      var mapCol = document.getElementById('home-map-col');
+      var searchCol = document.getElementById('home-search-col');
+      var large = isLg();
+
+      mapCol.style.transition = 'opacity 0.7s cubic-bezier(0.4,0,0.2,1), transform 0.7s cubic-bezier(0.4,0,0.2,1)';
+      mapCol.style.opacity = '0';
+      mapCol.style.transform = large ? 'translateX(20px)' : 'translateY(-10px)';
+
+      if (large) {
+        searchCol.style.transition = 'flex-basis 0.7s cubic-bezier(0.4,0,0.2,1), max-width 0.7s cubic-bezier(0.4,0,0.2,1)';
+        searchCol.style.flexBasis = '100%';
+        searchCol.style.maxWidth = '100%';
+      } else {
+        // FLIP in reverse: record position, remove order-2, apply offsetting transform, animate to 0
+        var before = searchCol.getBoundingClientRect();
+        searchCol.classList.remove('order-2');
+        searchCol.getBoundingClientRect(); // force reflow
+        var after = searchCol.getBoundingClientRect();
+        var deltaY = before.top - after.top;
+        searchCol.style.transform = 'translateY(' + deltaY + 'px)';
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            searchCol.style.transition = 'transform 0.7s cubic-bezier(0.4,0,0.2,1)';
+            searchCol.style.transform = 'none';
+          });
+        });
+      }
+
+      setTimeout(function () {
+        mapCol.classList.add('d-none');
+        mapCol.style.transition = '';
+        mapCol.style.opacity = '';
+        mapCol.style.transform = '';
+        searchCol.classList.remove('order-lg-1');
+        searchCol.style.transition = '';
+        searchCol.style.transform = '';
+        searchCol.style.flexBasis = '';
+        searchCol.style.maxWidth = '';
+      }, 720);
+    };
+
+    // ── Route overlay ──
+    var _routePolylines = [];
+    var _routeVehicleMarkers = {};
+
+    function _clearRouteOverlay() {
+      _routePolylines.forEach(function (p) { map.removeLayer(p); });
+      _routePolylines = [];
+      Object.values(_routeVehicleMarkers).forEach(function (m) { map.removeLayer(m); });
+      _routeVehicleMarkers = {};
     }
-  });
-}());
+
+    window.homeShowRoute = function (routeId, routeColor, shortName, routeType, longName) {
+      window.homeRevealMap();
+      map.closePopup();
+      _clearRouteOverlay();
+
+      var color = routeColor ? '#' + routeColor : window.TRANSIT.vehicleColor(routeType || 3);
+      var iconName = window.TRANSIT.vehicleIcon(routeType || 3);
+
+      // Fetch both direction shapes
+      var allCoords = [];
+      var pending = 2;
+      function fetchShape(dir) {
+        fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId) + '/shape?direction=' + dir)
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            var pts = (data.data || []).map(function (p) { return [p.lat, p.lon]; });
+            if (pts.length >= 2) {
+              var poly = L.polyline(pts, { color: color, weight: 4, opacity: dir === 0 ? 0.85 : 0.5 }).addTo(map);
+              _routePolylines.push(poly);
+              pts.forEach(function (p) { allCoords.push(p); });
+            }
+          })
+          .catch(function () {})
+          .finally(function () {
+            pending--;
+            if (pending === 0 && allCoords.length) {
+              map.fitBounds(L.latLngBounds(allCoords), { padding: [30, 30] });
+            }
+          });
+      }
+      fetchShape(0);
+      fetchShape(1);
+
+      // Fetch live vehicles from both directions
+      [0, 1].forEach(function (dir) {
+        fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId) + '/upcoming?direction=' + dir + '&limit=60&duration=7200')
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            (data.data || []).forEach(function (t) {
+              if (!t.vehicle_latitude || !t.vehicle_longitude) return;
+              if (_routeVehicleMarkers[t.trip_id]) return;
+              var popup = '<b>' + shortName + '</b>' + (t.trip_headsign ? ' — ' + t.trip_headsign : '') +
+                '<br><a href="' + basePath + '/routes/' + encodeURIComponent(routeId) + '" class="map-popup-link">View route</a>';
+              var m = L.marker([t.vehicle_latitude, t.vehicle_longitude], {
+                icon: window.TRANSIT.makeVehicleIcon(color, iconName),
+                zIndexOffset: 1000
+              }).addTo(map).bindPopup(popup, { autoPan: false });
+              _routeVehicleMarkers[t.trip_id] = m;
+            });
+          })
+          .catch(function () {});
+      });
+    };
+
+    // ── Stop focus: looks in both search and nearby marker maps ──
+    window.stopSearchFocusStop = function (stopId) {
+      var m = markerByStopId[stopId] || nearbyMarkerById[stopId];
+      if (!m) return;
+      selectedStopId = stopId;
+      map.flyTo(m.getLatLng(), 16);
+      m.openPopup();
+    };
+
+    window.homeSelectStop = function (stopId) {
+      window.homeRevealMap();
+      window.stopSearchFocusStop(stopId);
+    };
+
+    // ── Stop markers from search (replaces previous search markers only) ──
+    window.stopSearchUpdateMap = function (stops) {
+      Object.values(markerByStopId).forEach(function (m) { map.removeLayer(m); });
+      markerByStopId = {};
+      var valid = (stops || []).filter(function (s) { return s.stop_lat && s.stop_lon; });
+      if (!valid.length) return;
+      valid.forEach(function (s) {
+        var popup = '<b>' + s.stop_name + '</b>' +
+          '<br><a href="' + basePath + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
+        var m = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s) })
+          .addTo(map).bindPopup(popup);
+        m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
+        markerByStopId[s.stop_id] = m;
+      });
+      if (selectedStopId && markerByStopId[selectedStopId]) {
+        markerByStopId[selectedStopId].openPopup();
+        return;
+      }
+      var points = valid.map(function (s) { return [s.stop_lat, s.stop_lon]; });
+      if (userLocationMarker) points.push(userLocationMarker.getLatLng());
+      if (points.length === 1) { map.setView(points[0], 16); return; }
+      map.fitBounds(L.latLngBounds(points), { padding: [30, 30], maxZoom: 16 });
+    };
+
+    // ── Nearby stop markers (kept separate so search markers aren't clobbered) ──
+    window.stopNearbyUpdateMap = function (stops) {
+      Object.values(nearbyMarkerById).forEach(function (m) { map.removeLayer(m); });
+      nearbyMarkerById = {};
+      (stops || []).forEach(function (s) {
+        if (!s.stop_lat || !s.stop_lon) return;
+        var popup = '<b>' + s.stop_name + '</b>' +
+          '<br><a href="' + basePath + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
+        var m = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s) })
+          .addTo(map).bindPopup(popup);
+        m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
+        nearbyMarkerById[s.stop_id] = m;
+      });
+    };
+
+    // ── User location ──
+    function updateUserLocationMarker(lat, lng) {
+      if (userLocationMarker) {
+        userLocationMarker.setLatLng([lat, lng]);
+      } else {
+        userLocationMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map).bindPopup('<b>Your location</b>');
+      }
+    }
+
+    function refreshNearby(lat, lng, force) {
+      var now = Date.now();
+      var point = L.latLng(lat, lng);
+      if (!force && lastNearbyLatLng && (now - lastNearbyAt) < 8000 && map.distance(lastNearbyLatLng, point) < 40) return;
+      lastNearbyAt = now;
+      lastNearbyLatLng = point;
+      htmx.ajax('GET',
+        basePath + '/hx/stops/nearby?dest=details&lat=' + lat + '&lng=' + lng,
+        { target: '#home-nearby-results', swap: 'innerHTML' }
+      );
+    }
+
+    function startLiveLocationTracking(statusEl, forceNearby) {
+      if (userWatchId != null) return;
+      userWatchId = navigator.geolocation.watchPosition(
+        function (pos) {
+          statusEl.textContent = '';
+          var lat = pos.coords.latitude;
+          var lng = pos.coords.longitude;
+          updateUserLocationMarker(lat, lng);
+          if (!hasCenteredOnUser) {
+            hasCenteredOnUser = true;
+            if (!selectedStopId) map.setView([lat, lng], 15);
+          }
+          refreshNearby(lat, lng, !!forceNearby);
+        },
+        function (err) { statusEl.textContent = 'Could not get location: ' + err.message; },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      );
+    }
+
+    // Show/hide search results dropdown; hide map when search is cleared
+    var searchResultsEl = document.getElementById('home-search-results');
+    document.getElementById('home-search').addEventListener('input', function () {
+      if (!this.value.trim()) {
+        searchResultsEl.style.display = 'none';
+        if (userWatchId == null) window.homeHideMap();
+      }
+    });
+    searchResultsEl.addEventListener('htmx:afterSwap', function () {
+      searchResultsEl.style.display = searchResultsEl.innerHTML.trim() ? '' : 'none';
+    });
+    document.addEventListener('htmx:afterSwap', function (e) {
+      if (e.detail.target === searchResultsEl) {
+        searchResultsEl.style.display = searchResultsEl.innerHTML.trim() ? '' : 'none';
+      }
+    });
+
+    document.getElementById('home-nearby-btn').addEventListener('click', function () {
+      var statusEl = document.getElementById('home-nearby-status');
+      if (!navigator.geolocation) { statusEl.textContent = 'Geolocation not supported.'; return; }
+      statusEl.textContent = 'Getting location…';
+      window.homeRevealMap();
+      hasCenteredOnUser = false;
+      startLiveLocationTracking(statusEl, true);
+    });
+
+    window.addEventListener('pagehide', function () {
+      if (userWatchId != null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(userWatchId);
+        userWatchId = null;
+      }
+    });
+  }());
 </script>
 {% endblock %}

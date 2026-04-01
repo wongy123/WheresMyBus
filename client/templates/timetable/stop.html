@@ -1,5 +1,6 @@
 <!-- templates/timetable/stop.html -->
 {% extends "base.html" %}
+{% block title %}{{ stop.stop_name }}{% endblock %}
 {% block content %}
 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-1">
   <h1 class="h4 mb-0">Upcoming at {{ stop.stop_name }}</h1>

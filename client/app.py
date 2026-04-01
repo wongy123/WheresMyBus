@@ -2,7 +2,7 @@
 import os
 from datetime import datetime
 import pytz
-from flask import Flask, render_template
+from flask import Flask, render_template, redirect, url_for
 from flask_htmx import HTMX
 
 # Config from env
@@ -72,6 +72,15 @@ def create_app():
     @app.route(about_rule)
     def about():
         return render_template("about.html")
+
+    @app.route("/favicon.ico")
+    def favicon():
+        return redirect(url_for("static", filename="favicon.svg"))
+
+    # -------- Error handlers --------
+    @app.errorhandler(404)
+    def not_found(e):
+        return render_template("404.html"), 404
 
     # -------- Blueprints --------
     from route import bp as route_bp

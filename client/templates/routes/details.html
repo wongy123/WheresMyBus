@@ -1,5 +1,6 @@
 <!-- templates/routes/details.html -->
 {% extends "base.html" %}
+{% block title %}{{ route.route_short_name }} — {{ route.route_long_name }}{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
@@ -39,7 +40,7 @@
       </div>
     </div>
   </div>
-  <a class="btn btn-primary btn-sm" href="{{ BASE_PATH }}/timetable/route/{{ route.route_id }}">View Full Timetable</a>
+
 </div>
 
 <div class="d-flex align-items-center flex-wrap gap-3 mb-3">

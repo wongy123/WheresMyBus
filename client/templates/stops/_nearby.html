@@ -35,6 +35,7 @@
 <script>
 (function () {
   var stops = {{ items | tojson if items else '[]' }};
-  if (typeof window.stopSearchUpdateMap === 'function') window.stopSearchUpdateMap(stops);
+  if (typeof window.stopNearbyUpdateMap === 'function') window.stopNearbyUpdateMap(stops);
+  else if (typeof window.stopSearchUpdateMap === 'function') window.stopSearchUpdateMap(stops);
 }());
 </script>
