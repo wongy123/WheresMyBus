@@ -3,29 +3,36 @@
    Used via HTMX: hx-get="/hx/alerts/banner?route_id=X"
 #}
 {% if alerts %}
-{% set top = alerts | sort(attribute='effectSeverity') | first %}
-{% set sev = top.effectSeverity or 'secondary' %}
-{% set sev_map = {'danger': 'danger', 'warning': 'warning', 'info': 'info', 'secondary': 'secondary'} %}
-<div class="alert alert-{{ sev_map.get(sev, 'secondary') }} py-2 px-3 d-flex align-items-start gap-2 mb-3" role="alert">
-  <span class="material-symbols-outlined flex-shrink-0 mt-1" aria-hidden="true"
-    style="font-size:1.1rem;line-height:1.4">{% if sev == 'danger' %}error{% elif sev == 'warning' %}warning{% else %}info{% endif %}</span>
+<div class="alert alert-secondary py-2 px-3 d-flex align-items-start gap-2 mb-3" role="alert">
+  <span class="material-symbols-outlined flex-shrink-0 mt-1 text-warning" aria-hidden="true"
+    style="font-size:1.1rem;line-height:1.4">warning</span>
   <div class="flex-grow-1 small">
     {% for alert in alerts %}
-    <div {% if not loop.first %}class="mt-1 pt-1 border-top border-{{ sev_map.get(alert.effectSeverity, 'secondary') }} border-opacity-25"{% endif %}>
-      <span class="fw-semibold">{{ alert.headerText or '(No summary)' }}</span>
-      {% if alert.effectLabel %}
-      <span class="badge text-bg-{{ alert.effectSeverity or 'secondary' }} ms-1" style="font-size:.7rem">{{ alert.effectLabel }}</span>
-      {% endif %}
+    <div {% if not loop.first %}class="mt-2 pt-2 border-top border-secondary border-opacity-25"{% endif %}>
+      <div class="d-flex align-items-start flex-wrap gap-1">
+        <span class="fw-semibold flex-grow-1">{{ alert.headerText or '(No summary)' }}</span>
+        {% if alert.effectLabel %}
+        <span class="badge text-bg-{{ alert.effectSeverity or 'secondary' }} flex-shrink-0" style="font-size:.7rem">{{ alert.effectLabel }}</span>
+        {% endif %}
+      </div>
       {% if alert.url %}
-      <a href="{{ alert.url }}" target="_blank" rel="noopener" class="ms-1 text-nowrap">Details ↗</a>
+      <div class="mt-1">
+        <a href="{{ alert.url }}" target="_blank" rel="noopener"
+           class="btn btn-sm btn-outline-secondary py-0 d-inline-flex align-items-center gap-1">
+          <span class="material-symbols-outlined" style="font-size:.85rem;line-height:1.5">open_in_new</span>
+          Details
+        </a>
+      </div>
       {% endif %}
     </div>
     {% endfor %}
-    {% if alerts | length > 0 %}
-    <div class="mt-1">
-      <a href="{{ BASE_PATH }}/alerts" class="text-nowrap">View all alerts →</a>
+    <div class="mt-2">
+      <a href="{{ BASE_PATH }}/alerts"
+         class="btn btn-sm btn-outline-secondary py-0 d-inline-flex align-items-center gap-1">
+        <span class="material-symbols-outlined" style="font-size:.85rem;line-height:1.5">notifications</span>
+        View all alerts
+      </a>
     </div>
-    {% endif %}
   </div>
 </div>
 {% endif %}
