@@ -216,13 +216,12 @@
   color: var(--rt-color-fresh);
 }
 
-.gps-icon .material-symbols-outlined {
-  color: #0d6efd;
+.rt-icon.invisible,
+.gps-icon.invisible {
+  pointer-events: none;
+  cursor: default;
 }
 
-/* ─────────────────────────────────────────────
-   Timetable table
-   ───────────────────────────────────────────── */
 .tt-time {
   cursor: pointer;
 }
@@ -253,7 +252,12 @@
 }
 
 .tt-table-responsive .table th:last-child,
-.tt-table-responsive .table td:last-child { width: 7rem; }
+.tt-table-responsive .table td:last-child { width: 9.5rem; }
+
+/* Status cell: badge left, icons pinned to right edge of fixed column */
+.tt-table-responsive .table td:last-child > .d-flex {
+  justify-content: space-between;
+}
 
 /* On mobile: headsign on its own line via flex layout */
 @media (max-width: 575.98px) {
@@ -281,8 +285,12 @@
   /* Time + Route: auto-width on first line */
   .tt-table-responsive td:nth-child(1) { font-weight: 600; }
 
-  /* Status: pushed to right on first line */
-  .tt-table-responsive td:last-child { margin-left: auto; }
+  /* Platform + Status: grouped on the right; platform loses its auto margin,
+     status keeps it so the pair is pushed to the far right together.
+     Status has a fixed min-width so the platform badge stays at a consistent
+     horizontal position regardless of ETA text length. */
+  .tt-table-responsive .tt-platform-cell { margin-left: auto; align-self: center; margin-right: .35rem; }
+  .tt-table-responsive td:last-child { margin-left: 0; align-self: center; min-width: 7rem; }
 
   /* Headsign: full-width second line */
   .tt-table-responsive .tt-headsign-cell {
@@ -293,13 +301,14 @@
     padding-top: .1rem;
   }
 
-  /* Leg/platform: hidden on mobile */
-  .tt-table-responsive .tt-seq-cell,
-  .tt-table-responsive .tt-platform-cell { display: none !important; }
+  /* Leg/seq: hidden on mobile */
+  .tt-table-responsive .tt-seq-cell { display: none !important; }
 }
 
 #tt-results .table td,
-#tt-results .table th {
+#tt-results .table th,
+.tt-table-responsive .table td,
+.tt-table-responsive .table th {
   vertical-align: middle;
 }
 
