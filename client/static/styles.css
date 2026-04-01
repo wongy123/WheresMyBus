@@ -280,8 +280,10 @@
   /* Time + Route: auto-width on first line */
   .tt-table-responsive td:nth-child(1) { font-weight: 600; }
 
-  /* Status: pushed to right on first line */
-  .tt-table-responsive td:last-child { margin-left: auto; }
+  /* Platform + Status: grouped on the right; platform loses its auto margin,
+     status keeps it so the pair is pushed to the far right together */
+  .tt-table-responsive .tt-platform-cell { margin-left: auto; align-self: center; }
+  .tt-table-responsive td:last-child { margin-left: 0; align-self: center; }
 
   /* Headsign: full-width second line */
   .tt-table-responsive .tt-headsign-cell {
@@ -292,13 +294,14 @@
     padding-top: .1rem;
   }
 
-  /* Leg/seq: hidden on mobile; platform: shown inline, vertically centered */
+  /* Leg/seq: hidden on mobile */
   .tt-table-responsive .tt-seq-cell { display: none !important; }
-  .tt-table-responsive .tt-platform-cell { align-self: center; }
 }
 
 #tt-results .table td,
-#tt-results .table th {
+#tt-results .table th,
+.tt-table-responsive .table td,
+.tt-table-responsive .table th {
   vertical-align: middle;
 }
 
