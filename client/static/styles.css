@@ -254,6 +254,11 @@
 .tt-table-responsive .table th:last-child,
 .tt-table-responsive .table td:last-child { width: 7rem; }
 
+/* Status cell: badge left, icons pinned to right edge of fixed column */
+.tt-table-responsive .table td:last-child > .d-flex {
+  justify-content: space-between;
+}
+
 /* On mobile: headsign on its own line via flex layout */
 @media (max-width: 575.98px) {
   .tt-table-responsive thead { display: none; }
