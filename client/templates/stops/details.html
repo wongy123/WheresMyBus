@@ -51,23 +51,29 @@
     var badgesEl = document.getElementById('route-filter-badges');
     var hintEl = document.getElementById('route-filter-hint');
 
-    function applyFilter() {
+    function applyFilterVisuals() {
       var ttEl = document.getElementById('stop-timetable');
       var activeRoutes = Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
         .map(function (b) { return b.dataset.route; });
       var anyActive = activeRoutes.length > 0;
       badgesEl.classList.toggle('has-filter', anyActive);
       hintEl.classList.toggle('d-none', !anyActive);
+      if (ttEl) ttEl.classList.toggle('filter-active', anyActive);
+      if (window._renderFilteredVehicles) window._renderFilteredVehicles();
+    }
 
+    function applyFilter() {
+      var ttEl = document.getElementById('stop-timetable');
+      var activeRoutes = Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
+        .map(function (b) { return b.dataset.route; });
+      applyFilterVisuals();
       if (ttEl) {
-        ttEl.classList.toggle('filter-active', anyActive);
-        // Store active routes and re-fetch from server (gets all pages for filtered route)
+        // Store active routes and re-fetch from page 1
         ttEl.dataset.ttRoutes = activeRoutes.join(',');
         var pageEl = ttEl.querySelector('[data-tt-page]');
         if (pageEl) pageEl.dataset.ttPage = '1';
         htmx.trigger(ttEl, 'filterChange');
       }
-      if (window._renderFilteredVehicles) window._renderFilteredVehicles();
     }
 
     badgesEl.addEventListener('click', function (e) {
@@ -84,7 +90,7 @@
     });
 
     document.addEventListener('htmx:afterSwap', function (evt) {
-      if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') applyFilter();
+      if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') applyFilterVisuals();
     });
   }());
 
