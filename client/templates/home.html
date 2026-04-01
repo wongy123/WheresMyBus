@@ -168,6 +168,9 @@
             setTimeout(function () {
               map.invalidateSize();
               searchCol.style.transition = ''; // clear so it doesn't linger into homeHideMap
+              // Scroll search input into view now that the map has settled into place
+              var inp = document.getElementById('home-search');
+              if (inp) inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }, 720);
           });
         });
@@ -415,43 +418,6 @@
       if (!this.value.trim()) {
         searchResultsEl.style.display = 'none';
         if (userWatchId == null) window.homeHideMap();
-      }
-    });
-    // On mobile, scroll the search bar into view once all animations have settled.
-    // Reads actual transition durations from inline styles set by homeRevealMap/homeHideMap,
-    // then adds keyboard appearance time via visualViewport resize or a short buffer.
-    function maxTransitionMs(el) {
-      if (!el || !el.style || !el.style.transition) return 0;
-      var max = 0, re = /([\d.]+)(m?s)/g, m;
-      while ((m = re.exec(el.style.transition)) !== null) {
-        var ms = parseFloat(m[1]) * (m[2] === 's' ? 1000 : 1);
-        if (ms > max) max = ms;
-      }
-      return max;
-    }
-    searchInput.addEventListener('focus', function () {
-      if (window.innerWidth >= 768) return;
-      var animMs = Math.max(
-        maxTransitionMs(document.getElementById('home-search-col')),
-        maxTransitionMs(document.getElementById('home-map-col'))
-      );
-      var doScroll = function () {
-        searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      };
-      if (window.visualViewport) {
-        // Fire after keyboard finishes resizing the viewport, plus any layout animation
-        var fired = false;
-        var onVVResize = function () {
-          if (fired) return;
-          fired = true;
-          window.visualViewport.removeEventListener('resize', onVVResize);
-          setTimeout(doScroll, animMs);
-        };
-        window.visualViewport.addEventListener('resize', onVVResize);
-        // Fallback: keyboard already open or visualViewport doesn't fire
-        setTimeout(function () { onVVResize(); }, animMs + 600);
-      } else {
-        setTimeout(doScroll, animMs + 400);
       }
     });
     searchResultsEl.addEventListener('htmx:afterSwap', function () {
