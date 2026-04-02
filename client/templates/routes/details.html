@@ -25,6 +25,13 @@
 {% set has_dir_0 = 0 in available_directions %}
 {% set has_dir_1 = 1 in available_directions %}
 
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{{ BASE_PATH }}/">Home</a></li>
+    <li class="breadcrumb-item"><a href="{{ BASE_PATH }}/routes">Routes</a></li>
+    <li class="breadcrumb-item active">{{ route.route_short_name }} — {{ route.route_long_name }}</li>
+  </ol>
+</nav>
 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
   <div class="d-flex align-items-center gap-3">
     <span class="badge rounded-pill px-3 py-2 fw-bold" style="background-color: {{ bg }}; color: {{ fg }}; font-size: 1.1rem;">

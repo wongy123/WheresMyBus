@@ -1,28 +1,138 @@
 <!-- templates/routes/index.html -->
 {% extends "base.html" %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4">Routes</h1>
 
-<div class="position-relative" style="max-width:700px">
-<input
-  id="route-typeahead"
-  name="q"
-  type="search"
-  class="form-control form-control-lg"
-  placeholder="Search route # or name..."
-  autocomplete="off"
-  hx-get="{{ BASE_PATH }}/hx/routes/suggest"
-  hx-trigger="input changed delay:250ms, search"
-  hx-target="#route-suggest"
-  hx-swap="innerHTML"
-  hx-include="this"
-/>
-  <div id=”route-suggest” class=”typeahead-list shadow-sm” style=”display:none;”></div>
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{{ BASE_PATH }}/">Home</a></li>
+    <li class="breadcrumb-item active">Routes</li>
+  </ol>
+</nav>
+<h1 class="h3 mb-3">Routes</h1>
+
+<div class="row g-3 align-items-start">
+  {# ── Left: search ── #}
+  <div class="col-lg-5 order-2 order-lg-1" style="position:relative; z-index:2;">
+    <div class="position-relative">
+      <input id="route-typeahead" name="q" type="search" class="form-control form-control-sm"
+        placeholder="Search route # or name…" autocomplete="off"
+        aria-label="Search routes"
+        hx-get="{{ BASE_PATH }}/hx/routes/suggest-map"
+        hx-trigger="input changed delay:250ms, search"
+        hx-target="#route-suggest"
+        hx-swap="innerHTML"
+        hx-include="this" />
+      <div id="route-suggest" class="typeahead-list shadow-sm" style="display:none;"></div>
+    </div>
+    <p class="mt-2 text-muted small">Tip: type "60", "R603", or a name like "Heathwood".</p>
+  </div>
+
+  {# ── Right: map ── #}
+  <div class="col-lg-7 order-1 order-lg-2" style="position:relative; z-index:1;">
+    <div id="route-index-map" class="map-container" style="height:400px;"></div>
+  </div>
 </div>
 
-<p class=”mt-3 text-muted small”>Tip: type “60”, “R603”, or a name like “Heathwood”.</p>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function () {
+  var basePath = {{ BASE_PATH | tojson }};
+
+  var map = L.map('route-index-map').setView([-27.47, 153.02], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  // User location
+  if (!map.getPane('userLocationPane')) {
+    map.createPane('userLocationPane').style.zIndex = 649;
+  }
+  var userLocationLayer = null;
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(function (pos) {
+      userLocationLayer = window.TRANSIT.updateUserLocation(
+        map, userLocationLayer,
+        pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 50
+      );
+    }, null, { enableHighAccuracy: false, maximumAge: 10000, timeout: 15000 });
+  }
+
+  var _routePolylines = [];
+  var _routeVehicleMarkers = {};
+
+  function _clearRouteOverlay() {
+    _routePolylines.forEach(function (p) { map.removeLayer(p); });
+    _routePolylines = [];
+    Object.values(_routeVehicleMarkers).forEach(function (m) { map.removeLayer(m); });
+    _routeVehicleMarkers = {};
+  }
+
+  window.showRouteOnMap = function (routeId, routeColor, shortName, routeType, longName) {
+    _clearRouteOverlay();
+    map.closePopup();
+
+    var color = routeColor ? '#' + routeColor : window.TRANSIT.vehicleColor(routeType || 3);
+    var iconName = window.TRANSIT.vehicleIcon(routeType || 3);
+
+    // Draw both direction shapes; fitBounds once both finish
+    var allCoords = [];
+    var pending = 2;
+    function fetchShape(dir) {
+      fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId) + '/shape?direction=' + dir)
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var pts = (data.data || []).map(function (p) { return [p.lat, p.lon]; });
+          if (pts.length >= 2) {
+            var poly = L.polyline(pts, {
+              color: color, weight: 4, opacity: dir === 0 ? 0.85 : 0.5
+            }).addTo(map);
+            _routePolylines.push(poly);
+            pts.forEach(function (p) { allCoords.push(p); });
+          }
+        })
+        .catch(function () {})
+        .finally(function () {
+          pending--;
+          if (pending === 0 && allCoords.length) {
+            map.fitBounds(L.latLngBounds(allCoords), { padding: [30, 30] });
+          }
+        });
+    }
+    fetchShape(0);
+    fetchShape(1);
+
+    // Live vehicles from both directions
+    [0, 1].forEach(function (dir) {
+      fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId) +
+            '/upcoming?direction=' + dir + '&limit=60&duration=7200')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          (data.data || []).forEach(function (t) {
+            if (!t.vehicle_latitude || !t.vehicle_longitude) return;
+            if (_routeVehicleMarkers[t.trip_id]) return;
+            var popup = window.TRANSIT.stopVehiclePopup({
+              routeShortName: shortName,
+              label: t.vehicle_label || '',
+              headsign: t.trip_headsign || '',
+              routeId: routeId,
+              basePath: basePath
+            });
+            var m = L.marker([t.vehicle_latitude, t.vehicle_longitude], {
+              icon: window.TRANSIT.makeVehicleIcon(color, iconName),
+              zIndexOffset: 1000
+            }).addTo(map).bindPopup(popup, { autoPan: false });
+            _routeVehicleMarkers[t.trip_id] = m;
+          });
+        })
+        .catch(function () {});
+    });
+  };
+
+  // Show/hide typeahead
   var suggestEl = document.getElementById('route-suggest');
   document.addEventListener('htmx:afterSwap', function (e) {
     if (e.detail.target === suggestEl) {
