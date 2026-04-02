@@ -32,3 +32,13 @@ export async function cacheSet(key, value, ttlSec) {
     // silently fail — cache is best-effort
   }
 }
+
+export async function cacheMGet(keys) {
+  if (!keys.length) return [];
+  try {
+    const results = await getClient().mget(keys);
+    return results.map(r => (r ? JSON.parse(r) : null));
+  } catch {
+    return keys.map(() => null);
+  }
+}

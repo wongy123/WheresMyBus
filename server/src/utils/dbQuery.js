@@ -21,6 +21,7 @@ async function getDb(configPath = defaultConfigPath) {
   if (dbCache.has(configPath)) return dbCache.get(configPath);
   const config = await loadConfig(configPath);
   const db = openDb(config);
+  db.pragma('mmap_size = 268435456'); // 256 MB memory-mapped I/O
   dbCache.set(configPath, db);
   return db;
 }

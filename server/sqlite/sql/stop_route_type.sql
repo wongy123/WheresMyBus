@@ -34,3 +34,10 @@ CREATE INDEX IF NOT EXISTS idx_stop_route_type_stop_id ON stop_route_type(stop_i
 -- Indexes for the lat/lon bounds query
 CREATE INDEX IF NOT EXISTS idx_stops_stop_lat ON stops(stop_lat);
 CREATE INDEX IF NOT EXISTS idx_stops_stop_lon ON stops(stop_lon);
+
+-- Composite index so route+direction filters use a single seek instead of
+-- scanning ~67K rows via the direction_id-only index.
+CREATE INDEX IF NOT EXISTS idx_trips_route_dir ON trips(route_id, direction_id);
+
+-- Update query planner statistics after all indexes are in place.
+ANALYZE;
