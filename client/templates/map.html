@@ -588,7 +588,10 @@
   var boundsDebounce = null;
   map.on('moveend', function () {
     clearTimeout(boundsDebounce);
-    boundsDebounce = setTimeout(loadBoundsMarkers, 350);
+    boundsDebounce = setTimeout(function () {
+      loadBoundsMarkers();
+      if (globalActive && !globalPaused) fetchAndRenderGlobal();
+    }, 350);
   });
 
   // ── Sidebar ───────────────────────────────────────────────────────────────
