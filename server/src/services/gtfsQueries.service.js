@@ -1,6 +1,6 @@
 // src/services/gtfsQueries.service.js
 import { getStops, getStopTimeUpdates } from 'gtfs';
-import { cacheGet } from './cache.service.js';
+import { cacheGet, cacheSet, cacheMGet } from './cache.service.js';
 import { getLatestVehiclePositions } from './gtfsRealtime.service.js';
 import crypto from 'node:crypto';
 import { getLineNames } from '../utils/routeNames.js';
@@ -313,8 +313,8 @@ async function enrichRowsWithRealtime(rows) {
 
   const tripIds = [...byTrip.keys()];
   const [rtLookups, vposLookups] = await Promise.all([
-    Promise.all(tripIds.map(id => cacheGet(tripKey(id)))),
-    Promise.all(tripIds.map(id => cacheGet(vposKey(id)))),
+    cacheMGet(tripIds.map(tripKey)),
+    cacheMGet(tripIds.map(vposKey)),
   ]);
   const rtMap = new Map(tripIds.map((id, i) => [id, rtLookups[i]]));
   const vposMap = new Map(tripIds.map((id, i) => [id, vposLookups[i]]));
@@ -640,6 +640,10 @@ export async function getRouteDirections(routeId, configPath = defaultConfigPath
 }
 
 export async function getStopsByRoute(routeId, direction = 0, configPath = defaultConfigPath) {
+  const cacheKey = `route:stops:${routeId}:${direction}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+
   const sql = `
     SELECT st.stop_sequence, st.stop_id, s.stop_name, s.stop_code, s.stop_lat, s.stop_lon
     FROM stop_times st
@@ -656,10 +660,13 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
     ORDER BY st.stop_sequence
   `;
 
-  const rows = await withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
-  if (rows.length > 0) return rows;
-  const altDir = direction === 0 ? 1 : 0;
-  return withDb(db => db.prepare(sql).all({ routeId, direction: altDir }), configPath);
+  let rows = await withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
+  if (!rows.length) {
+    const altDir = direction === 0 ? 1 : 0;
+    rows = await withDb(db => db.prepare(sql).all({ routeId, direction: altDir }), configPath);
+  }
+  if (rows.length > 0) await cacheSet(cacheKey, rows, 3600);
+  return rows;
 }
 
 export async function getRouteShape(routeId, direction = 0, configPath = defaultConfigPath) {
@@ -846,7 +853,7 @@ export async function getUpcomingByRoute(
   }
 
   const sql = `
-WITH filtered AS (
+WITH filtered AS MATERIALIZED (
   SELECT
     route_id, route_short_name, route_color, route_text_color,
     service_id, trip_id, trip_headsign, direction_id,
@@ -911,7 +918,7 @@ ORDER BY f.win_sec ASC;
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
   const tripIds = [...new Set(enriched.map(r => r.trip_id).filter(Boolean))];
-  const rtTripLookups = await Promise.all(tripIds.map(id => cacheGet(tripKey(id))));
+  const rtTripLookups = await cacheMGet(tripIds.map(tripKey));
   const rtTripMap = new Map(tripIds.map((id, i) => [id, rtTripLookups[i]]));
 
   // Find trips where the vehicle position disagrees with the time-window result.
