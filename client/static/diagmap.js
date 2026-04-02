@@ -115,9 +115,11 @@ function _diagUpdateFollowFooter(stopName, minutesAway, delaySec) {
   var etaStr = minutesAway !== '' && minutesAway != null ? window.fmtMins(parseFloat(minutesAway)) : '';
   var info = window.delayInfo(delaySec !== '' && delaySec != null ? Number(delaySec) : null);
   var html = '<span class="badge me-1" style="background:' + info.bg + ';color:' + info.fg + ';">' + info.label + '</span>';
-  if (stopName) html += '<span class="fw-semibold">' + stopName + '</span>';
-  if (stopName && etaStr) html += '<span class="text-muted mx-1">·</span>';
-  if (etaStr) html += '<span>' + etaStr + '</span>';
+  var detail = '';
+  if (stopName) detail += '<span class="fw-semibold">' + stopName + '</span>';
+  if (stopName && etaStr) detail += '<span class="text-muted mx-1">·</span>';
+  if (etaStr) detail += '<span>' + etaStr + '</span>';
+  if (detail) html += '<span class="d-none d-sm-inline">' + detail + '</span>';
   badge.innerHTML = html;
 }
 

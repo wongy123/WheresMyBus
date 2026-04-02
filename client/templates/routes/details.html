@@ -75,7 +75,7 @@
 
 <div id="route-page-map" class="map-container d-none mb-4"></div>
 
-<div id="route-diagram" class="d-none"
+<div id="route-diagram" class="d-none" style="overflow-anchor:none;"
   hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction={{ default_direction }}&duration=3600"
   hx-trigger="refresh" hx-target="this" hx-swap="innerHTML" aria-live="polite">
   <div class="text-muted small d-flex align-items-center gap-2">
@@ -104,16 +104,18 @@
       <div class="modal-body p-0">
         <div id="diagram-stop-map" style="height: 400px;"></div>
       </div>
-      <div class="modal-footer py-2 px-3 justify-content-between">
+      <div class="modal-footer py-2 px-3 gap-2" style="flex-wrap:nowrap;">
         <div class="d-flex gap-2 align-items-center">
           <a id="diagram-stop-link" href="#" class="btn btn-primary btn-sm">View Stop Details</a>
           <span id="diagram-follow-badge" class="small text-body" style="display:none;"></span>
           <button id="diagram-recenter-btn" type="button" class="btn btn-outline-primary btn-sm" style="display:none;" onclick="_diagResumeFollow()">
             <span class="material-symbols-outlined align-middle" style="font-size:.9rem;line-height:1.5;">my_location</span> Re-center
           </button>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="_diagFitRoute()">Fit Route</button>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        <div class="d-flex gap-2 ms-auto">
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="_diagFitRoute()">Fit Route</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -131,15 +133,9 @@
 
   var _loadingHTML = '<div class="text-muted small d-flex align-items-center gap-2"><div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div><span>Loading...</span></div>';
 
-  // Scroll position to restore after a silent diagram refresh (null = don't restore).
-  // Stored as a number so that 0 (top of page) is preserved correctly.
-  var _pendingDiagramScrollY = null;
-
   function _refreshDiagram(dir, showSpinner) {
     if (showSpinner) {
       document.getElementById('route-diagram').innerHTML = _loadingHTML;
-    } else {
-      _pendingDiagramScrollY = window.scrollY;
     }
     htmx.ajax('GET',
       '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction=' + dir + '&duration=3600',
@@ -247,10 +243,6 @@
     if (e.detail.target && e.detail.target.id === 'route-diagram') {
       _diagDrawVehicles();
       _pageMapDrawVehicles();
-      if (_pendingDiagramScrollY !== null) {
-        window.scrollTo(0, _pendingDiagramScrollY);
-        _pendingDiagramScrollY = null;
-      }
     }
   });
 

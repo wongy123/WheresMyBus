@@ -1673,30 +1673,30 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
     if (currentStopSequence != null && currentStopSequence > 0) {
       const exact = annotated.find(row => Number(row.stop_sequence) === Number(currentStopSequence));
 
-      // Validate the reported stop against GPS: if the vehicle is far from
-      // the reported stop, the feed's currentStopSequence is unreliable
-      // (TransLink sometimes reports seq=1 for the entire trip).
-      if (exact && hasGps && exact.stop_lat != null && exact.stop_lon != null) {
-        const dist = _haversineM(vehicleLat, vehicleLon, Number(exact.stop_lat), Number(exact.stop_lon));
-        if (dist <= MAX_STOP_DISTANCE_M) return exact;
-
-        // Depot bus protection: if the feed reports seq=1 and the trip's
-        // first stop departure is still in the future, the bus is likely
-        // waiting at a depot — don't GPS-override to a random mid-route stop.
-        if (Number(currentStopSequence) === 1) {
-          const firstStop = annotated
-            .filter(r => Number(r.stop_sequence) === 1)
-            .sort((a, b) => a._adjustedSec - b._adjustedSec)[0];
-          if (firstStop && firstStop._adjustedSec > secNow) return exact;
+      if (exact) {
+        // For seq=1 only: validate against GPS, since TransLink sometimes
+        // reports currentStopSequence=1 for the entire trip (known bogus pattern).
+        if (Number(currentStopSequence) === 1 && hasGps &&
+            exact.stop_lat != null && exact.stop_lon != null) {
+          const dist = _haversineM(vehicleLat, vehicleLon, Number(exact.stop_lat), Number(exact.stop_lon));
+          if (dist > MAX_STOP_DISTANCE_M) {
+            // Depot bus protection: if the trip's first stop departure is still
+            // in the future, the bus is likely waiting at a depot.
+            const firstStop = annotated
+              .filter(r => Number(r.stop_sequence) === 1)
+              .sort((a, b) => a._adjustedSec - b._adjustedSec)[0];
+            if (firstStop && firstStop._adjustedSec > secNow) return exact;
+            // Otherwise fall through to GPS-based matching below
+          } else {
+            return exact;
+          }
+        } else {
+          // For seq > 1, trust the RT value directly: the vehicle is STOPPED_AT
+          // or IN_TRANSIT_TO this stop and may legitimately be far away from it.
+          return exact;
         }
-
-        // Fall through to GPS-based matching below
-      } else if (exact && !hasGps) {
-        return exact;
-      }
-
-      // If GPS didn't invalidate, try nearest downstream by sequence
-      if (!hasGps) {
+      } else if (!hasGps) {
+        // No exact match but no GPS either — pick nearest downstream by sequence
         const bySequence = annotated
           .filter(row => Number(row.stop_sequence) >= Number(currentStopSequence))
           .sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence));

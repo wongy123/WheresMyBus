@@ -544,3 +544,17 @@
 .breadcrumb-item a:hover {
   text-decoration: underline;
 }
+
+/* Route diagram modal footer: container query to show/hide stop detail */
+.modal-footer {
+  container-type: inline-size;
+}
+.diag-follow-detail {
+  display: none;
+}
+@container (min-width: 560px) {
+  .diag-follow-detail {
+    display: inline;
+  }
+}
+
