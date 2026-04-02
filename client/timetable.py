@@ -94,10 +94,7 @@ def hx_timetable_route_diagram(route_id: str):
     direction = validate_direction(request.args.get("direction", type=int), available_directions)
     duration = request.args.get("duration", type=int) or DEFAULT_DURATION
 
-    # Determine the other direction so we can show all vehicles on the map.
-    other_direction = next((d for d in available_directions if d != direction), None)
-
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         route_future = pool.submit(api_get, f"routes/{route_id}")
         stops_future = pool.submit(api_get, f"routes/{route_id}/stops", {"direction": direction})
         upcoming_future = pool.submit(
@@ -105,17 +102,10 @@ def hx_timetable_route_diagram(route_id: str):
             f"routes/{route_id}/upcoming",
             {"direction": direction, "duration": duration, "limit": 100},
         )
-        # Fetch other direction's upcoming trips for the map (vehicles from both directions)
-        other_upcoming_future = (
-            pool.submit(api_get, f"routes/{route_id}/upcoming",
-                        {"direction": other_direction, "duration": duration, "limit": 100})
-            if other_direction is not None else None
-        )
 
         route = route_future.result() or {}
         stops_resp = stops_future.result() or {}
         upcoming_resp = upcoming_future.result() or {}
-        other_upcoming_resp = other_upcoming_future.result() or {} if other_upcoming_future else {}
 
     route_type = route.get("route_type", 3)
     route_color = route.get("route_color") or ""
@@ -140,11 +130,17 @@ def hx_timetable_route_diagram(route_id: str):
             continue
         vehicles_by_seq.setdefault(seq, []).append(t)
 
-    # Collect vehicles from BOTH directions for the geographic map.
-    all_trips = trips + (other_upcoming_resp.get("data", []) if other_upcoming_resp else [])
+    # Sort each group: longest ETA (or scheduled) at top, shortest at bottom.
+    for seq in vehicles_by_seq:
+        vehicles_by_seq[seq].sort(
+            key=lambda t: t["minutes_away"] if t.get("minutes_away") is not None else float("inf"),
+            reverse=True,
+        )
+
+    # Collect vehicles for the current direction only.
     seen_trips = set()
     vehicle_positions = []
-    for t in all_trips:
+    for t in trips:
         tid = t.get("trip_id")
         if tid in seen_trips:
             continue

@@ -100,7 +100,10 @@
       <div class="modal-footer py-2 px-3 justify-content-between">
         <div class="d-flex gap-2 align-items-center">
           <a id="diagram-stop-link" href="#" class="btn btn-primary btn-sm">View Stop Details</a>
-          <span id="diagram-follow-badge" class="badge bg-primary" style="display:none;"></span>
+          <span id="diagram-follow-badge" class="small text-body" style="display:none;"></span>
+          <button id="diagram-recenter-btn" type="button" class="btn btn-outline-primary btn-sm" style="display:none;" onclick="_diagResumeFollow()">
+            <span class="material-symbols-outlined align-middle" style="font-size:.9rem;line-height:1.5;">my_location</span> Re-center
+          </button>
           <button type="button" class="btn btn-outline-secondary btn-sm" onclick="_diagFitRoute()">Fit Route</button>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
@@ -119,13 +122,25 @@
   var scheduleLoadedForDirection = {{ default_direction | tojson }};
   var availableDirections = {{ available_directions | tojson }};
 
-  function _refreshDiagram(dir) {
+  var _loadingHTML = '<div class="text-muted small d-flex align-items-center gap-2"><div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div><span>Loading...</span></div>';
+
+  // Scroll position to restore after a silent diagram refresh (null = don't restore).
+  // Stored as a number so that 0 (top of page) is preserved correctly.
+  var _pendingDiagramScrollY = null;
+
+  function _refreshDiagram(dir, showSpinner) {
+    if (showSpinner) {
+      document.getElementById('route-diagram').innerHTML = _loadingHTML;
+    } else {
+      _pendingDiagramScrollY = window.scrollY;
+    }
     htmx.ajax('GET',
       '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/diagram?direction=' + dir + '&duration=3600',
       { target: '#route-diagram', swap: 'innerHTML' });
   }
 
   function _refreshSchedule(dir) {
+    document.getElementById('route-schedule').innerHTML = _loadingHTML;
     htmx.ajax('GET',
       '{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/schedule?direction=' + dir,
       { target: '#route-schedule', swap: 'innerHTML' });
@@ -133,7 +148,7 @@
 
   var diagramInterval = setInterval(function () {
     if (currentView === 'diagram' || currentView === 'map') {
-      _refreshDiagram(currentDirection);
+      _refreshDiagram(currentDirection, false);
     }
   }, 5000);
 
@@ -147,10 +162,10 @@
 
     if (currentView === 'diagram') {
       diagramLoaded = true;
-      _refreshDiagram(dir);
+      _refreshDiagram(dir, true);
       scheduleLoadedForDirection = -1;
     } else if (currentView === 'map') {
-      _refreshDiagram(dir);
+      _refreshDiagram(dir, true);
     } else {
       scheduleLoadedForDirection = dir;
       _refreshSchedule(dir);
@@ -225,6 +240,10 @@
     if (e.detail.target && e.detail.target.id === 'route-diagram') {
       _diagDrawVehicles();
       _pageMapDrawVehicles();
+      if (_pendingDiagramScrollY !== null) {
+        window.scrollTo(0, _pendingDiagramScrollY);
+        _pendingDiagramScrollY = null;
+      }
     }
   });
 
@@ -239,7 +258,7 @@
 
     if (view === 'diagram' && !diagramLoaded) {
       diagramLoaded = true;
-      _refreshDiagram(currentDirection);
+      _refreshDiagram(currentDirection, true, false);
     }
     if (view === 'schedule' && scheduleLoadedForDirection !== currentDirection) {
       scheduleLoadedForDirection = currentDirection;
@@ -257,6 +276,43 @@
       _pageMap.invalidateSize();
     }
   }
+
+  // Blur any focused element inside the modal before Bootstrap sets aria-hidden on close.
+  // Must check document.activeElement (not querySelector) because Bootstrap focuses the modal
+  // div itself (tabindex=-1) when dismissing via backdrop click.
+  document.getElementById('stopMapModal').addEventListener('hide.bs.modal', function () {
+    if (document.activeElement && this.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+  });
+
+  // ── User location dot (shown on both maps via shared TRANSIT helper) ────
+  var _lastUserPos   = null;
+  var _diagUserLayer = null;
+  var _pageUserLayer = null;
+
+  function _onUserPos(pos) {
+    _lastUserPos = pos;
+    var c = pos.coords;
+    if (_pageMap) _pageUserLayer = window.TRANSIT.updateUserLocation(_pageMap, _pageUserLayer, c.latitude, c.longitude, c.accuracy);
+    if (_diagMap) _diagUserLayer = window.TRANSIT.updateUserLocation(_diagMap, _diagUserLayer, c.latitude, c.longitude, c.accuracy);
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(_onUserPos, null,
+      { enableHighAccuracy: false, maximumAge: 10000, timeout: 15000 });
+  }
+
+  // Apply saved position when modal map becomes ready (diagmap.js inits _diagMap on shown.bs.modal)
+  document.getElementById('stopMapModal').addEventListener('shown.bs.modal', function () {
+    setTimeout(function () {
+      if (_diagMap && _lastUserPos) {
+        var c = _lastUserPos.coords;
+        _diagUserLayer = window.TRANSIT.updateUserLocation(_diagMap, _diagUserLayer, c.latitude, c.longitude, c.accuracy);
+      }
+    }, 0);
+  });
+  // ────────────────────────────────────────────────────────────────────────
 
   window.TRANSIT.addFullscreenBtn(document.getElementById('route-page-map'), function () { return _pageMap; });
   window.TRANSIT.addFullscreenBtn(document.getElementById('diagram-stop-map'), function () { return _diagMap; });

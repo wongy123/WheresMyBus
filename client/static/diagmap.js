@@ -12,6 +12,7 @@ var _diagMoveTimer     = null;
 var _diagFocusStopId   = null;
 var _diagFollowTripId  = null;
 var _diagFollowTimer   = null;
+var _diagUserPaused    = false;
 
 function _diagDrawRoute() {
   if (_diagPolyline) { _diagMap.removeLayer(_diagPolyline); _diagPolyline = null; }
@@ -98,11 +99,34 @@ function _diagDrawVehicles() {
 
 function _diagStopFollow() {
   _diagFollowTripId = null;
+  _diagUserPaused = false;
   if (_diagFollowTimer) { clearInterval(_diagFollowTimer); _diagFollowTimer = null; }
   var badge = document.getElementById('diagram-follow-badge');
   if (badge) badge.style.display = 'none';
+  var recenter = document.getElementById('diagram-recenter-btn');
+  if (recenter) recenter.style.display = 'none';
   var link = document.getElementById('diagram-stop-link');
   if (link) link.style.display = '';
+}
+
+function _diagUpdateFollowFooter(stopName, minutesAway, delaySec) {
+  var badge = document.getElementById('diagram-follow-badge');
+  if (!badge) return;
+  var etaStr = minutesAway !== '' && minutesAway != null ? window.fmtMins(parseFloat(minutesAway)) : '';
+  var info = window.delayInfo(delaySec !== '' && delaySec != null ? Number(delaySec) : null);
+  var html = '<span class="badge me-1" style="background:' + info.bg + ';color:' + info.fg + ';">' + info.label + '</span>';
+  if (stopName) html += '<span class="fw-semibold">' + stopName + '</span>';
+  if (stopName && etaStr) html += '<span class="text-muted mx-1">·</span>';
+  if (etaStr) html += '<span>' + etaStr + '</span>';
+  badge.innerHTML = html;
+}
+
+
+function _diagResumeFollow() {
+  _diagUserPaused = false;
+  var recenter = document.getElementById('diagram-recenter-btn');
+  if (recenter) recenter.style.display = 'none';
+  if (_diagFocusMarker) _diagMap.panTo(_diagFocusMarker.getLatLng());
 }
 
 function showStopMap(stopId, stopName, lat, lon) {
@@ -133,6 +157,13 @@ function _diagInitModal(lat, lon, onReady) {
       _diagMap.on('moveend', function () {
         clearTimeout(_diagMoveTimer);
         _diagMoveTimer = setTimeout(_diagLoadNearby, 400);
+      });
+      _diagMap.on('dragstart', function () {
+        if (_diagFollowTripId) {
+          _diagUserPaused = true;
+          var recenter = document.getElementById('diagram-recenter-btn');
+          if (recenter) recenter.style.display = '';
+        }
       });
     } else {
       _diagMap.invalidateSize();
@@ -169,7 +200,7 @@ function _diagSetVehicleFocus(label, headsign, lat, lon, minutesAway, stopName) 
   if (headsign) popup += '<br><span class="text-muted small">' + headsign + '</span>';
   if (stopName) popup += '<br><span class="small">Next: ' + stopName + '</span>';
   if (minutesAway !== '') popup += '<br><span class="small fw-semibold">' + window.fmtMins(parseFloat(minutesAway)) + '</span>';
-  _diagFocusMarker.bindPopup(popup).openPopup();
+  _diagFocusMarker.bindPopup(popup, { autoPan: false }).openPopup();
   _diagMap.setView([lat, lon], Math.max(_diagMap.getZoom(), 16));
   _diagLoadNearby();
 }
@@ -191,10 +222,9 @@ function _diagFollowVehicle(tripId) {
 
       // Update title and badge
       document.getElementById('stopMapModalLabel').textContent = label || 'Vehicle';
-      var badge = document.getElementById('diagram-follow-badge');
-      if (badge && minutesAway !== '') {
-        badge.textContent = window.fmtMins(parseFloat(minutesAway));
-      }
+      var delaySec = match.departure_delay != null ? match.departure_delay :
+                     match.arrival_delay   != null ? match.arrival_delay : null;
+      _diagUpdateFollowFooter(stopName, minutesAway, delaySec);
 
       // Move the focus marker
       if (_diagFocusMarker) {
@@ -205,7 +235,7 @@ function _diagFollowVehicle(tripId) {
         if (minutesAway !== '') popup += '<br><span class="small fw-semibold">' + window.fmtMins(parseFloat(minutesAway)) + '</span>';
         _diagFocusMarker.setPopupContent(popup);
       }
-      _diagMap.panTo([lat, lon]);
+      if (!_diagUserPaused) _diagMap.panTo([lat, lon]);
 
       // Also refresh vehicle markers
       _diagDrawVehicles();
@@ -221,19 +251,19 @@ function showVehicleMap(ds) {
   var headsign = ds.headsign || '';
   var stopName = ds.stopName || '';
   var minutesAway = ds.minutesAway || '';
+  var departureDelay = ds.departureDelay !== '' ? ds.departureDelay : null;
 
   _diagStopFollow();
   _diagFocusStopId = null;
   _diagFollowTripId = tripId;
+  _diagUserPaused = false;
 
   document.getElementById('stopMapModalLabel').textContent = label || 'Vehicle';
-  // Hide stop link, show follow badge
+  // Hide stop link, show follow info
   document.getElementById('diagram-stop-link').style.display = 'none';
   var badge = document.getElementById('diagram-follow-badge');
-  if (badge) {
-    badge.style.display = '';
-    badge.textContent = minutesAway !== '' ? window.fmtMins(parseFloat(minutesAway)) : 'Following…';
-  }
+  if (badge) badge.style.display = '';
+  _diagUpdateFollowFooter(stopName, minutesAway, departureDelay);
 
   var modalEl = document.getElementById('stopMapModal');
   if (_diagMap && modalEl.classList.contains('show')) {
