@@ -4,6 +4,13 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 {% endblock %}
 {% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{{ BASE_PATH }}/">Home</a></li>
+    <li class="breadcrumb-item"><a href="{{ BASE_PATH }}/stops">Stops</a></li>
+    <li class="breadcrumb-item active">{{ stop.stop_name }}</li>
+  </ol>
+</nav>
 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
   <h1 class="h4 mb-0">{{ stop.stop_name }}</h1>
 </div>
@@ -225,7 +232,7 @@
   // Current stop marker — white dot, colour from dominant route type
   var _curTypes = Object.values(routeTypeMap).map(Number);
   var _curPrimary = [2, 0, 4].find(function (t) { return _curTypes.indexOf(t) >= 0; }) || 3;
-  var stopMarker = L.marker([stopLat, stopLon], { icon: window.TRANSIT.makeRouteDot(window.TRANSIT.color(_curPrimary, false), 16) }).addTo(map)
+  var stopMarker = L.marker([stopLat, stopLon], { icon: window.TRANSIT.makeRouteDot(window.TRANSIT.color(_curPrimary, false), 16), zIndexOffset: 1500 }).addTo(map)
     .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Current stop</span>')
     .openPopup();
 
@@ -239,7 +246,7 @@
   var nearbyMarkerMap = {};
   nearby.forEach(function (s) {
     if (!s.stop_lat || !s.stop_lon) return;
-    var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) })
+    var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s), zIndexOffset: s.location_type === 1 ? 200 : 100 })
       .addTo(map).bindPopup(window.TRANSIT.makeStopPopup(s, BASE_PATH));
     nearbyMarkerMap[s.stop_id] = m;
   });
@@ -268,7 +275,7 @@
           if (!s.stop_lat || !s.stop_lon) return;
           if (s.stop_id === stopId) return;
           if (nearbyMarkerMap[s.stop_id]) return;
-          var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s) })
+          var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeNearbyIcon(s), zIndexOffset: s.location_type === 1 ? 200 : 100 })
             .addTo(map).bindPopup(window.TRANSIT.makeStopPopup(s, BASE_PATH));
           dynamicMarkerMap[s.stop_id] = m;
         });
@@ -305,7 +312,7 @@
       (results[1].data || []).forEach(function (s) {
         if (!s.stop_lat || !s.stop_lon) return;
         var m = L.marker([s.stop_lat, s.stop_lon], {
-          icon: window.TRANSIT.makeRouteDot(col), zIndexOffset: 300
+          icon: window.TRANSIT.makeRouteDot(col), zIndexOffset: s.location_type === 1 ? 200 : 100
         }).addTo(map);
         activeRouteStopMarkers.push(m);
       });

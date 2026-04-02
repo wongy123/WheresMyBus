@@ -45,6 +45,28 @@ def routes_suggest():
         BASE_PATH=BASE_PATH,
     )
 
+@bp.get("/hx/routes/suggest-map")
+def routes_suggest_map():
+    q = (request.args.get("q") or "").strip()
+    page = request.args.get("page", 1, type=int)
+    limit = request.args.get("limit", SUGGEST_LIMIT_DEFAULT, type=int)
+
+    items, pagination = [], {}
+    if q:
+        data = api_get("routes/search", {"q": q, "page": page, "limit": limit}) or {}
+        items = data.get("data", [])
+        pagination = data.get("pagination", {})
+
+    return render_template(
+        "routes/_suggest_map.html",
+        q=q,
+        items=items,
+        pagination=pagination,
+        limit=limit,
+        suggest_url=f"{BASE_PATH}/hx/routes/suggest-map",
+        BASE_PATH=BASE_PATH,
+    )
+
 @bp.route("/routes/<route_id>")
 def route_details(route_id: str):
     details = api_get(f"routes/{route_id}")

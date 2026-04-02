@@ -158,14 +158,19 @@
     // Usage: userLayer = TRANSIT.updateUserLocation(map, userLayer, lat, lon, acc);
     updateUserLocation: function (theMap, layer, lat, lon, acc) {
       if (layer) theMap.removeLayer(layer);
+      // Keep user location above all markers (markerPane z-index 600) by using a
+      // dedicated pane at 649 — below tooltips (650) but above everything else.
+      if (!theMap.getPane('userLocationPane')) {
+        theMap.createPane('userLocationPane').style.zIndex = 649;
+      }
       return L.layerGroup([
         L.circle([lat, lon], {
           radius: acc, color: '#4285F4', fillColor: '#4285F4',
-          fillOpacity: 0.12, weight: 1, interactive: false
+          fillOpacity: 0.12, weight: 1, interactive: false, pane: 'userLocationPane'
         }),
         L.circleMarker([lat, lon], {
           radius: 7, color: '#fff', fillColor: '#4285F4',
-          fillOpacity: 1, weight: 2.5, interactive: false
+          fillOpacity: 1, weight: 2.5, interactive: false, pane: 'userLocationPane'
         })
       ]).addTo(theMap);
     },

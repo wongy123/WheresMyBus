@@ -9,7 +9,7 @@
         placeholder="Search stop name or code…" autocomplete="off"
         hx-get="{{ base_path }}/hx/stops/suggest?dest={{ dest }}" hx-trigger="input changed delay:250ms, search"
         hx-target="#{{ uid }}-suggest" hx-swap="innerHTML" hx-include="this" />
-      <div id="{{ uid }}-suggest" class="typeahead-list shadow-sm"></div>
+      <div id="{{ uid }}-suggest" class="typeahead-list shadow-sm" style="display:none;"></div>
     </div>
 
     <div class="mt-3 d-flex align-items-center gap-2">
@@ -68,7 +68,7 @@
   function addStopMarker(s, targetMap) {
     var popup = '<b>' + s.stop_name + '</b>' +
       '<br><a href="' + hrefBase + '/' + s.stop_id + '" class="map-popup-link">Select</a>';
-    var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s) }).addTo(map).bindPopup(popup);
+    var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s), zIndexOffset: s.location_type === 1 ? 200 : 100 }).addTo(map).bindPopup(popup);
     m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
     targetMap[s.stop_id] = m;
   }
@@ -198,6 +198,17 @@
     } else {
       setTimeout(doScroll, 400);
     }
+  });
+
+  // Show/hide typeahead results (same pattern as home page)
+  var suggestEl = document.getElementById({{ (uid ~ '-suggest') | tojson }});
+  document.addEventListener('htmx:afterSwap', function (e) {
+    if (e.detail.target === suggestEl) {
+      suggestEl.style.display = suggestEl.innerHTML.trim() ? '' : 'none';
+    }
+  });
+  searchEl.addEventListener('input', function () {
+    if (!this.value.trim()) suggestEl.style.display = 'none';
   });
 
   window.addEventListener('pagehide', function () {

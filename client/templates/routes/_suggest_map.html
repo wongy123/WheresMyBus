@@ -1,0 +1,43 @@
+{% from 'common/_pagination.html' import suggest_pagination %}
+{% set has_items = items|length > 0 %}
+{% set q = q or '' %}
+{% set pg = pagination or {} %}
+{% set page = pg.get('page', 1) %}
+{% set limit = limit or pg.get('limit', 5) %}
+{% set total = pg.get('total', 0) %}
+{% set page_count = pg.get('pageCount', 1) %}
+{% set has_prev = pg.get('hasPrev', page > 1) %}
+{% set has_next = pg.get('hasNext', page < page_count) %}
+{% set suggest_url = suggest_url or (BASE_PATH ~ '/hx/routes/suggest-map') %}
+
+<div id="route-suggest-list" class="list-group position-absolute w-100 mt-1 z-10"
+  role="listbox" aria-label="Route suggestions" style="max-height:420px;overflow-y:auto;">
+  {% if has_items %}
+    {% for r in items %}
+    {% set bg = '#' + (r.route_color or 'CCCCCC') %}
+    {% set fg = '#' + (r.route_text_color or '000000') %}
+    <div class="list-group-item list-group-item-action d-flex align-items-center justify-content-between py-2 gap-2"
+      style="cursor:pointer;"
+      role="option"
+      onclick="window.showRouteOnMap && window.showRouteOnMap(this.dataset.routeId, this.dataset.routeColor, this.dataset.routeShort, +this.dataset.routeType, this.dataset.routeLong)"
+      data-route-id="{{ r.route_id }}"
+      data-route-color="{{ r.route_color or '' }}"
+      data-route-short="{{ r.route_short_name }}"
+      data-route-type="{{ r.route_type or 3 }}"
+      data-route-long="{{ r.route_long_name }}">
+      <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+        <span class="badge rounded-pill px-2 py-1 flex-shrink-0"
+          style="background-color:{{ bg }};color:{{ fg }};font-size:.8rem;">{{ r.route_short_name }}</span>
+        <strong class="lh-sm text-truncate">{{ r.route_long_name }}</strong>
+      </div>
+      <a href="{{ BASE_PATH }}/routes/{{ r.route_id }}" class="btn btn-sm btn-primary flex-shrink-0"
+        onclick="event.stopPropagation()">Select</a>
+    </div>
+    {% endfor %}
+    {{ suggest_pagination(page, page_count, limit, q, suggest_url, 'route-suggest-list', has_prev, has_next, total=total) }}
+  {% else %}
+    <div class="list-group-item text-muted small py-2">
+      {% if q %}No routes match "{{ q }}".{% else %}Start typing to search routes.{% endif %}
+    </div>
+  {% endif %}
+</div>

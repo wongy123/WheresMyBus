@@ -588,13 +588,7 @@
   var boundsDebounce = null;
   map.on('moveend', function () {
     clearTimeout(boundsDebounce);
-    boundsDebounce = setTimeout(function () {
-      loadBoundsMarkers();
-      // Re-sort nearest vehicles when the centre changes (only matters when capped)
-      if (globalActive && !globalPaused && vehiclesLimit < VEHICLE_STEPS[VEHICLE_STEPS.length - 1]) {
-        renderGlobalVehicles(lastGlobalVehicles);
-      }
-    }, 350);
+    boundsDebounce = setTimeout(loadBoundsMarkers, 350);
   });
 
   // ── Sidebar ───────────────────────────────────────────────────────────────
@@ -821,8 +815,20 @@
         if (rows[i].trip_id === activeTripId &&
           rows[i].vehicle_latitude && rows[i].vehicle_longitude) {
           var _followPos = [rows[i].vehicle_latitude, rows[i].vehicle_longitude];
+          var _ar = rows[i];
           activeVehicleMarker.setLatLng(_followPos);
           if (isFollowing) map.panTo(_followPos);
+          var _vRawTime = window.gtfsTime(_ar);
+          var _updatedPopup = window.TRANSIT.stopVehiclePopup({
+            routeShortName: escHtml(_ar.route_short_name || _ar.route_id),
+            label: _ar.vehicle_label ? escHtml(String(_ar.vehicle_label)) : '',
+            headsign: _ar.trip_headsign ? escHtml(_ar.trip_headsign) : '',
+            stopName: _ar.stop_name ? escHtml(_ar.stop_name) : '',
+            etaStr: _vRawTime ? window.fmtMins(window.minsFromNow(_vRawTime)) : '',
+            routeId: escHtml(_ar.route_id),
+            basePath: BASE_PATH
+          });
+          activeVehicleMarker.setPopupContent(_updatedPopup);
           break;
         }
       }
@@ -1026,8 +1032,19 @@
     if (activeVehicleMarker && activeTripId && !currentStopId) {
       for (var i = 0; i < vehicles.length; i++) {
         if (vehicles[i].trip_id === activeTripId) {
-          activeVehicleMarker.setLatLng([vehicles[i].lat, vehicles[i].lon]);
-          if (isFollowing) map.panTo([vehicles[i].lat, vehicles[i].lon]);
+          var av = vehicles[i];
+          activeVehicleMarker.setLatLng([av.lat, av.lon]);
+          if (isFollowing) map.panTo([av.lat, av.lon]);
+          var updatedPopup = window.TRANSIT.stopVehiclePopup({
+            routeShortName: escHtml(av.route_short_name || av.route_id),
+            label: av.vehicle_label ? escHtml(String(av.vehicle_label)) : '',
+            headsign: av.trip_headsign ? escHtml(av.trip_headsign) : '',
+            stopName: av.stop_name ? escHtml(av.stop_name) : '',
+            etaStr: av.minutes_away != null ? window.fmtMins(av.minutes_away) : '',
+            routeId: escHtml(av.route_id),
+            basePath: BASE_PATH
+          });
+          activeVehicleMarker.setPopupContent(updatedPopup);
           break;
         }
       }
@@ -1051,7 +1068,22 @@
   }
 
   function fetchAndRenderGlobal() {
-    fetch(window.API_BASE_URL + '/vehicles')
+    var b = map.getBounds();
+    var sw = b.getSouthWest();
+    var ne = b.getNorthEast();
+    var c = map.getCenter();
+    var params = new URLSearchParams({
+      lat1: sw.lat.toFixed(6),
+      lon1: sw.lng.toFixed(6),
+      lat2: ne.lat.toFixed(6),
+      lon2: ne.lng.toFixed(6),
+      clat: c.lat.toFixed(6),
+      clng: c.lng.toFixed(6),
+    });
+    if (vehiclesLimit < VEHICLE_STEPS[VEHICLE_STEPS.length - 1]) {
+      params.set('limit', vehiclesLimit);
+    }
+    fetch(window.API_BASE_URL + '/vehicles?' + params.toString())
       .then(function (r) { return r.json(); })
       .then(function (d) {
         lastGlobalVehicles = d.data || [];
