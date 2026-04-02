@@ -100,12 +100,14 @@
 
     var markerByStopId = {};
     var nearbyMarkerById = {};
+    var dynamicMarkerById = {};
     var userLocationMarker = null;
     var userLatLng = null;
     var userWatchId = null;
     var hasCenteredOnUser = false;
     var lastNearbyAt = 0;
     var lastNearbyLatLng = null;
+    var lastSearchAt = 0;
     var selectedStopId = null;
     var mapRevealed = false;
     var isLg = function () { return window.innerWidth >= 992; };
@@ -335,9 +337,9 @@
       });
     };
 
-    // ── Stop focus: looks in both search and nearby marker maps ──
+    // ── Stop focus: looks in search, nearby, and dynamic marker maps ──
     window.stopSearchFocusStop = function (stopId) {
-      var m = markerByStopId[stopId] || nearbyMarkerById[stopId];
+      var m = markerByStopId[stopId] || nearbyMarkerById[stopId] || dynamicMarkerById[stopId];
       if (!m) return;
       selectedStopId = stopId;
       map.flyTo(m.getLatLng(), 16);
@@ -349,16 +351,19 @@
       window.stopSearchFocusStop(stopId);
     };
 
-    // ── Stop markers from search (replaces previous search markers only) ──
+    // ── Stop markers from search (replaces previous search + dynamic markers) ──
     window.stopSearchUpdateMap = function (stops) {
       Object.values(markerByStopId).forEach(function (m) { map.removeLayer(m); });
+      Object.values(dynamicMarkerById).forEach(function (m) { map.removeLayer(m); });
       markerByStopId = {};
+      dynamicMarkerById = {};
+      lastSearchAt = Date.now();
       var valid = (stops || []).filter(function (s) { return s.stop_lat && s.stop_lon; });
       if (!valid.length) return;
       valid.forEach(function (s) {
         var popup = '<b>' + s.stop_name + '</b>' +
           '<br><a href="' + basePath + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
-        var m = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s) })
+        var m = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s), zIndexOffset: s.location_type === 1 ? 200 : 100 })
           .addTo(map).bindPopup(popup);
         m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
         markerByStopId[s.stop_id] = m;
@@ -376,17 +381,50 @@
     // ── Nearby stop markers (kept separate so search markers aren't clobbered) ──
     window.stopNearbyUpdateMap = function (stops) {
       Object.values(nearbyMarkerById).forEach(function (m) { map.removeLayer(m); });
+      Object.values(dynamicMarkerById).forEach(function (m) { map.removeLayer(m); });
       nearbyMarkerById = {};
+      dynamicMarkerById = {};
+      lastSearchAt = Date.now();
       (stops || []).forEach(function (s) {
         if (!s.stop_lat || !s.stop_lon) return;
         var popup = '<b>' + s.stop_name + '</b>' +
           '<br><a href="' + basePath + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
-        var m = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s) })
+        var m = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s), zIndexOffset: s.location_type === 1 ? 200 : 100 })
           .addTo(map).bindPopup(popup);
         m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
         nearbyMarkerById[s.stop_id] = m;
       });
     };
+
+    // ── Dynamic stop loading on map pan/zoom (mirrors stop search map behaviour) ──
+    var dynamicMoveTimer = null;
+    function loadStopsNearCenter() {
+      if (Date.now() - lastSearchAt < 1000) return;
+      if (map.getZoom() < 14) return;
+      var center = map.getCenter();
+      fetch(window.API_BASE_URL + '/stops/nearby?lat=' + center.lat + '&lng=' + center.lng + '&limit=40')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          Object.values(dynamicMarkerById).forEach(function (m) { map.removeLayer(m); });
+          dynamicMarkerById = {};
+          (data.data || []).forEach(function (s) {
+            if (!s.stop_lat || !s.stop_lon) return;
+            if (markerByStopId[s.stop_id] || nearbyMarkerById[s.stop_id]) return;
+            var popup = '<b>' + s.stop_name + '</b>' +
+              '<br><a href="' + basePath + '/stops/' + s.stop_id + '" class="map-popup-link">View stop</a>';
+            var m = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s), zIndexOffset: s.location_type === 1 ? 200 : 100 })
+              .addTo(map).bindPopup(popup);
+            m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
+            dynamicMarkerById[s.stop_id] = m;
+          });
+        })
+        .catch(function () {});
+    }
+    map.on('moveend', function () {
+      if (!mapRevealed) return;
+      clearTimeout(dynamicMoveTimer);
+      dynamicMoveTimer = setTimeout(loadStopsNearCenter, 400);
+    });
 
     // ── User location ──
     function updateUserLocationMarker(lat, lng, acc) {

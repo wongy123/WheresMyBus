@@ -68,7 +68,7 @@
   function addStopMarker(s, targetMap) {
     var popup = '<b>' + s.stop_name + '</b>' +
       '<br><a href="' + hrefBase + '/' + s.stop_id + '" class="map-popup-link">Select</a>';
-    var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s) }).addTo(map).bindPopup(popup);
+    var m = L.marker([s.stop_lat, s.stop_lon], { icon: makeIcon(s), zIndexOffset: s.location_type === 1 ? 200 : 100 }).addTo(map).bindPopup(popup);
     m.on('popupclose', function () { if (selectedStopId === s.stop_id) selectedStopId = null; });
     targetMap[s.stop_id] = m;
   }

@@ -24,7 +24,7 @@ function _diagDrawRoute() {
 
   // Draw stop dot markers
   valid.forEach(function (s) {
-    _diagRouteMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeRouteDot(route.color) })
+    _diagRouteMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeRouteDot(route.color), zIndexOffset: s.location_type === 1 ? 200 : 100 })
       .addTo(_diagMap)
       .bindPopup(window.TRANSIT.makeStopPopup(s, _diagBasePath));
   });
@@ -61,7 +61,7 @@ function _diagLoadNearby() {
       _diagNearbyMarkers = {};
       (data.data || []).forEach(function (s) {
         if (!s.stop_lat || !s.stop_lon || s.stop_id === _diagFocusStopId || _diagRouteMarkers[s.stop_id]) return;
-        _diagNearbyMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s) })
+        _diagNearbyMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeStopIcon(s), zIndexOffset: s.location_type === 1 ? 200 : 100 })
           .addTo(_diagMap).bindPopup(window.TRANSIT.makeStopPopup(s, _diagBasePath));
       });
     })
@@ -72,7 +72,7 @@ function _diagSetFocus(stopName, lat, lon) {
   _diagDrawRoute();
   _diagDrawVehicles();
   if (_diagFocusMarker) _diagMap.removeLayer(_diagFocusMarker);
-  _diagFocusMarker = L.marker([lat, lon]).addTo(_diagMap)
+  _diagFocusMarker = L.marker([lat, lon], { zIndexOffset: 1500 }).addTo(_diagMap)
     .bindPopup('<b>' + stopName + '</b><br><span class="map-popup-meta">Selected stop</span>')
     .openPopup();
   _diagMap.setView([lat, lon], 16);
@@ -195,7 +195,7 @@ function _diagSetVehicleFocus(label, headsign, lat, lon, minutesAway, stopName) 
     iconAnchor: [16, 16]
   });
 
-  _diagFocusMarker = L.marker([lat, lon], { icon: focusIcon, zIndexOffset: 1000 }).addTo(_diagMap);
+  _diagFocusMarker = L.marker([lat, lon], { icon: focusIcon, zIndexOffset: 2000 }).addTo(_diagMap);
   var popup = '<b>' + (label || 'Vehicle') + '</b>';
   if (headsign) popup += '<br><span class="text-muted small">' + headsign + '</span>';
   if (stopName) popup += '<br><span class="small">Next: ' + stopName + '</span>';
