@@ -46,15 +46,11 @@
 
   var map = L.map({{ (uid ~ '-map') | tojson }}).setView([-27.47, 153.02], 12);
   var userLocationMarker = null;
+  var userLatLng = null;
   var userWatchId = null;
   var hasCenteredOnUser = false;
   var lastNearbyAt = 0;
   var lastNearbyLatLng = null;
-  var userIcon = L.divIcon({
-    className: '',
-    html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;text-shadow:0 1px 3px rgba(0,0,0,.4);line-height:1;">person_pin_circle</span>',
-    iconSize: [32, 32], iconAnchor: [16, 32]
-  });
   window[{{ (uid ~ '_leafletMap') | tojson }}] = map;
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -91,7 +87,7 @@
       return;
     }
     var points = valid.map(function (s) { return [s.stop_lat, s.stop_lon]; });
-    if (userLocationMarker) points.push(userLocationMarker.getLatLng());
+    if (userLatLng) points.push(userLatLng);
     if (points.length === 1) {
       map.setView(points[0], 16);
       return;
@@ -133,12 +129,9 @@
     moveTimer = setTimeout(loadStopsNearCenter, 400);
   });
 
-  function updateUserLocationMarker(lat, lng) {
-    if (userLocationMarker) {
-      userLocationMarker.setLatLng([lat, lng]);
-    } else {
-      userLocationMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map).bindPopup('<b>Your location</b>');
-    }
+  function updateUserLocationMarker(lat, lng, acc) {
+    userLatLng = L.latLng(lat, lng);
+    userLocationMarker = window.TRANSIT.updateUserLocation(map, userLocationMarker, lat, lng, acc || 50);
   }
 
   function refreshNearby(lat, lng, force) {
@@ -162,7 +155,7 @@
         statusEl.textContent = '';
         var lat = pos.coords.latitude;
         var lng = pos.coords.longitude;
-        updateUserLocationMarker(lat, lng);
+        updateUserLocationMarker(lat, lng, pos.coords.accuracy);
         if (!hasCenteredOnUser) {
           hasCenteredOnUser = true;
           if (!selectedStopId) {

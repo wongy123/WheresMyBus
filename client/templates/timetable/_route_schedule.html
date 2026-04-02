@@ -31,6 +31,23 @@
 .schedule-table tbody tr:nth-child(even) td { background: #f8f9fa; }
 .schedule-table tbody tr:nth-child(even) td.stop-col { background: #f8f9fa; }
 .schedule-wrap { overflow-x: auto; max-height: 70vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px; }
+.schedule-outer { position: relative; }
+.schedule-outer::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 48px;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,.92));
+  pointer-events: none;
+  border-radius: 0 6px 6px 0;
+  z-index: 10;
+  transition: opacity .2s;
+}
+.schedule-outer.no-overflow::after { opacity: 0; }
+.schedule-table th.now-col    { background: #ffc107 !important; color: #000; }
+.schedule-table td.now-col    { background: #fff9e6 !important; }
+.schedule-table th.active-col { background: #c8e6c9 !important; color: #1b5e20; }
+.schedule-table td.active-col { background: #e8f5e9 !important; }
 @media (max-width: 767.98px) {
   .schedule-table { font-size: .75rem; }
   .schedule-table th, .schedule-table td { padding: 4px 6px; }
@@ -43,6 +60,7 @@
 {% else %}
   <div class="text-muted small mb-3">{{ trips | length }} service{{ 's' if trips | length != 1 else '' }} today</div>
 
+  <div class="schedule-outer">
   <div class="schedule-wrap">
     <table class="schedule-table">
       <thead>
@@ -70,6 +88,69 @@
       </tbody>
     </table>
   </div>
+  </div>
 
   <div class="text-muted mt-2" style="font-size: .75rem;">Times are scheduled departures (HH:MM). Services may vary.</div>
+<script>
+(function() {
+  var outer = document.querySelector('.schedule-outer');
+  var wrap = document.querySelector('.schedule-wrap');
+  var table = document.querySelector('.schedule-table');
+  if (!outer || !wrap || !table) return;
+
+  // Right-edge overflow shadow
+  function updateShadow() {
+    outer.classList.toggle('no-overflow', wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 4);
+  }
+  wrap.addEventListener('scroll', updateShadow, { passive: true });
+  updateShadow();
+
+  // Highlight active services (already departed from first stop, not yet at last stop)
+  // and the next upcoming service.
+  var now = new Date();
+  var nowMin = now.getHours() * 60 + now.getMinutes();
+  var headers = table.querySelectorAll('thead th');
+  var bodyRows = table.querySelectorAll('tbody tr');
+  var lastRow = bodyRows.length > 0 ? bodyRows[bodyRows.length - 1] : null;
+  var lastCells = lastRow ? lastRow.querySelectorAll('td') : [];
+
+  function parseMin(el) {
+    if (!el) return null;
+    var m = el.textContent.trim().match(/^(\d{1,2}):(\d{2})$/);
+    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+  }
+
+  var nextIdx = -1, nextDiff = Infinity;
+  headers.forEach(function(th, i) {
+    if (i === 0) return;
+    var firstMin = parseMin(th);
+    if (firstMin === null) return;
+    var lastMin = parseMin(lastCells[i]);
+    var diff = firstMin - nowMin;
+
+    // Active: departed first stop, hasn't finished last stop
+    if (firstMin <= nowMin && (lastMin === null || lastMin >= nowMin)) {
+      th.classList.add('active-col');
+      bodyRows.forEach(function(row) {
+        var cells = row.querySelectorAll('td');
+        if (cells[i]) cells[i].classList.add('active-col');
+      });
+    }
+
+    // Next upcoming
+    if (diff > 0 && diff < nextDiff) { nextDiff = diff; nextIdx = i; }
+  });
+
+  if (nextIdx >= 0) {
+    headers[nextIdx].classList.add('now-col');
+    bodyRows.forEach(function(row) {
+      var cells = row.querySelectorAll('td');
+      if (cells[nextIdx]) cells[nextIdx].classList.add('now-col');
+    });
+    setTimeout(function() {
+      headers[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }, 120);
+  }
+}());
+</script>
 {% endif %}

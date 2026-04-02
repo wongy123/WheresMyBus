@@ -1155,19 +1155,12 @@
 
   var userMarker = null;
   var userWatchId = null;
-  var pendingLocateAction = false;
+  var _lastUserLat = null, _lastUserLon = null;
 
-  function placeUserLocation(lat, lon, panTo) {
-    if (userMarker) { userMarker.setLatLng([lat, lon]); }
-    else {
-      var icon = L.divIcon({
-        className: '',
-        html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1;">person_pin_circle</span>',
-        iconSize: [32, 32], iconAnchor: [16, 32]
-      });
-      userMarker = L.marker([lat, lon], { icon: icon, zIndexOffset: 800 }).addTo(map)
-        .bindPopup('<b>Your location</b>');
-    }
+  function placeUserLocation(lat, lon, acc, panTo) {
+    _lastUserLat = lat;
+    _lastUserLon = lon;
+    userMarker = window.TRANSIT.updateUserLocation(map, userMarker, lat, lon, acc || 50);
     if (panTo) {
       map.flyTo([lat, lon], 15);
       loadNearby(lat, lon);
@@ -1188,25 +1181,29 @@
         _gpsAutoFocusDone = true;
         map.setView([lat, lon], 15);
       }
-      var panTo = pendingLocateAction;
-      pendingLocateAction = false;
-      placeUserLocation(lat, lon, panTo);
-    }, function () {
-      if (pendingLocateAction) {
-        pendingLocateAction = false;
-        alert('Location access was denied or unavailable.');
-      }
-    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+      placeUserLocation(lat, lon, pos.coords.accuracy, false);
+    }, null, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
   }
 
   if (navigator.geolocation) {
     startLiveLocationTracking();
   }
 
+  // Locate button: fly to last known position immediately, or request a fresh
+  // fix if we don't have one yet.
   document.getElementById('map-locate').addEventListener('click', function () {
     if (!navigator.geolocation) return;
-    pendingLocateAction = true;
-    startLiveLocationTracking();
+    if (_lastUserLat !== null) {
+      map.flyTo([_lastUserLat, _lastUserLon], 15);
+      loadNearby(_lastUserLat, _lastUserLon);
+    } else {
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        placeUserLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, true);
+      }, function () {
+        alert('Location access was denied or unavailable.');
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+      startLiveLocationTracking();
+    }
   });
 
   window.addEventListener('pagehide', function () {

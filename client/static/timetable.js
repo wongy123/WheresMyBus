@@ -30,7 +30,7 @@
       return { label: 'Scheduled', bg: '#6c757d', fg: '#fff' };
     }
     var s = parseInt(seconds, 10);
-    if (Math.abs(s) < 30) return { label: 'On time', bg: '#198754', fg: '#fff' };
+    if (Math.abs(s) < 60) return { label: 'On time', bg: '#198754', fg: '#fff' };
     var mins = Math.floor(Math.abs(s) / 60);
     if (s > 0) return { label: mins + 'm late',  bg: '#ffc107', fg: '#000' };
     return            { label: mins + 'm early', bg: '#0dcaf0', fg: '#000' };

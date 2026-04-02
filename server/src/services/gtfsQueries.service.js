@@ -943,29 +943,21 @@ ORDER BY f.win_sec ASC;
     const gpsIsFresh = r.vehicle_timestamp != null &&
       (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC;
 
-    // Validate reported stop sequence against GPS proximity: some TransLink
-    // vehicles always report currentStopSequence=1 regardless of position.
-    // If the vehicle's GPS is far from the reported stop, override with the
-    // nearest canonical stop to get correct stale/behind decisions.
-    if (Number.isFinite(vseq) && vseq > 0 && gpsIsFresh &&
+    // Some TransLink vehicles always report currentStopSequence=1 regardless
+    // of position. Only apply the GPS proximity override in that case — for
+    // any valid mid-route vseq (> 1) the feed value is trusted as-is, since
+    // replacing it with the nearest canonical stop (pure Euclidean distance)
+    // can snap to a wrong stop when two stops are geographically close but
+    // separated by several sequence positions.
+    if (vseq === 1 && gpsIsFresh &&
         r.vehicle_latitude != null && r.vehicle_longitude != null) {
-      const reportedCoords = stopIdToCoords.get(String(r.stop_id));
-      if (reportedCoords) {
-        const dLat = (Number(r.vehicle_latitude) - reportedCoords.lat) * 111_320;
-        const dLon = (Number(r.vehicle_longitude) - reportedCoords.lon) * 111_320 *
-          Math.cos(Number(r.vehicle_latitude) * Math.PI / 180);
-        const distSq = dLat * dLat + dLon * dLon;
-        // 2km threshold (squared: 4_000_000)
-        if (distSq > 4_000_000) {
-          // Skip GPS override for trips that haven't started yet — the bus
-          // may be at a depot near mid-route stops. Trust vseq=1 when the
-          // scheduled departure from stop 1 is still in the future.
-          const tripNotStarted = vseq === 1 && r.win_sec > secNow;
-          if (!tripNotStarted) {
-            const gpsSeq = _gpsToStopSequence(Number(r.vehicle_latitude), Number(r.vehicle_longitude));
-            if (gpsSeq != null) vseq = gpsSeq;
-          }
-        }
+      // Skip GPS override for trips that haven't started yet — the bus
+      // may be at a depot near mid-route stops. Trust vseq=1 when the
+      // scheduled departure from stop 1 is still in the future.
+      const tripNotStarted = r.win_sec > secNow;
+      if (!tripNotStarted) {
+        const gpsSeq = _gpsToStopSequence(Number(r.vehicle_latitude), Number(r.vehicle_longitude));
+        if (gpsSeq != null) vseq = gpsSeq;
       }
     }
 
@@ -980,15 +972,14 @@ ORDER BY f.win_sec ASC;
 
     // GPS is absent or stale — use the RT trip update's minimum stop sequence as
     // a position hint instead. GTFS-RT feeds only include stops from the vehicle's
-    // current position onwards, so the first stopUpdate sequence is effectively
+    // current position onwards, so the minimum stopSequence in the update marks
     // the current or next stop. However, some feeds include ALL stops (full
     // schedule), so only trust this if min_seq > 1.
     const rt = rtTripMap.get(r.trip_id);
-    const rtSeq = Array.isArray(rt?.stopUpdates)
-      ? rt.stopUpdates
-        .map(u => Number(u?.stopSequence))
-        .find(seq => Number.isFinite(seq) && seq > 0)
-      : null;
+    const _rtSeqs = Array.isArray(rt?.stopUpdates)
+      ? rt.stopUpdates.map(u => Number(u?.stopSequence)).filter(seq => Number.isFinite(seq) && seq > 0)
+      : [];
+    const rtSeq = _rtSeqs.length > 0 ? Math.min(..._rtSeqs) : null;
     if (rtSeq != null && rtSeq > 1 && Number.isFinite(rowSeq) && rtSeq > rowSeq) {
       rtAheadByTrip.set(r.trip_id, rtSeq);
     }

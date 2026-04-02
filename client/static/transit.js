@@ -152,6 +152,23 @@
       });
       container.appendChild(btn);
     },
+    // Place (or update) the user's current location on a Leaflet map.
+    // Removes the previous layer (if any), draws an accuracy circle + blue dot,
+    // and returns the new LayerGroup.  Never pans the map.
+    // Usage: userLayer = TRANSIT.updateUserLocation(map, userLayer, lat, lon, acc);
+    updateUserLocation: function (theMap, layer, lat, lon, acc) {
+      if (layer) theMap.removeLayer(layer);
+      return L.layerGroup([
+        L.circle([lat, lon], {
+          radius: acc, color: '#4285F4', fillColor: '#4285F4',
+          fillOpacity: 0.12, weight: 1, interactive: false
+        }),
+        L.circleMarker([lat, lon], {
+          radius: 7, color: '#fff', fillColor: '#4285F4',
+          fillOpacity: 1, weight: 2.5, interactive: false
+        })
+      ]).addTo(theMap);
+    },
     updateVehicleMarkers: function (theMap, markerMap, vehicles, opts) {
       var seen = {};
       vehicles.forEach(function (v) {

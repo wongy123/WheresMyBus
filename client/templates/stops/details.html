@@ -28,11 +28,12 @@
 
 {% if routes %}
 <div class="mb-4">
-  <div class="fw-semibold small mb-2 text-muted text-uppercase" style="letter-spacing:.04em;font-size:.75rem;">
-    Routes serving this {{ 'station' if stop.location_type == 1 else 'stop' }}
-    <span id="route-filter-hint" class="d-none">
-      — <a href="#" id="route-filter-clear" class="text-muted fw-normal">clear filter</a>
+  <div class="fw-semibold small mb-2 text-muted text-uppercase d-flex align-items-center gap-2" style="letter-spacing:.04em;font-size:.75rem;">
+    <span>Routes serving this {{ 'station' if stop.location_type == 1 else 'stop' }}</span>
+    <span id="route-filter-hint" class="d-none fw-normal text-lowercase" style="letter-spacing:0">
+      — <a href="#" id="route-filter-clear" class="text-muted">clear filter</a>
     </span>
+    <span id="route-filter-idle-hint" class="fw-normal text-lowercase" style="letter-spacing:0;font-size:.7rem;opacity:.6;">tap to filter</span>
   </div>
   <div class="d-flex flex-wrap gap-1" id="route-filter-badges">
     {% for r in routes %}
@@ -51,6 +52,8 @@
     var badgesEl = document.getElementById('route-filter-badges');
     var hintEl = document.getElementById('route-filter-hint');
 
+    var idleHintEl = document.getElementById('route-filter-idle-hint');
+
     function applyFilterVisuals() {
       var ttEl = document.getElementById('stop-timetable');
       var activeRoutes = Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
@@ -58,6 +61,7 @@
       var anyActive = activeRoutes.length > 0;
       badgesEl.classList.toggle('has-filter', anyActive);
       hintEl.classList.toggle('d-none', !anyActive);
+      if (idleHintEl) idleHintEl.style.display = 'none';
       if (ttEl) ttEl.classList.toggle('filter-active', anyActive);
       if (window._renderFilteredVehicles) window._renderFilteredVehicles();
     }
@@ -443,46 +447,15 @@
   });
 
   var userLocationMarker = null;
-  var userAccuracyCircle = null;
   var userWatchId = null;
-  var userIcon = L.divIcon({
-    className: '',
-    html: '<span class="material-symbols-outlined" style="font-size:2rem;color:#0d6efd;filter:drop-shadow(0 1px 3px rgba(0,0,0,.4));line-height:1;">person_pin_circle</span>',
-    iconSize: [32, 32],
-    iconAnchor: [16, 32]
-  });
-
-  function updateUserLocation(lat, lng, accuracy) {
-    if (userLocationMarker) {
-      userLocationMarker.setLatLng([lat, lng]);
-    } else {
-      userLocationMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map)
-        .bindPopup('<b>Your location</b>');
-    }
-
-    if (accuracy < 500) {
-      if (userAccuracyCircle) {
-        userAccuracyCircle.setLatLng([lat, lng]);
-        userAccuracyCircle.setRadius(accuracy);
-      } else {
-        userAccuracyCircle = L.circle([lat, lng], {
-          radius: accuracy,
-          color: '#0d6efd',
-          fillColor: '#0d6efd',
-          fillOpacity: 0.08,
-          weight: 1
-        }).addTo(map);
-      }
-    } else if (userAccuracyCircle) {
-      map.removeLayer(userAccuracyCircle);
-      userAccuracyCircle = null;
-    }
-  }
 
   if (navigator.geolocation) {
     userWatchId = navigator.geolocation.watchPosition(
       function (pos) {
-        updateUserLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 0);
+        userLocationMarker = window.TRANSIT.updateUserLocation(
+          map, userLocationMarker,
+          pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 50
+        );
       },
       function () { },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }

@@ -47,20 +47,32 @@
           </div>
 
           {% if alert.routeIds or alert.stopIds %}
-          <div class="d-flex flex-wrap gap-1 mb-2">
+          <div class="d-flex flex-wrap gap-1 mb-2 alert-entities">
             {% for rid in alert.routeIds[:8] %}
             <a href="{{ BASE_PATH }}/routes/{{ rid }}"
                class="badge text-decoration-none text-bg-light border">{{ rid }}</a>
             {% endfor %}
             {% if alert.routeIds | length > 8 %}
-            <span class="badge text-bg-light border text-muted">+{{ alert.routeIds | length - 8 }} more routes</span>
+            <button type="button" class="badge text-bg-light border text-muted btn-expand-entities"
+              style="cursor:pointer;border:1px solid #dee2e6!important;"
+              data-extra="{{ alert.routeIds[8:] | join(',') }}"
+              data-type="route"
+              data-base-path="{{ BASE_PATH }}">
+              +{{ alert.routeIds | length - 8 }} more routes
+            </button>
             {% endif %}
             {% for sid in alert.stopIds[:6] %}
             <a href="{{ BASE_PATH }}/stops/{{ sid }}"
                class="badge text-decoration-none text-bg-light border">Stop {{ sid }}</a>
             {% endfor %}
             {% if alert.stopIds | length > 6 %}
-            <span class="badge text-bg-light border text-muted">+{{ alert.stopIds | length - 6 }} more stops</span>
+            <button type="button" class="badge text-bg-light border text-muted btn-expand-entities"
+              style="cursor:pointer;border:1px solid #dee2e6!important;"
+              data-extra="{{ alert.stopIds[6:] | join(',') }}"
+              data-type="stop"
+              data-base-path="{{ BASE_PATH }}">
+              +{{ alert.stopIds | length - 6 }} more stops
+            </button>
             {% endif %}
           </div>
           {% endif %}
@@ -92,4 +104,23 @@
 {% endif %}
 
 {% endif %}
+
+<script>
+document.querySelectorAll('.btn-expand-entities').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var ids = btn.dataset.extra ? btn.dataset.extra.split(',') : [];
+    var type = btn.dataset.type;
+    var base = btn.dataset.basePath;
+    var container = btn.closest('.alert-entities');
+    ids.forEach(function(id) {
+      var a = document.createElement('a');
+      a.href = base + '/' + (type === 'route' ? 'routes' : 'stops') + '/' + id;
+      a.className = 'badge text-decoration-none text-bg-light border';
+      a.textContent = type === 'stop' ? 'Stop ' + id : id;
+      container.insertBefore(a, btn);
+    });
+    btn.remove();
+  });
+});
+</script>
 {% endblock %}

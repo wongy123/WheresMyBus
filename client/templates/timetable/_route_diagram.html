@@ -33,8 +33,8 @@
       {% set seq = stop.stop_sequence %}
       {% set vehicles = vehicles_by_seq.get(seq, []) %}
 
-      {# Vehicle markers heading to this stop #}
-      {% for v in vehicles | reverse %}
+      {# Vehicle markers heading to this stop — sorted longest ETA first by backend #}
+      {% for v in vehicles %}
         {% set dly = v.departure_delay if v.departure_delay is not none else (v.arrival_delay if v.arrival_delay is not none else none) %}
         {% set info = dly | delay_info %}
         {% set eta = v.estimated_departure_time or v.scheduled_departure_time or v.estimated_arrival_time or v.scheduled_arrival_time %}
@@ -48,6 +48,7 @@
             data-headsign="{{ v.trip_headsign or '' }}"
             data-stop-name="{{ stop.stop_name | e }}"
             data-minutes-away="{{ v.minutes_away if v.minutes_away is not none else '' }}"
+            data-departure-delay="{{ dly if dly is not none else '' }}"
             onclick="typeof showVehicleMap === 'function' && showVehicleMap(this.dataset)"
           {% endif %}>
           <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
@@ -62,7 +63,7 @@
                 {% if v.minutes_away == 0 %}now{% else %}{{ v.minutes_away }} min{% endif %}
               {% elif eta %}{{ eta[:5] }}{% endif %}
             </span>
-            {% if eta and v.minutes_away %}<span class="text-muted">{{ eta[:5] }}</span>{% endif %}
+            {% if eta and v.minutes_away is not none and v.minutes_away > 0 %}<span class="text-muted" title="Scheduled departure at this stop">@ {{ eta[:5] }}</span>{% endif %}
             {% if v.realtime_updated_at or v.has_gps %}
               <span style="display:inline-flex; align-items:center; gap:2px;">
                 {% if v.has_rt %}
