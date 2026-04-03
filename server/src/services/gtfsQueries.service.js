@@ -908,12 +908,16 @@ export async function getUpcomingByRoute(
       // If the TripUpdate predicts the bus is still far away but GPS shows it's
       // already at (or past) this stop, override minutes_away to 0.
       // This corrects stale delay predictions from non-incremental feeds.
-      // Skip for trips that haven't started (depot buses near mid-route stops).
+      // Skip for trips that haven't started (depot buses near mid-route stops),
+      // and for variant trips whose GTFS stop_sequence doesn't align with the
+      // canonical sequence (_gpsToStopSequence returns canonical sequences).
       if (r.minutes_away != null && r.minutes_away > 1 &&
           r.vehicle_latitude != null && r.vehicle_longitude != null &&
           r.vehicle_timestamp != null && (epochNow - r.vehicle_timestamp) <= STALE_GPS_SEC) {
         const tripNotStarted = Number(r.stop_sequence) === 1 && r.win_sec > secNow;
-        if (!tripNotStarted) {
+        const tripStartsMidRoute = Number(r.stop_sequence) === 1 &&
+          r.canonical_stop_sequence != null && r.canonical_stop_sequence > 1;
+        if (!tripNotStarted && !tripStartsMidRoute) {
           const gpsSeq = _gpsToStopSequence(Number(r.vehicle_latitude), Number(r.vehicle_longitude));
           if (gpsSeq != null && gpsSeq >= Number(r.stop_sequence)) {
             r.minutes_away = 0;
@@ -1033,7 +1037,14 @@ ORDER BY f.win_sec ASC;
       // may be at a depot near mid-route stops. Trust vseq=1 when the
       // scheduled departure from stop 1 is still in the future.
       const tripNotStarted = r.win_sec > secNow;
-      if (!tripNotStarted) {
+      // Skip GPS override for variant trips whose first GTFS stop maps to a
+      // mid-canonical position (e.g. today's route starting from a stub
+      // terminus). _gpsToStopSequence returns a canonical sequence; using it
+      // as a GTFS trip stop_sequence for a variant trip points to the wrong
+      // stop entirely. Trust the scheduled position (rowSeq=1) instead.
+      const firstStopCanonicalSeq = stopIdToCanonicalSeq.get(String(r.stop_id));
+      const tripStartsMidRoute = rowSeq === 1 && firstStopCanonicalSeq != null && firstStopCanonicalSeq > 1;
+      if (!tripNotStarted && !tripStartsMidRoute) {
         const gpsSeq = _gpsToStopSequence(Number(r.vehicle_latitude), Number(r.vehicle_longitude));
         if (gpsSeq != null) vseq = gpsSeq;
       }
