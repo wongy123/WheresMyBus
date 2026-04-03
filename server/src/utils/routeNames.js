@@ -37,3 +37,43 @@ export function getLineNames(shortName) {
   if (TERMINAL_LINE[dest])   names.add(TERMINAL_LINE[dest]);
   return [...names];
 }
+
+// "Gold Coast Line" → "gold-coast-line", "Ipswich/Rosewood Line" → "ipswich-rosewood-line"
+export function slugifyLineName(lineName) {
+  return lineName
+    .toLowerCase()
+    .replace(/\//g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
+}
+
+// Build reverse map: slug → original line name
+const SLUG_TO_LINE = {};
+for (const name of new Set(Object.values(TERMINAL_LINE))) {
+  SLUG_TO_LINE[slugifyLineName(name)] = name;
+}
+for (const names of Object.values(SHORT_NAME_OVERRIDE)) {
+  for (const name of names) {
+    SLUG_TO_LINE[slugifyLineName(name)] = name;
+  }
+}
+
+// "gold-coast-line" → "Gold Coast Line", unknown slug → null
+export function getLineNameFromSlug(slug) {
+  return SLUG_TO_LINE[slug] ?? null;
+}
+
+// "Gold Coast Line" → ["VL"], "Sunshine Coast Line" → ["NA", "GY"]
+export function getTerminalCodesForLine(lineName) {
+  return Object.entries(TERMINAL_LINE)
+    .filter(([, name]) => name === lineName)
+    .map(([code]) => code);
+}
+
+// "Cleveland Line" → ["BRBR"] (route_short_name overrides for this line)
+export function getShortNameOverridesForLine(lineName) {
+  return Object.entries(SHORT_NAME_OVERRIDE)
+    .filter(([, names]) => names.includes(lineName))
+    .map(([shortName]) => shortName);
+}

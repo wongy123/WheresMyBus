@@ -6,6 +6,7 @@ import {
   getStopsByRoute,
   getRouteShape as getRouteShapeService,
   getRouteSchedule as getRouteScheduleService,
+  getNextServiceDate,
 } from '../services/gtfsQueries.service.js';
 import { paginateResponse } from '../utils/paginate.js';
 import { parseIntParam, parseDirection } from '../utils/params.js';
@@ -49,7 +50,14 @@ export async function getOneRoute(req, res, next) {
       return res.status(404).json({ error: 'Route not found' });
     }
 
-    res.json(route);
+    // Include next_service_date for routes with no service today (typically infrequent buses).
+    const { has_service_today, ...routeData } = route;
+    if (!route.is_line && !has_service_today) {
+      const nextServiceDate = await getNextServiceDate(route.route_id);
+      return res.json({ ...routeData, next_service_date: nextServiceDate });
+    }
+
+    res.json(routeData);
   } catch (err) {
     next(err);
   }
@@ -134,7 +142,11 @@ export async function getRouteSchedule(req, res, next) {
     const page = parseIntParam(req.query.page) || 1;
     const limit = Math.min(Math.max(parseIntParam(req.query.limit) || 50, 1), 200);
 
-    const data = await getRouteScheduleService(routeId, direction);
+    // Accept a date param (YYYYMMDD); default to today if absent or invalid.
+    const dateRaw = (req.query.date || '').trim();
+    const date = /^\d{8}$/.test(dateRaw) ? dateRaw : null;
+
+    const data = await getRouteScheduleService(routeId, direction, date);
 
     // Paginate trips while keeping full stops list
     const totalTrips = data.trips.length;
