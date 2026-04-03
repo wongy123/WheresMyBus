@@ -91,6 +91,7 @@
       el.querySelector('.material-symbols-outlined').style.color = color;
       var pop = new bootstrap.Popover(el, { content: label, trigger: 'manual', placement: 'top' });
       el.addEventListener('click', function (e) { e.stopPropagation(); showExclusive(pop); });
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); showExclusive(pop); } });
     });
 
     var _gpsNow = Math.round(Date.now() / 1000);
@@ -111,11 +112,13 @@
       el.querySelector('.material-symbols-outlined').style.color = color;
       var pop = new bootstrap.Popover(el, { content: label, trigger: 'manual', placement: 'top' });
       el.addEventListener('click', function (e) { e.stopPropagation(); showExclusive(pop); });
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); showExclusive(pop); } });
     });
 
     document.querySelectorAll('.status-badge').forEach(function (el) {
       var pop = new bootstrap.Popover(el, { trigger: 'manual', placement: 'top' });
       el.addEventListener('click', function (e) { e.stopPropagation(); showExclusive(pop); });
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); showExclusive(pop); } });
     });
 
     document.querySelectorAll('.tt-time').forEach(function (el) {

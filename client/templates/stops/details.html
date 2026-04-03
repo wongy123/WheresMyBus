@@ -99,6 +99,7 @@
 
     document.addEventListener('htmx:afterSwap', function (evt) {
       if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') {
+        document.getElementById('tt-refresh-error').classList.add('d-none');
         applyFilterVisuals();
         var updEl = evt.detail.target.querySelector('#tt-last-updated');
         if (updEl) {
@@ -110,6 +111,16 @@
           updEl._updatedAt = Date.now();
         }
       }
+    });
+
+    function _showTtError() {
+      document.getElementById('tt-refresh-error').classList.remove('d-none');
+    }
+    document.addEventListener('htmx:responseError', function (evt) {
+      if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') _showTtError();
+    });
+    document.addEventListener('htmx:sendError', function (evt) {
+      if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') _showTtError();
     });
   }());
 
@@ -132,6 +143,11 @@
     <button type="button" class="btn btn-outline-secondary tt-window-btn" onclick="setTtWindow(this,'7200')">2h</button>
     <button type="button" class="btn btn-outline-secondary tt-window-btn" onclick="setTtWindow(this,'14400')">4h</button>
   </div>
+</div>
+<div id="tt-refresh-error" class="alert alert-warning alert-dismissible d-none py-2 px-3 mb-2 small" role="alert">
+  <span class="material-symbols-outlined align-middle me-1" style="font-size:1rem;vertical-align:text-bottom;">wifi_off</span>
+  Timetable could not refresh — check your connection.
+  <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>
 <div id="stop-timetable"
   data-tt-duration="3600"
