@@ -13,10 +13,12 @@
   {% set sch = it.scheduled_departure_time or it.scheduled_arrival_time %}
   {% set main_time = est or sch %}
   {% set badge_popup = ('est ' ~ est[:5] ~ ' · sched ' ~ sch[:5]) if (est and sch and est[:5] != sch[:5]) else (sch[:5] if sch else '') %}
-  <tr data-route="{{ it.route_short_name }}" data-trip-id="{{ it.trip_id or '' }}">
+  <tr class="tt-stop-row" data-route="{{ it.route_short_name }}" data-trip-id="{{ it.trip_id or '' }}">
     <td class="text-nowrap">
-      <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle">
-        <span class="tt-min fw-semibold"></span><span class="tt-abs d-none text-body-secondary">{{ main_time }}</span>
+      <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle time display">
+        <span class="tt-min fw-semibold"></span>
+        <span class="tt-abs d-none text-body-secondary">{{ main_time[:5] }}</span>
+        <span class="tt-abs-sub d-none d-md-block text-body-tertiary" style="font-size:.72em;line-height:1.2;"></span>
       </span>
     </td>
     <td class="text-nowrap">
@@ -70,8 +72,10 @@
   {% set totstops = it.total_stops or it.stop_count or it.last_stop_sequence %}
   <tr>
     <td class="text-nowrap">
-      <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle">
-        <span class="tt-min fw-semibold"></span><span class="tt-abs d-none text-body-secondary">{{ main_time }}</span>
+      <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle time display">
+        <span class="tt-min fw-semibold"></span>
+        <span class="tt-abs d-none text-body-secondary">{{ main_time[:5] }}</span>
+        <span class="tt-abs-sub d-none d-md-block text-body-tertiary" style="font-size:.72em;line-height:1.2;"></span>
       </span>
     </td>
     <td><div class="rr-stop"><a href="{{ BASE_PATH }}/stops/{{ it.stop_id }}" class="text-decoration-none text-body">{{ it.stop_name }}</a></div></td>
