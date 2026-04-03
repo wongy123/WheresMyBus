@@ -37,12 +37,9 @@
 <div class="mb-4">
   <div class="fw-semibold small mb-2 text-muted text-uppercase d-flex align-items-center gap-2" style="letter-spacing:.04em;font-size:.75rem;">
     <span>Routes serving this {{ 'station' if stop.location_type == 1 else 'stop' }}</span>
-    <span id="route-filter-hint" class="d-none fw-normal text-lowercase" style="letter-spacing:0">
-      — <a href="#" id="route-filter-clear" class="text-muted">clear filter</a>
-    </span>
     <span id="route-filter-idle-hint" class="fw-normal text-lowercase" style="letter-spacing:0;font-size:.7rem;opacity:.6;">tap to filter</span>
   </div>
-  <div class="d-flex flex-wrap gap-1" id="route-filter-badges">
+  <div class="d-flex flex-wrap align-items-center gap-1" id="route-filter-badges">
     {% for r in routes %}
     {% set bg = '#' + (r.route_color or 'CCCCCC') %}
     {% set fg = '#' + (r.route_text_color or '000000') %}
@@ -52,13 +49,15 @@
       {{ r.route_short_name }}
     </button>
     {% endfor %}
+    <button type="button" id="route-filter-clear" class="btn btn-sm btn-outline-secondary d-none" style="font-size:.72rem;padding:.15rem .45rem;">
+      <span class="material-symbols-outlined align-middle" style="font-size:.85rem;line-height:1;">filter_alt_off</span> Clear filter
+    </button>
   </div>
 </div>
 <script>
   (function () {
     var badgesEl = document.getElementById('route-filter-badges');
-    var hintEl = document.getElementById('route-filter-hint');
-
+    var clearBtn = document.getElementById('route-filter-clear');
     var idleHintEl = document.getElementById('route-filter-idle-hint');
 
     function applyFilterVisuals() {
@@ -67,8 +66,8 @@
         .map(function (b) { return b.dataset.route; });
       var anyActive = activeRoutes.length > 0;
       badgesEl.classList.toggle('has-filter', anyActive);
-      hintEl.classList.toggle('d-none', !anyActive);
-      if (idleHintEl) idleHintEl.style.display = 'none';
+      clearBtn.classList.toggle('d-none', !anyActive);
+      if (idleHintEl) idleHintEl.style.display = anyActive ? 'none' : '';
       if (ttEl) ttEl.classList.toggle('filter-active', anyActive);
       if (window._renderFilteredVehicles) window._renderFilteredVehicles();
     }
@@ -79,7 +78,6 @@
         .map(function (b) { return b.dataset.route; });
       applyFilterVisuals();
       if (ttEl) {
-        // Store active routes and re-fetch from page 1
         ttEl.dataset.ttRoutes = activeRoutes.join(',');
         var pageEl = ttEl.querySelector('[data-tt-page]');
         if (pageEl) pageEl.dataset.ttPage = '1';
@@ -94,14 +92,24 @@
       applyFilter();
     });
 
-    document.getElementById('route-filter-clear').addEventListener('click', function (e) {
-      e.preventDefault();
+    clearBtn.addEventListener('click', function () {
       badgesEl.querySelectorAll('.route-filter-btn.active').forEach(function (b) { b.classList.remove('active'); });
       applyFilter();
     });
 
     document.addEventListener('htmx:afterSwap', function (evt) {
-      if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') applyFilterVisuals();
+      if (evt.detail && evt.detail.target && evt.detail.target.id === 'stop-timetable') {
+        applyFilterVisuals();
+        var updEl = evt.detail.target.querySelector('#tt-last-updated');
+        if (updEl) {
+          var now = new Date();
+          var hh = String(now.getHours()).padStart(2, '0');
+          var mm = String(now.getMinutes()).padStart(2, '0');
+          var ss = String(now.getSeconds()).padStart(2, '0');
+          updEl.textContent = 'Updated ' + hh + ':' + mm + ':' + ss;
+          updEl._updatedAt = Date.now();
+        }
+      }
     });
   }());
 
@@ -208,6 +216,16 @@
 
   #stop-timetable tr.tt-row-active td {
     background-color: rgba(var(--bs-primary-rgb), .10);
+  }
+
+  @media (max-width: 575.98px) {
+    #stop-timetable tr.tt-row-active {
+      background-color: rgba(var(--bs-primary-rgb), .07);
+      border-left: 3px solid rgba(var(--bs-primary-rgb), .6) !important;
+    }
+    #stop-timetable tr.tt-row-active td {
+      background-color: transparent;
+    }
   }
 </style>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -408,6 +426,7 @@
       _clearActiveShape();
       _highlightActiveRow(null);
       map.closePopup();
+      map.flyTo([stopLat, stopLon], 16);
       return;
     }
     var vehicle = null;
@@ -430,6 +449,7 @@
     _highlightActiveRow(tripId);
     map.flyTo([vehicle.lat, vehicle.lon], Math.max(map.getZoom(), 14));
     if (vehicleMarkerMap[tripId]) vehicleMarkerMap[tripId].openPopup();
+    document.getElementById('stop-map').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 
   window.TRANSIT.addFullscreenBtn(document.getElementById('stop-map'), function () { return map; });

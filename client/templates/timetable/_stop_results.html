@@ -28,15 +28,18 @@
     </table>
   </div>
 
-  <div class="d-flex align-items-center gap-3 mt-1 mb-1" style="font-size:.72rem;color:#adb5bd;">
-    <span class="d-inline-flex align-items-center gap-1">
-      <span class="material-symbols-outlined" style="font-size:.85rem;line-height:1;color:#198754;">sensors</span>
-      Real-time delay
-    </span>
-    <span class="d-inline-flex align-items-center gap-1">
-      <span class="material-symbols-outlined" style="font-size:.85rem;line-height:1;color:#0d6efd;">my_location</span>
-      Live GPS &mdash; click row to track on map
-    </span>
+  <div class="d-flex align-items-center justify-content-between gap-3 mt-1 mb-1" style="font-size:.72rem;color:#adb5bd;">
+    <div class="d-flex align-items-center gap-3">
+      <span class="d-inline-flex align-items-center gap-1">
+        <span class="material-symbols-outlined" style="font-size:.85rem;line-height:1;color:#198754;">sensors</span>
+        Real-time delay
+      </span>
+      <span class="d-inline-flex align-items-center gap-1">
+        <span class="material-symbols-outlined" style="font-size:.85rem;line-height:1;color:#0d6efd;">my_location</span>
+        Live GPS &mdash; click row to track on map
+      </span>
+    </div>
+    <span id="tt-last-updated" class="d-inline-flex align-items-center gap-1 tt-last-updated" aria-live="polite"></span>
   </div>
 
   {% set use_htmx = hx_target is defined and hx_target %}
@@ -45,7 +48,21 @@
 {% else %}
   <div class="empty-state py-4">
     <div><span class="material-symbols-outlined">event_busy</span></div>
-    <div class="small">No upcoming services in this window.</div>
+    <div class="small mb-3">No upcoming services in this window.</div>
+    <div class="d-flex flex-wrap justify-content-center gap-2">
+      {% if duration | int < 7200 %}
+      <button type="button" class="btn btn-sm btn-outline-secondary"
+        onclick="var btn=document.querySelector('.tt-window-btn[onclick*=\'7200\']');if(btn)btn.click();">
+        Try 2 hour window
+      </button>
+      {% elif duration | int < 14400 %}
+      <button type="button" class="btn btn-sm btn-outline-secondary"
+        onclick="var btn=document.querySelector('.tt-window-btn[onclick*=\'14400\']');if(btn)btn.click();">
+        Try 4 hour window
+      </button>
+      {% endif %}
+      <a href="{{ BASE_PATH }}/alerts" class="btn btn-sm btn-outline-warning">Check service alerts</a>
+    </div>
   </div>
 {% endif %}
 <script>

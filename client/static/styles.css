@@ -373,10 +373,6 @@
   filter: brightness(1.12);
 }
 
-.route-filter-btn.active {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, .45);
-}
-
 /* Empty state */
 .empty-state {
   text-align: center;
@@ -514,11 +510,30 @@
   background-color: rgba(var(--wmb-brand-rgb), .04) !important;
 }
 
-/* Route filter active state: clean outline ring instead of double shadow */
+@media (max-width: 575.98px) {
+  .tt-table-responsive .table tbody tr:hover td {
+    background-color: transparent !important;
+  }
+  .tt-table-responsive .table tbody tr:hover {
+    background-color: rgba(var(--wmb-brand-rgb), .06);
+  }
+}
+
+/* Route filter active state: filled badge with tick mark */
 .route-filter-btn.active {
   box-shadow: none;
   outline: 2.5px solid rgba(0, 0, 0, .45);
   outline-offset: 2px;
+  filter: brightness(.88) saturate(1.1);
+}
+
+.route-filter-btn.active::after {
+  content: '\e876'; /* material symbols: check */
+  font-family: 'Material Symbols Outlined';
+  font-size: .9em;
+  margin-left: .3em;
+  vertical-align: middle;
+  font-weight: 400;
 }
 
 /* Typography: consistent page-level heading rhythm */
@@ -558,3 +573,89 @@
   }
 }
 
+
+/* Timetable: desktop sub-time (absolute time shown below countdown on md+) */
+.tt-abs-sub {
+  font-size: .72em;
+  line-height: 1.2;
+  color: var(--bs-tertiary-color, #adb5bd);
+}
+
+/* Timetable: last-updated indicator */
+.tt-last-updated {
+  font-size: .72rem;
+  color: #adb5bd;
+  transition: color .4s;
+}
+.tt-last-updated.stale {
+  color: #fd7e14;
+}
+
+/* Mobile timetable: card-style rows at xs breakpoint */
+@media (max-width: 575.98px) {
+  .tt-table-responsive .table,
+  .tt-table-responsive .table thead,
+  .tt-table-responsive .table tbody,
+  .tt-table-responsive .table th,
+  .tt-table-responsive .table td,
+  .tt-table-responsive .table tr {
+    display: block;
+  }
+  .tt-table-responsive .table thead {
+    display: none;
+  }
+  .tt-table-responsive .table tbody tr {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    padding: .25rem .25rem;
+    gap: .35rem;
+    border-bottom: 1px solid var(--bs-border-color);
+  }
+  .tt-table-responsive .table tbody tr:last-child {
+    border-bottom: none;
+  }
+  /* Route badge */
+  .tt-table-responsive .table tbody td:nth-child(2) {
+    order: 1;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  /* Headsign — truncate, fill remaining space */
+  .tt-table-responsive .table tbody td:nth-child(3) {
+    order: 2;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0;
+    font-size: .82rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .tt-table-responsive .table tbody td:nth-child(3) .tt-headsign {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  /* Status/RT icons */
+  .tt-table-responsive .table tbody td:nth-child(4),
+  .tt-table-responsive .table tbody td:nth-child(5) {
+    order: 3;
+    padding: 0;
+    flex-shrink: 0;
+    font-size: .78rem;
+  }
+  /* Time — fixed width, right-aligned */
+  .tt-table-responsive .table tbody td:nth-child(1) {
+    order: 4;
+    padding: 0;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: .88rem;
+    min-width: 3.2rem;
+  }
+  /* Hide the sub-absolute time on mobile (no room) */
+  .tt-table-responsive .tt-abs-sub {
+    display: none !important;
+  }
+}
