@@ -52,6 +52,7 @@ cat > server/.env <<'EOF'
 # GTFS-RT feeds (Translink SEQ)
 GTFS_RT_TRIP_UPDATES_URL=https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates
 GTFS_RT_VEHICLE_POSITIONS_URL=https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions
+GTFS_RT_ALERTS_URL=https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts
 
 PORT=3000
 EOF
