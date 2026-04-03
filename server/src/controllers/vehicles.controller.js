@@ -41,9 +41,10 @@ export async function getAllVehicles(req, res, next) {
       const maxLat = Math.max(lat1, lat2);
       const minLon = Math.min(lon1, lon2);
       const maxLon = Math.max(lon1, lon2);
+      const pin = req.query.pin;
       vehicles = vehicles.filter(v =>
-        v.lat >= minLat && v.lat <= maxLat &&
-        v.lon >= minLon && v.lon <= maxLon
+        v.trip_id === pin ||
+        (v.lat >= minLat && v.lat <= maxLat && v.lon >= minLon && v.lon <= maxLon)
       );
     }
 

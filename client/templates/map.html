@@ -1095,6 +1095,7 @@
     if (vehiclesLimit < VEHICLE_STEPS[VEHICLE_STEPS.length - 1]) {
       params.set('limit', vehiclesLimit);
     }
+    if (activeTripId) params.set('pin', activeTripId);
     fetch(window.API_BASE_URL + '/vehicles?' + params.toString())
       .then(function (r) { return r.json(); })
       .then(function (d) {

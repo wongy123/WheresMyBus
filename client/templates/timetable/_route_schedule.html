@@ -111,8 +111,6 @@
   var nowMin = now.getHours() * 60 + now.getMinutes();
   var headers = table.querySelectorAll('thead th');
   var bodyRows = table.querySelectorAll('tbody tr');
-  var lastRow = bodyRows.length > 0 ? bodyRows[bodyRows.length - 1] : null;
-  var lastCells = lastRow ? lastRow.querySelectorAll('td') : [];
 
   function parseMin(el) {
     if (!el) return null;
@@ -120,12 +118,24 @@
     return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
   }
 
+  // Find the last non-empty time in a column (not necessarily the last canonical stop row).
+  // This handles short-run trips that don't serve all canonical stops.
+  function lastMinForCol(i) {
+    var result = null;
+    for (var r = bodyRows.length - 1; r >= 0; r--) {
+      var cells = bodyRows[r].querySelectorAll('td');
+      var v = parseMin(cells[i]);
+      if (v !== null) { result = v; break; }
+    }
+    return result;
+  }
+
   var nextIdx = -1, nextDiff = Infinity;
   headers.forEach(function(th, i) {
     if (i === 0) return;
     var firstMin = parseMin(th);
     if (firstMin === null) return;
-    var lastMin = parseMin(lastCells[i]);
+    var lastMin = lastMinForCol(i);
     var diff = firstMin - nowMin;
 
     // Active: departed first stop, hasn't finished last stop
