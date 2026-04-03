@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% from "common/_stop_search.html" import stop_search %}
 {% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{{ BASE_PATH }}/">Home</a></li>
+    <li class="breadcrumb-item active">Stops</li>
+  </ol>
+</nav>
 <h1 class="h3 mb-4">Stops</h1>
 {{ stop_search(dest="details", uid="stops", base_path=BASE_PATH) }}
 {% endblock %}
