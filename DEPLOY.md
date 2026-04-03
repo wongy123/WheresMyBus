@@ -137,9 +137,7 @@ REDIS_URL=redis://192.168.3.5:6379
 # GTFS-RT feeds (Translink)
 GTFS_RT_TRIP_UPDATES_URL=https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates
 GTFS_RT_VEHICLE_POSITIONS_URL=https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions
-
-# Auth
-JWT_SECRET=change-this-to-a-long-random-string
+GTFS_RT_ALERTS_URL=https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts
 
 # Server
 PORT=3000
