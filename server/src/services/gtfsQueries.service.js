@@ -1093,11 +1093,6 @@ ORDER BY f.win_sec ASC;
     annotateRows(visible);
     return visible.filter(r => {
       if (r.minutes_away != null && r.minutes_away > MAX_MINUTES_AWAY) return false;
-      // Exclude scheduled rows from alternate trip patterns (e.g. short-run trips
-      // whose first stop maps to a mid-route canonical position). They appear as
-      // confusing mid-route entries in the diagram.
-      if (!r.vehicle_label && r.stop_sequence === 1 &&
-          r.canonical_stop_sequence != null && r.canonical_stop_sequence > 1) return false;
       return true;
     });
   }
@@ -1209,8 +1204,6 @@ ORDER BY f.win_sec ASC;
   annotateRows(visible);
   return visible.filter(r => {
     if (r.minutes_away != null && r.minutes_away > MAX_MINUTES_AWAY) return false;
-    if (!r.vehicle_label && r.stop_sequence === 1 &&
-        r.canonical_stop_sequence != null && r.canonical_stop_sequence > 1) return false;
     return true;
   });
 }
