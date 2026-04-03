@@ -19,10 +19,19 @@ const TERMINAL_LINE = {
   BN: 'Beenleigh Line',
 };
 
+// Exact short-name overrides for routes whose terminal codes don't map cleanly.
+// BRBR is a Cleveland line circle service (Brisbane City loop via Cleveland).
+const SHORT_NAME_OVERRIDE = {
+  BRBR: ['Cleveland Line'],
+};
+
 export function getLineNames(shortName) {
-  if (!shortName || shortName.length < 4) return [];
-  const origin = shortName.slice(0, 2).toUpperCase();
-  const dest   = shortName.slice(2, 4).toUpperCase();
+  if (!shortName) return [];
+  const upper = shortName.toUpperCase();
+  if (SHORT_NAME_OVERRIDE[upper]) return SHORT_NAME_OVERRIDE[upper];
+  if (upper.length < 4) return [];
+  const origin = upper.slice(0, 2);
+  const dest   = upper.slice(2, 4);
   const names  = new Set();
   if (TERMINAL_LINE[origin]) names.add(TERMINAL_LINE[origin]);
   if (TERMINAL_LINE[dest])   names.add(TERMINAL_LINE[dest]);
