@@ -1,5 +1,6 @@
 # route.py
 import os
+from datetime import datetime
 from flask import Blueprint, render_template, request, abort
 from api import api_get
 from helpers import get_route_directions, validate_direction
@@ -73,9 +74,32 @@ def route_details(route_id: str):
     if details is None:
         abort(404)
     available_directions, default_direction = get_route_directions(route_id)
+
+    # For line slugs (is_line=True), use the slug for all HTMX/API sub-calls.
+    # For regular routes, use the actual route_id from the DB.
+    route_key = details.get("line_slug") if details.get("is_line") else details.get("route_id", route_id)
+
+    # Format next_service_date for display if present
+    next_service_date_display = None
+    nsd = details.get("next_service_date")
+    if nsd:
+        try:
+            dt = datetime.strptime(nsd, "%Y%m%d")
+            next_service_date_display = dt.strftime("%A %-d %B %Y")
+        except Exception:
+            next_service_date_display = nsd
+
+    today_date = datetime.now().strftime("%Y%m%d")
+    # Auto-advance to next service date for routes with no service today
+    initial_date = nsd if nsd else today_date
+
     return render_template(
         "routes/details.html",
         route=details,
+        route_key=route_key,
+        next_service_date_display=next_service_date_display,
+        today_date=today_date,
+        initial_date=initial_date,
         BASE_PATH=BASE_PATH,
         available_directions=available_directions,
         default_direction=default_direction,

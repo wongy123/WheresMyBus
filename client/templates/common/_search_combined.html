@@ -48,10 +48,10 @@
     data-route-long="{{ r.route_long_name }}">
     <div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
       <span class="badge rounded-pill px-2 py-1 flex-shrink-0"
-        style="background-color:{{ bg }};color:{{ fg }};font-size:.8rem;">{{ r.route_short_name }}</span>
-      <strong class="lh-sm text-truncate">{{ r.route_long_name }}</strong>
+        style="background-color:{{ bg }};color:{{ fg }};font-size:.8rem;">{{ r.line_tag if r.is_line else r.route_short_name }}</span>
+      <strong class="lh-sm text-truncate">{{ r.line_name if r.is_line else r.route_long_name }}</strong>
     </div>
-    <a href="{{ BASE_PATH }}/routes/{{ r.route_id }}" class="btn btn-sm btn-primary flex-shrink-0"
+    <a href="{{ BASE_PATH }}/routes/{{ r.line_slug if r.is_line else r.route_id }}" class="btn btn-sm btn-primary flex-shrink-0"
       onclick="event.stopPropagation()">Select</a>
   </div>
   {% endfor %}

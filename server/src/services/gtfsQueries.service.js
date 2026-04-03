@@ -3,7 +3,13 @@ import { getStops, getStopTimeUpdates } from 'gtfs';
 import { cacheGet, cacheSet, cacheMGet } from './cache.service.js';
 import { getLatestVehiclePositions } from './gtfsRealtime.service.js';
 import crypto from 'node:crypto';
-import { getLineNames } from '../utils/routeNames.js';
+import {
+  getLineNames,
+  slugifyLineName,
+  getLineNameFromSlug,
+  getTerminalCodesForLine,
+  getShortNameOverridesForLine,
+} from '../utils/routeNames.js';
 import { withDb } from '../utils/dbQuery.js';
 
 const defaultConfigPath = '../../config.json';
@@ -400,10 +406,11 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
   // Pick one representative route_id per short_name, preferring the variant
   // with the most trips today (current service period), then most trips overall.
   const sql = `
-    SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color
+    SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color,
+      best.trips_today_cnt
     FROM routes r
     INNER JOIN (
-      SELECT route_id
+      SELECT route_id, trips_today_cnt
       FROM (
         SELECT r2.route_id, r2.route_short_name,
           COALESCE(td.cnt, 0) AS trips_today_cnt,
@@ -415,17 +422,51 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
         LEFT JOIN (SELECT route_id, COUNT(*) AS cnt  FROM trips_today GROUP BY route_id) td    ON td.route_id    = r2.route_id
         LEFT JOIN (SELECT route_id, COUNT(*) AS total FROM trips       GROUP BY route_id) all_t ON all_t.route_id = r2.route_id
       )
-      WHERE rn = 1 AND trips_today_cnt > 0
+      WHERE rn = 1
     ) best ON r.route_id = best.route_id
   `;
 
   const rows = await withDb(db => db.prepare(sql).all(), configPath);
 
-  // Enrich with marketing line name
-  const routes = rows.map(r => ({
+  // Enrich with individual marketing line names for train variants
+  const enriched = rows.map(r => ({
     ...r,
+    _lineNames: getLineNames(r.route_short_name),
     line_name: getLineNames(r.route_short_name).join(' / ') || null,
   }));
+
+  // Deduplicate train lines: one search result per individual line name.
+  // Among all variants sharing a line, prefer the one with trips today.
+  const lineMap = new Map(); // individual line_name → best representative row
+  const nonTrainRoutes = [];
+  for (const r of enriched) {
+    if (!r._lineNames.length) {
+      nonTrainRoutes.push(r);
+      continue;
+    }
+    for (const lName of r._lineNames) {
+      if (!lineMap.has(lName)) {
+        lineMap.set(lName, r);
+      } else {
+        const existing = lineMap.get(lName);
+        if (r.trips_today_cnt > 0 && existing.trips_today_cnt === 0) {
+          lineMap.set(lName, r);
+        }
+      }
+    }
+  }
+  const lineRoutes = [...lineMap.entries()].map(([lName, r]) => ({
+    ...r,
+    _lineNames: undefined,
+    line_name: lName,
+    line_slug: slugifyLineName(lName),
+    line_tag: lName.replace(/\s+(Line|Link|Rail)$/i, '').trim(),
+    is_line: true,
+  }));
+  const routes = [
+    ...nonTrainRoutes.map(({ _lineNames, ...rest }) => rest),
+    ...lineRoutes,
+  ];
 
   if (!searchTerm) {
     return [];
@@ -457,16 +498,60 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
     })
     .filter(Boolean)
     .sort((a, b) => a.sort_rank - b.sort_rank || a.route_short_name.localeCompare(b.route_short_name))
-    .map(({ sort_rank, ...rest }) => rest);
+    .map(({ sort_rank, trips_today_cnt, ...rest }) => rest);
 
   return scored;
 }
 
 export async function getOneRoute(identifier, configPath = defaultConfigPath) {
+  // Check if identifier is a known line slug (e.g., "gold-coast-line")
+  const lineName = getLineNameFromSlug(identifier);
+  if (lineName) {
+    const terminalCodes = getTerminalCodesForLine(lineName);
+    const shortNameOverrides = getShortNameOverridesForLine(lineName);
+    const termConds = terminalCodes.flatMap((c, i) => [
+      `substr(r.route_short_name, 1, 2) = $tc${i}`,
+      `substr(r.route_short_name, 3, 2) = $tc${i}`,
+    ]);
+    const snoConds = shortNameOverrides.map((sn, i) => `r.route_short_name = $sno${i}`);
+    const allConds = [...termConds, ...snoConds];
+    if (!allConds.length) return null;
+    const params = {
+      ...Object.fromEntries(terminalCodes.map((c, i) => [`tc${i}`, c])),
+      ...Object.fromEntries(shortNameOverrides.map((sn, i) => [`sno${i}`, sn])),
+    };
+    const sql = `
+      SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color,
+        COALESCE(td.cnt, 0) AS trips_today_cnt
+      FROM routes r
+      LEFT JOIN (SELECT route_id, COUNT(*) AS cnt  FROM trips_today GROUP BY route_id) td    ON td.route_id    = r.route_id
+      LEFT JOIN (SELECT route_id, COUNT(*) AS total FROM trips       GROUP BY route_id) all_t ON all_t.route_id = r.route_id
+      WHERE ${allConds.join(' OR ')}
+      ORDER BY COALESCE(td.cnt, 0) DESC, COALESCE(all_t.total, 0) DESC, r.route_id ASC
+      LIMIT 1
+    `;
+    const rep = await withDb(db => db.prepare(sql).get(params), configPath);
+    if (!rep) return null;
+    return {
+      route_id: identifier,
+      route_short_name: lineName,
+      route_long_name: lineName,
+      route_type: rep.route_type,
+      route_color: rep.route_color,
+      route_text_color: rep.route_text_color,
+      has_service_today: rep.trips_today_cnt > 0,
+      line_name: lineName,
+      line_slug: identifier,
+      line_tag: lineName.replace(/\s+(Line|Link|Rail)$/i, '').trim(),
+      is_line: true,
+    };
+  }
+
   // When looking up by route_short_name, prefer the variant active today.
   // When looking up by exact route_id, return that row directly.
   const sql = `
-    SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color
+    SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color,
+      COALESCE(td.cnt, 0) AS trips_today_cnt
     FROM routes r
     LEFT JOIN (SELECT route_id, COUNT(*) AS cnt  FROM trips_today GROUP BY route_id) td    ON td.route_id    = r.route_id
     LEFT JOIN (SELECT route_id, COUNT(*) AS total FROM trips       GROUP BY route_id) all_t ON all_t.route_id = r.route_id
@@ -480,10 +565,40 @@ export async function getOneRoute(identifier, configPath = defaultConfigPath) {
 
   const route = await withDb(db => db.prepare(sql).get({ id: identifier }), configPath);
   if (!route) return null;
-  return { ...route, line_name: getLineNames(route.route_short_name).join(' / ') || null };
+  const { trips_today_cnt, ...routeData } = route;
+  return { ...routeData, line_name: getLineNames(route.route_short_name).join(' / ') || null, has_service_today: trips_today_cnt > 0 };
 }
 
 async function resolveRouteFamily(identifier, configPath = defaultConfigPath) {
+  // If identifier is a line slug, resolve to the best representative variant.
+  const lineName = getLineNameFromSlug(identifier);
+  if (lineName) {
+    const terminalCodes = getTerminalCodesForLine(lineName);
+    const shortNameOverrides = getShortNameOverridesForLine(lineName);
+    const termConds = terminalCodes.flatMap((c, i) => [
+      `substr(route_short_name, 1, 2) = $tc${i}`,
+      `substr(route_short_name, 3, 2) = $tc${i}`,
+    ]);
+    const snoConds = shortNameOverrides.map((sn, i) => `route_short_name = $sno${i}`);
+    const allConds = [...termConds, ...snoConds];
+    if (!allConds.length) return { routeId: identifier, routeShortName: identifier };
+    const params = {
+      ...Object.fromEntries(terminalCodes.map((c, i) => [`tc${i}`, c])),
+      ...Object.fromEntries(shortNameOverrides.map((sn, i) => [`sno${i}`, sn])),
+    };
+    const route = await withDb(db => db.prepare(`
+      SELECT r.route_id, r.route_short_name
+      FROM routes r
+      LEFT JOIN (SELECT route_id, COUNT(*) AS cnt  FROM trips_today GROUP BY route_id) td    ON td.route_id    = r.route_id
+      LEFT JOIN (SELECT route_id, COUNT(*) AS total FROM trips       GROUP BY route_id) all_t ON all_t.route_id = r.route_id
+      WHERE ${allConds.join(' OR ')}
+      ORDER BY COALESCE(td.cnt, 0) DESC, COALESCE(all_t.total, 0) DESC, r.route_id ASC
+      LIMIT 1
+    `).get(params), configPath);
+    if (!route) return { routeId: identifier, routeShortName: identifier };
+    return { routeId: route.route_id, routeShortName: route.route_short_name };
+  }
+
   const route = await withDb(db => db.prepare(`
     SELECT route_id, route_short_name
     FROM routes
@@ -643,6 +758,36 @@ export async function getStopPlatforms(stationId, configPath = defaultConfigPath
 }
 
 export async function getRouteDirections(routeId, configPath = defaultConfigPath) {
+  // For line slugs, aggregate directions across ALL matching variants.
+  const lineName = getLineNameFromSlug(routeId);
+  if (lineName) {
+    const terminalCodes = getTerminalCodesForLine(lineName);
+    const shortNameOverrides = getShortNameOverridesForLine(lineName);
+    const termConds = terminalCodes.flatMap((c, i) => [
+      `substr(r.route_short_name, 1, 2) = $tc${i}`,
+      `substr(r.route_short_name, 3, 2) = $tc${i}`,
+    ]);
+    const snoConds = shortNameOverrides.map((sn, i) => `r.route_short_name = $sno${i}`);
+    const allConds = [...termConds, ...snoConds];
+    if (!allConds.length) return { available: [0, 1], default: 0 };
+    const params = {
+      ...Object.fromEntries(terminalCodes.map((c, i) => [`tc${i}`, c])),
+      ...Object.fromEntries(shortNameOverrides.map((sn, i) => [`sno${i}`, sn])),
+    };
+    return withDb(db => {
+      const dirRows = db.prepare(`
+        SELECT DISTINCT t.direction_id
+        FROM trips t
+        JOIN routes r ON t.route_id = r.route_id
+        WHERE (${allConds.join(' OR ')})
+          AND t.direction_id IN (0, 1)
+        ORDER BY t.direction_id
+      `).all(params);
+      const available = dirRows.map(r => r.direction_id).filter(d => d === 0 || d === 1);
+      return { available, default: available[0] ?? 0 };
+    }, configPath);
+  }
+
   const family = await resolveRouteFamily(routeId, configPath);
 
   const now = new Date();
@@ -700,6 +845,10 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
   const cached = await cacheGet(cacheKey);
   if (cached) return cached;
 
+  // For individual routes (and line slugs resolved via resolveRouteFamily), pick the single most-representative trip.
+  const family = await resolveRouteFamily(routeId, configPath);
+  const resolvedId = family.routeShortName;
+
   const sql = `
     SELECT st.stop_sequence, st.stop_id, s.stop_name, s.stop_code, s.stop_lat, s.stop_lon
     FROM stop_times st
@@ -716,16 +865,19 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
     ORDER BY st.stop_sequence
   `;
 
-  let rows = await withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
+  let rows = await withDb(db => db.prepare(sql).all({ routeId: resolvedId, direction }), configPath);
   if (!rows.length) {
     const altDir = direction === 0 ? 1 : 0;
-    rows = await withDb(db => db.prepare(sql).all({ routeId, direction: altDir }), configPath);
+    rows = await withDb(db => db.prepare(sql).all({ routeId: resolvedId, direction: altDir }), configPath);
   }
   if (rows.length > 0) await cacheSet(cacheKey, rows, 3600);
   return rows;
 }
 
 export async function getRouteShape(routeId, direction = 0, configPath = defaultConfigPath) {
+  const family = await resolveRouteFamily(routeId, configPath);
+  const resolvedId = family.routeShortName;
+
   const sql = `
     SELECT sh.shape_pt_lat AS lat, sh.shape_pt_lon AS lon
     FROM shapes sh
@@ -742,35 +894,106 @@ export async function getRouteShape(routeId, direction = 0, configPath = default
     ORDER BY sh.shape_pt_sequence
   `;
 
-  const rows = await withDb(db => db.prepare(sql).all({ routeId, direction }), configPath);
-  if (rows.length > 0) return rows;
-  const altDir = direction === 0 ? 1 : 0;
-  return withDb(db => db.prepare(sql).all({ routeId, direction: altDir }), configPath);
+  let rows = await withDb(db => db.prepare(sql).all({ routeId: resolvedId, direction }), configPath);
+  if (!rows.length) {
+    const altDir = direction === 0 ? 1 : 0;
+    rows = await withDb(db => db.prepare(sql).all({ routeId: resolvedId, direction: altDir }), configPath);
+  }
+
+  return rows;
 }
 
-export async function getRouteSchedule(routeId, direction = 0, configPath = defaultConfigPath) {
-  const family = await resolveRouteFamily(routeId, configPath);
+export async function getRouteSchedule(routeId, direction = 0, date = null, configPath = defaultConfigPath) {
+  // Resolve date to YYYYMMDD string
+  const now = new Date();
+  const dateStr = date || [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('');
+
+  // Active-services subquery parameterised on $date (YYYYMMDD).
+  // substr() reformats YYYYMMDD → YYYY-MM-DD for SQLite's strftime.
+  const activeServicesSql = `
+    t.service_id IN (
+      SELECT service_id FROM calendar
+      WHERE CAST(start_date AS INTEGER) <= CAST($date AS INTEGER)
+        AND CAST(end_date   AS INTEGER) >= CAST($date AS INTEGER)
+        AND (
+          (strftime('%w', substr($date,1,4)||'-'||substr($date,5,2)||'-'||substr($date,7,2)) = '0' AND sunday    = 1) OR
+          (strftime('%w', substr($date,1,4)||'-'||substr($date,5,2)||'-'||substr($date,7,2)) = '1' AND monday    = 1) OR
+          (strftime('%w', substr($date,1,4)||'-'||substr($date,5,2)||'-'||substr($date,7,2)) = '2' AND tuesday   = 1) OR
+          (strftime('%w', substr($date,1,4)||'-'||substr($date,5,2)||'-'||substr($date,7,2)) = '3' AND wednesday = 1) OR
+          (strftime('%w', substr($date,1,4)||'-'||substr($date,5,2)||'-'||substr($date,7,2)) = '4' AND thursday  = 1) OR
+          (strftime('%w', substr($date,1,4)||'-'||substr($date,5,2)||'-'||substr($date,7,2)) = '5' AND friday    = 1) OR
+          (strftime('%w', substr($date,1,4)||'-'||substr($date,5,2)||'-'||substr($date,7,2)) = '6' AND saturday  = 1)
+        )
+      UNION
+      SELECT service_id FROM calendar_dates
+      WHERE CAST(date AS INTEGER) = CAST($date AS INTEGER) AND exception_type = 1
+      EXCEPT
+      SELECT service_id FROM calendar_dates
+      WHERE CAST(date AS INTEGER) = CAST($date AS INTEGER) AND exception_type = 2
+    )
+  `;
+
+  // Build route-matching WHERE clause and params.
+  // For line slugs, expand to all variants via terminal codes / short-name overrides.
+  let routeWhere;
+  let routeParams = {};
+  const lineName = getLineNameFromSlug(routeId);
+  if (lineName) {
+    const terminalCodes = getTerminalCodesForLine(lineName);
+    const shortNameOverrides = getShortNameOverridesForLine(lineName);
+    const termConds = terminalCodes.flatMap((c, i) => [
+      `substr(r.route_short_name, 1, 2) = $tc${i}`,
+      `substr(r.route_short_name, 3, 2) = $tc${i}`,
+    ]);
+    const snoConds = shortNameOverrides.map((sn, i) => `r.route_short_name = $sno${i}`);
+    const allConds = [...termConds, ...snoConds];
+    routeWhere = allConds.length ? `(${allConds.join(' OR ')})` : 'FALSE';
+    routeParams = {
+      ...Object.fromEntries(terminalCodes.map((c, i) => [`tc${i}`, c])),
+      ...Object.fromEntries(shortNameOverrides.map((sn, i) => [`sno${i}`, sn])),
+    };
+  } else {
+    const family = await resolveRouteFamily(routeId, configPath);
+    routeWhere = `(t.route_id = $routeId OR r.route_short_name = $routeShortName)`;
+    routeParams = { routeId: family.routeId, routeShortName: family.routeShortName };
+  }
+
   const sql = `
     SELECT
       st.trip_id,
-      st.trip_headsign,
+      t.trip_headsign,
       st.stop_sequence,
       st.stop_id,
       COALESCE(s.parent_station, s.stop_id) AS station_key,
       COALESCE(ps.stop_name, s.stop_name) AS station_name,
       st.departure_time,
-      st.dep_sec_base
-    FROM stop_times_today st
+      (
+        CAST(substr(st.departure_time, 1, instr(st.departure_time, ':') - 1) AS INTEGER) * 3600 +
+        CAST(substr(st.departure_time, instr(st.departure_time, ':') + 1, 2) AS INTEGER) * 60 +
+        CAST(substr(st.departure_time, length(st.departure_time) - 1, 2) AS INTEGER)
+      ) AS dep_sec_base,
+      r.route_short_name AS trip_route_short_name,
+      r.route_color AS trip_route_color,
+      r.route_text_color AS trip_route_text_color
+    FROM stop_times st
     JOIN stops s ON st.stop_id = s.stop_id
     LEFT JOIN stops ps ON ps.stop_id = s.parent_station
     JOIN trips t ON st.trip_id = t.trip_id
     JOIN routes r ON t.route_id = r.route_id
-    WHERE (t.route_id = $routeId OR r.route_short_name = $routeShortName)
-    AND st.direction_id = $direction
+    WHERE ${routeWhere}
+      AND t.direction_id = $direction
+      AND ${activeServicesSql}
     ORDER BY st.trip_id, st.stop_sequence
   `;
 
-  const rows = await withDb(db => db.prepare(sql).all({ ...family, direction }), configPath);
+  const rows = await withDb(
+    db => db.prepare(sql).all({ ...routeParams, direction, date: dateStr }),
+    configPath
+  );
 
   if (!rows.length) return { stops: [], trips: [] };
 
@@ -784,6 +1007,9 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
       tripMap.set(row.trip_id, {
         trip_id: row.trip_id,
         headsign: row.trip_headsign,
+        route_short_name: row.trip_route_short_name,
+        route_color: row.trip_route_color || null,
+        route_text_color: row.trip_route_text_color || null,
         firstDep: row.dep_sec_base,
         firstDepStr: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
         times: {},
@@ -792,8 +1018,9 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
     tripMap.get(row.trip_id).times[row.station_key] = row.departure_time.slice(0, 5);
   }
 
-  // Canonical stop list: from the trip that covers the most stops, in sequence order.
-  // Use station_key/station_name so the column headers are station-level (not platform-level).
+  // Build canonical stop list by merging stops from all trip variants.
+  // Strategy: start with the longest trip's stop list, then extend at the head/tail
+  // with stops from shorter trips that don't overlap (e.g. Ipswich→Rosewood extension).
   const stopsByTrip = new Map();
   for (const row of rows) {
     if (!stopsByTrip.has(row.trip_id)) stopsByTrip.set(row.trip_id, []);
@@ -803,22 +1030,111 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
       stop_name: row.station_name,
     });
   }
-  let canonicalStops = [];
-  for (const stops of stopsByTrip.values()) {
-    if (stops.length > canonicalStops.length) canonicalStops = stops;
-  }
 
-  // Deduplicate canonical stops (same station may appear via different platforms)
-  const seenStations = new Set();
-  canonicalStops = canonicalStops.filter(s => {
-    if (seenStations.has(s.stop_id)) return false;
-    seenStations.add(s.stop_id);
-    return true;
-  });
+  // Sort each trip's stops and deduplicate by station_key
+  const dedupedByTrip = [...stopsByTrip.values()].map(stops => {
+    const seen = new Set();
+    return stops
+      .sort((a, b) => a.stop_sequence - b.stop_sequence)
+      .filter(s => seen.has(s.stop_id) ? false : (seen.add(s.stop_id), true));
+  }).sort((a, b) => b.length - a.length); // longest trip first
+
+  // Merge: extend canonical list with stops from other trips that fall outside current range
+  let canonicalStops = dedupedByTrip[0]?.map(s => ({ stop_id: s.stop_id, stop_name: s.stop_name })) ?? [];
+  for (const tripStops of dedupedByTrip.slice(1)) {
+    const canonIds = canonicalStops.map(s => s.stop_id);
+    const tripIds = tripStops.map(s => s.stop_id);
+
+    // Find first and last canonical stop that this trip visits
+    let firstOverlapCanon = -1, lastOverlapCanon = -1;
+    for (let i = 0; i < canonIds.length; i++) {
+      if (tripIds.includes(canonIds[i])) {
+        if (firstOverlapCanon === -1) firstOverlapCanon = i;
+        lastOverlapCanon = i;
+      }
+    }
+    if (firstOverlapCanon === -1) continue; // no overlap — can't determine insertion point
+
+    const firstOverlapTrip = tripIds.indexOf(canonIds[firstOverlapCanon]);
+    const lastOverlapTrip = tripIds.lastIndexOf(canonIds[lastOverlapCanon]);
+    const canonSet = new Set(canonIds);
+
+    // Prepend stops that come before the first shared stop in this trip
+    const newBefore = tripStops.slice(0, firstOverlapTrip)
+      .filter(s => !canonSet.has(s.stop_id))
+      .map(s => ({ stop_id: s.stop_id, stop_name: s.stop_name }));
+
+    // Append stops that come after the last shared stop in this trip
+    const newAfter = tripStops.slice(lastOverlapTrip + 1)
+      .filter(s => !canonSet.has(s.stop_id))
+      .map(s => ({ stop_id: s.stop_id, stop_name: s.stop_name }));
+
+    if (newBefore.length || newAfter.length) {
+      canonicalStops = [...newBefore, ...canonicalStops, ...newAfter];
+    }
+  }
 
   const trips = [...tripMap.values()].sort((a, b) => a.firstDep - b.firstDep);
 
   return { stops: canonicalStops, trips };
+}
+
+export async function getNextServiceDate(routeId, configPath = defaultConfigPath) {
+  // Find the nearest future date (YYYYMMDD) when this route has active service.
+  // Uses a recursive CTE to generate the next 60 days and checks the calendar.
+  const sql = `
+    WITH RECURSIVE dates(d, dstr) AS (
+      SELECT date('now', 'localtime', '+1 day'),
+             replace(date('now', 'localtime', '+1 day'), '-', '')
+      UNION ALL
+      SELECT date(d, '+1 day'), replace(date(d, '+1 day'), '-', '')
+      FROM dates WHERE d < date('now', 'localtime', '+60 days')
+    ),
+    route_services AS (
+      SELECT DISTINCT t.service_id
+      FROM trips t
+      JOIN routes r ON t.route_id = r.route_id
+      WHERE r.route_id = $routeId OR r.route_short_name = $routeId
+    )
+    SELECT DISTINCT dates.dstr
+    FROM dates
+    WHERE EXISTS (
+      SELECT 1 FROM route_services rs
+      WHERE (
+        EXISTS (
+          SELECT 1 FROM calendar c
+          WHERE c.service_id = rs.service_id
+            AND CAST(c.start_date AS INTEGER) <= CAST(dates.dstr AS INTEGER)
+            AND CAST(c.end_date   AS INTEGER) >= CAST(dates.dstr AS INTEGER)
+            AND (
+              (strftime('%w', dates.d) = '0' AND c.sunday    = 1) OR
+              (strftime('%w', dates.d) = '1' AND c.monday    = 1) OR
+              (strftime('%w', dates.d) = '2' AND c.tuesday   = 1) OR
+              (strftime('%w', dates.d) = '3' AND c.wednesday = 1) OR
+              (strftime('%w', dates.d) = '4' AND c.thursday  = 1) OR
+              (strftime('%w', dates.d) = '5' AND c.friday    = 1) OR
+              (strftime('%w', dates.d) = '6' AND c.saturday  = 1)
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM calendar_dates cd
+              WHERE cd.service_id = rs.service_id
+                AND CAST(cd.date AS INTEGER) = CAST(dates.dstr AS INTEGER)
+                AND cd.exception_type = 2
+            )
+        )
+        OR EXISTS (
+          SELECT 1 FROM calendar_dates cd
+          WHERE cd.service_id = rs.service_id
+            AND CAST(cd.date AS INTEGER) = CAST(dates.dstr AS INTEGER)
+            AND cd.exception_type = 1
+        )
+      )
+    )
+    ORDER BY dates.dstr
+    LIMIT 1
+  `;
+  const row = await withDb(db => db.prepare(sql).get({ routeId }), configPath);
+  return row?.dstr ?? null;
 }
 
 export async function getRoutesByStop(stopId, configPath = defaultConfigPath) {

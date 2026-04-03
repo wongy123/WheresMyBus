@@ -48,6 +48,8 @@
 .schedule-table td.now-col    { background: #fff9e6 !important; }
 .schedule-table th.active-col { background: #c8e6c9 !important; color: #1b5e20; }
 .schedule-table td.active-col { background: #e8f5e9 !important; }
+#variant-filter-badges.has-filter .variant-filter-btn:not(.active) { opacity: .35; }
+#variant-filter-badges .variant-filter-btn { cursor: pointer; font-size: .75rem; border: none; transition: opacity .15s; }
 @media (max-width: 767.98px) {
   .schedule-table { font-size: .75rem; }
   .schedule-table th, .schedule-table td { padding: 4px 6px; }
@@ -56,9 +58,30 @@
 </style>
 
 {% if not stops or not trips %}
-  <div class="alert alert-light border">No scheduled services found for today.</div>
+  <div class="alert alert-light border">No scheduled services found{% if date %} for this date{% else %} for today{% endif %}.</div>
 {% else %}
-  <div class="text-muted small mb-3">{{ trips | length }} service{{ 's' if trips | length != 1 else '' }} today</div>
+  {% if is_multi_variant and variant_short_names %}
+    <div class="mb-2">
+      <div class="fw-semibold small mb-1 text-muted text-uppercase d-flex align-items-center gap-2" style="letter-spacing:.04em;font-size:.75rem;">
+        <span>Variant</span>
+        <span id="variant-filter-idle-hint" class="fw-normal text-lowercase" style="letter-spacing:0;font-size:.7rem;opacity:.6;">tap to filter</span>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-1" id="variant-filter-badges">
+        {% for sn in variant_short_names %}
+          {% set vc = variant_colors.get(sn, {}) %}
+          <button type="button" class="variant-filter-btn badge rounded-pill"
+            data-variant="{{ sn }}"
+            data-bg="{{ vc.bg or '#dee2e6' }}"
+            data-fg="{{ vc.fg or '#000000' }}"
+            style="background-color:{{ vc.bg or '#dee2e6' }};color:{{ vc.fg or '#000000' }};">{{ sn }}</button>
+        {% endfor %}
+        <button type="button" id="variant-filter-clear" class="btn btn-sm btn-outline-secondary d-none" style="font-size:.72rem;padding:.15rem .45rem;">
+          <span class="material-symbols-outlined align-middle" style="font-size:.85rem;line-height:1;">filter_alt_off</span> Clear
+        </button>
+      </div>
+    </div>
+  {% endif %}
+  <div class="text-muted small mb-3" id="schedule-count">{{ trips | length }} service{{ 's' if trips | length != 1 else '' }}{% if date %} on this date{% else %} today{% endif %}</div>
 
   <div class="schedule-outer">
   <div class="schedule-wrap">
@@ -67,7 +90,13 @@
         <tr>
           <th class="stop-col">Stop</th>
           {% for trip in trips %}
-            <th>{{ trip.times.get(stops[0].stop_id) or trip.firstDepStr or '' }}</th>
+            <th{% if is_multi_variant and trip.route_short_name %} data-variant="{{ trip.route_short_name }}"{% endif %}>
+              {% if is_multi_variant and trip.route_short_name %}
+                {% set vc = variant_colors.get(trip.route_short_name, {}) %}
+                <span class="badge rounded-pill d-block mb-1" style="font-size:.68rem;font-weight:600;background-color:{{ vc.bg or ('#' + trip.route_color) if trip.route_color else '#dee2e6' }};color:{{ vc.fg or ('#' + trip.route_text_color) if trip.route_text_color else '#000000' }};">{{ trip.route_short_name }}</span>
+              {% endif %}
+              {{ trip.times.get(stops[0].stop_id) or trip.firstDepStr or '' }}
+            </th>
           {% endfor %}
         </tr>
       </thead>
@@ -81,7 +110,7 @@
             </td>
             {% for trip in trips %}
               {% set t = trip.times.get(stop.stop_id, '') %}
-              <td class="time-cell {{ 'empty' if not t else '' }}">{{ t or '—' }}</td>
+              <td class="time-cell {{ 'empty' if not t else '' }}"{% if is_multi_variant and trip.route_short_name %} data-variant="{{ trip.route_short_name }}"{% endif %}>{{ t or '—' }}</td>
             {% endfor %}
           </tr>
         {% endfor %}
@@ -105,8 +134,66 @@
   wrap.addEventListener('scroll', updateShadow, { passive: true });
   updateShadow();
 
+  // Variant filter — matches stop-details filter style
+  var badgesEl   = document.getElementById('variant-filter-badges');
+  var clearBtn   = document.getElementById('variant-filter-clear');
+  var idleHint   = document.getElementById('variant-filter-idle-hint');
+  var countEl    = document.getElementById('schedule-count');
+  var totalSvcs  = {{ trips | length }};
+  var countSuffix = '{% if date %} on this date{% else %} today{% endif %}';
+
+  function updateVariantFilter() {
+    if (!badgesEl) return;
+    var active = Array.from(badgesEl.querySelectorAll('.variant-filter-btn.active'))
+                      .map(function(b) { return b.dataset.variant; });
+    var anyActive = active.length > 0;
+    badgesEl.classList.toggle('has-filter', anyActive);
+    if (clearBtn) clearBtn.classList.toggle('d-none', !anyActive);
+    if (idleHint) idleHint.style.display = anyActive ? 'none' : '';
+
+    // Show/hide columns
+    var allFilterBtns = badgesEl.querySelectorAll('.variant-filter-btn');
+    var visibleCols = 0;
+    allFilterBtns.forEach(function(btn) {
+      var on = !anyActive || active.indexOf(btn.dataset.variant) !== -1;
+      table.querySelectorAll('[data-variant="' + btn.dataset.variant + '"]').forEach(function(el) {
+        el.style.display = on ? '' : 'none';
+      });
+      if (on) {
+        visibleCols += table.querySelectorAll('thead th[data-variant="' + btn.dataset.variant + '"]').length;
+      }
+    });
+
+    // Update count text
+    if (countEl) {
+      var shown = anyActive ? visibleCols : totalSvcs;
+      countEl.textContent = shown + ' service' + (shown !== 1 ? 's' : '') + countSuffix;
+    }
+    updateShadow();
+  }
+
+  if (badgesEl) {
+    badgesEl.addEventListener('click', function(e) {
+      var btn = e.target.closest('.variant-filter-btn');
+      if (!btn) return;
+      // Don't allow deactivating the last active variant
+      var activeNow = badgesEl.querySelectorAll('.variant-filter-btn.active');
+      if (btn.classList.contains('active') && activeNow.length === 1) return;
+      btn.classList.toggle('active');
+      updateVariantFilter();
+    });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function() {
+      badgesEl.querySelectorAll('.variant-filter-btn.active')
+               .forEach(function(b) { b.classList.remove('active'); });
+      updateVariantFilter();
+    });
+  }
+
+  {% if not date %}
   // Highlight active services (already departed from first stop, not yet at last stop)
-  // and the next upcoming service.
+  // and the next upcoming service. Only applies when viewing today's timetable.
   var now = new Date();
   var nowMin = now.getHours() * 60 + now.getMinutes();
   var headers = table.querySelectorAll('thead th');
@@ -114,7 +201,7 @@
 
   function parseMin(el) {
     if (!el) return null;
-    var m = el.textContent.trim().match(/^(\d{1,2}):(\d{2})$/);
+    var m = el.textContent.match(/(\d{1,2}):(\d{2})/);
     return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
   }
 
@@ -161,6 +248,7 @@
       headers[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }, 120);
   }
+  {% endif %}
 }());
 </script>
 {% endif %}
