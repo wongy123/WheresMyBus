@@ -67,7 +67,7 @@
         <tr>
           <th class="stop-col">Stop</th>
           {% for trip in trips %}
-            <th>{{ trip.times.get(stops[0].stop_id, '') }}</th>
+            <th>{{ trip.times.get(stops[0].stop_id) or trip.firstDepStr or '' }}</th>
           {% endfor %}
         </tr>
       </thead>

@@ -69,13 +69,13 @@ export async function getRouteDirections(req, res, next) {
     const cached = await cacheGet(cacheKey);
     if (cached?.available_directions?.length) return res.json(cached);
 
-    const availableDirections = await getRouteDirectionsService(routeId);
+    const { available: availableDirections, default: defaultDirection } = await getRouteDirectionsService(routeId);
     const body = {
       available_directions: availableDirections,
-      default_direction: availableDirections.includes(0) ? 0 : (availableDirections[0] ?? 0)
+      default_direction: defaultDirection ?? 0,
     };
 
-    if (availableDirections.length > 0) await cacheSet(cacheKey, body, 3600);
+    if (availableDirections.length > 0) await cacheSet(cacheKey, body, 300);
     res.json(body);
   } catch (err) {
     next(err);

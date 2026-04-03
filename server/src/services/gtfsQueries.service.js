@@ -397,15 +397,26 @@ function effectiveRowSec(row) {
 /* --------------------------------- routes ---------------------------------- */
 
 export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPath) {
-  // Fetch all deduplicated routes — only ~80 unique routes, fast enough to filter in JS
+  // Pick one representative route_id per short_name, preferring the variant
+  // with the most trips today (current service period), then most trips overall.
   const sql = `
     SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color
     FROM routes r
     INNER JOIN (
-      SELECT route_short_name, MIN(route_id) AS min_id
-      FROM routes
-      GROUP BY route_short_name
-    ) dedup ON r.route_id = dedup.min_id
+      SELECT route_id
+      FROM (
+        SELECT r2.route_id, r2.route_short_name,
+          COALESCE(td.cnt, 0) AS trips_today_cnt,
+          ROW_NUMBER() OVER (
+            PARTITION BY r2.route_short_name
+            ORDER BY COALESCE(td.cnt, 0) DESC, COALESCE(all_t.total, 0) DESC, r2.route_id ASC
+          ) AS rn
+        FROM routes r2
+        LEFT JOIN (SELECT route_id, COUNT(*) AS cnt  FROM trips_today GROUP BY route_id) td    ON td.route_id    = r2.route_id
+        LEFT JOIN (SELECT route_id, COUNT(*) AS total FROM trips       GROUP BY route_id) all_t ON all_t.route_id = r2.route_id
+      )
+      WHERE rn = 1 AND trips_today_cnt > 0
+    ) best ON r.route_id = best.route_id
   `;
 
   const rows = await withDb(db => db.prepare(sql).all(), configPath);
@@ -452,10 +463,18 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
 }
 
 export async function getOneRoute(identifier, configPath = defaultConfigPath) {
+  // When looking up by route_short_name, prefer the variant active today.
+  // When looking up by exact route_id, return that row directly.
   const sql = `
-    SELECT route_id, route_short_name, route_long_name, route_type, route_color, route_text_color
-    FROM routes
-    WHERE route_id = $id OR route_short_name = $id
+    SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color
+    FROM routes r
+    LEFT JOIN (SELECT route_id, COUNT(*) AS cnt  FROM trips_today GROUP BY route_id) td    ON td.route_id    = r.route_id
+    LEFT JOIN (SELECT route_id, COUNT(*) AS total FROM trips       GROUP BY route_id) all_t ON all_t.route_id = r.route_id
+    WHERE r.route_id = $id OR r.route_short_name = $id
+    ORDER BY CASE WHEN r.route_id = $id THEN 0 ELSE 1 END,
+             COALESCE(td.cnt, 0) DESC,
+             COALESCE(all_t.total, 0) DESC,
+             r.route_id ASC
     LIMIT 1
   `;
 
@@ -625,18 +644,55 @@ export async function getStopPlatforms(stationId, configPath = defaultConfigPath
 
 export async function getRouteDirections(routeId, configPath = defaultConfigPath) {
   const family = await resolveRouteFamily(routeId, configPath);
-  const rows = await withDb(db => db.prepare(`
-    SELECT DISTINCT t.direction_id
-    FROM trips t
-    JOIN routes r ON t.route_id = r.route_id
-    WHERE (t.route_id = $routeId OR r.route_short_name = $routeShortName)
-      AND t.direction_id IN (0, 1)
-    ORDER BY t.direction_id
-  `).all(family), configPath);
 
-  return rows
-    .map(row => row.direction_id)
-    .filter(direction => direction === 0 || direction === 1);
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  const secNow = Math.floor((now - midnight) / 1000);
+
+  return withDb(db => {
+    const dirRows = db.prepare(`
+      SELECT DISTINCT t.direction_id
+      FROM trips t
+      JOIN routes r ON t.route_id = r.route_id
+      WHERE (t.route_id = $routeId OR r.route_short_name = $routeShortName)
+        AND t.direction_id IN (0, 1)
+      ORDER BY t.direction_id
+    `).all(family);
+
+    const available = dirRows
+      .map(row => row.direction_id)
+      .filter(d => d === 0 || d === 1);
+
+    if (available.length <= 1) return { available, default: available[0] ?? 0 };
+
+    // Pick the direction with the soonest upcoming departure today.
+    // Exclude yesterday's rows (win_sec < 0) to prevent their wrapped values
+    // from incorrectly beating today's upcoming trips in the MIN.
+    const nextDep = db.prepare(`
+      SELECT direction_id, MIN(
+        CASE WHEN win_sec >= $secNow THEN win_sec
+             ELSE win_sec + 86400
+        END
+      ) AS next_sec
+      FROM stop_events_3day
+      WHERE (route_id = $routeId OR route_short_name = $routeShortName)
+        AND direction_id IN (0, 1)
+        AND win_sec >= 0
+      GROUP BY direction_id
+    `).all({ ...family, secNow });
+
+    let defaultDir = available[0];
+    let minSec = Infinity;
+    for (const row of nextDep) {
+      if (row.next_sec != null && row.next_sec < minSec) {
+        minSec = row.next_sec;
+        defaultDir = row.direction_id;
+      }
+    }
+
+    return { available, default: defaultDir };
+  }, configPath);
 }
 
 export async function getStopsByRoute(routeId, direction = 0, configPath = defaultConfigPath) {
@@ -700,11 +756,13 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
       st.trip_headsign,
       st.stop_sequence,
       st.stop_id,
-      s.stop_name,
+      COALESCE(s.parent_station, s.stop_id) AS station_key,
+      COALESCE(ps.stop_name, s.stop_name) AS station_name,
       st.departure_time,
       st.dep_sec_base
     FROM stop_times_today st
     JOIN stops s ON st.stop_id = s.stop_id
+    LEFT JOIN stops ps ON ps.stop_id = s.parent_station
     JOIN trips t ON st.trip_id = t.trip_id
     JOIN routes r ON t.route_id = r.route_id
     WHERE (t.route_id = $routeId OR r.route_short_name = $routeShortName)
@@ -716,34 +774,47 @@ export async function getRouteSchedule(routeId, direction = 0, configPath = defa
 
   if (!rows.length) return { stops: [], trips: [] };
 
-  // Group rows by trip_id
+  // Group rows by trip_id, keying times by station_key so trips using different
+  // platforms of the same station (e.g. train routes) still match the same column.
   const tripMap = new Map();
   for (const row of rows) {
     if (!tripMap.has(row.trip_id)) {
+      const h = Math.floor(row.dep_sec_base / 3600);
+      const m = Math.floor((row.dep_sec_base % 3600) / 60);
       tripMap.set(row.trip_id, {
         trip_id: row.trip_id,
         headsign: row.trip_headsign,
         firstDep: row.dep_sec_base,
+        firstDepStr: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
         times: {},
       });
     }
-    tripMap.get(row.trip_id).times[row.stop_id] = row.departure_time.slice(0, 5);
+    tripMap.get(row.trip_id).times[row.station_key] = row.departure_time.slice(0, 5);
   }
 
-  // Canonical stop list: from the trip that covers the most stops, in sequence order
+  // Canonical stop list: from the trip that covers the most stops, in sequence order.
+  // Use station_key/station_name so the column headers are station-level (not platform-level).
   const stopsByTrip = new Map();
   for (const row of rows) {
     if (!stopsByTrip.has(row.trip_id)) stopsByTrip.set(row.trip_id, []);
     stopsByTrip.get(row.trip_id).push({
       stop_sequence: row.stop_sequence,
-      stop_id: row.stop_id,
-      stop_name: row.stop_name,
+      stop_id: row.station_key,
+      stop_name: row.station_name,
     });
   }
   let canonicalStops = [];
   for (const stops of stopsByTrip.values()) {
     if (stops.length > canonicalStops.length) canonicalStops = stops;
   }
+
+  // Deduplicate canonical stops (same station may appear via different platforms)
+  const seenStations = new Set();
+  canonicalStops = canonicalStops.filter(s => {
+    if (seenStations.has(s.stop_id)) return false;
+    seenStations.add(s.stop_id);
+    return true;
+  });
 
   const trips = [...tripMap.values()].sort((a, b) => a.firstDep - b.firstDep);
 
