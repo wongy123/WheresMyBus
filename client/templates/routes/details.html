@@ -298,8 +298,13 @@
   }
 
   if (navigator.geolocation) {
-    navigator.geolocation.watchPosition(_onUserPos, null,
-      { enableHighAccuracy: false, maximumAge: 10000, timeout: 15000 });
+    var lastGpsUpdate = 0;
+    navigator.geolocation.watchPosition(function (pos) {
+      var now = Date.now();
+      if (now - lastGpsUpdate < 1000) return;
+      lastGpsUpdate = now;
+      _onUserPos(pos);
+    }, null, { enableHighAccuracy: false, maximumAge: 10000, timeout: 15000 });
   }
 
   // Apply saved position when modal map becomes ready (diagmap.js inits _diagMap on shown.bs.modal)

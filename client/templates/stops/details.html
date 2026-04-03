@@ -493,8 +493,12 @@
   var userWatchId = null;
 
   if (navigator.geolocation) {
+    var lastGpsUpdate = 0;
     userWatchId = navigator.geolocation.watchPosition(
       function (pos) {
+        var now = Date.now();
+        if (now - lastGpsUpdate < 1000) return;
+        lastGpsUpdate = now;
         userLocationMarker = window.TRANSIT.updateUserLocation(
           map, userLocationMarker,
           pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 50

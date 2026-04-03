@@ -54,7 +54,11 @@
   }
   var userLocationLayer = null;
   if (navigator.geolocation) {
+    var lastGpsUpdate = 0;
     navigator.geolocation.watchPosition(function (pos) {
+      var now = Date.now();
+      if (now - lastGpsUpdate < 1000) return;
+      lastGpsUpdate = now;
       userLocationLayer = window.TRANSIT.updateUserLocation(
         map, userLocationLayer,
         pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 50
