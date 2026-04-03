@@ -492,6 +492,14 @@
   outline: none !important;
 }
 
+.rt-icon:focus-visible,
+.gps-icon:focus-visible,
+.status-badge:focus-visible {
+  outline: 2px solid rgba(10, 92, 110, 0.6);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 /* Pagination */
 .page-link {
   color: #0a5c6e;

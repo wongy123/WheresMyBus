@@ -67,21 +67,21 @@
             {% if v.realtime_updated_at or v.has_gps %}
               <span style="display:inline-flex; align-items:center; gap:2px;">
                 {% if v.has_rt %}
-                <span class="rt-icon" tabindex="0"
+                <span class="rt-icon" tabindex="0" role="button"
                       data-bs-toggle="popover" data-bs-trigger="click" data-bs-placement="top"
                       data-updated-at="{{ v.realtime_updated_at }}"
-                      title="Trip update"
+                      aria-label="Trip update"
                       style="cursor:pointer; display:inline-flex; align-items:center;">
-                  <span class="material-symbols-outlined" style="font-size:.95rem; line-height:1; color:#198754;">sensors</span>
+                  <span class="material-symbols-outlined" aria-hidden="true" style="font-size:.95rem; line-height:1; color:#198754;">sensors</span>
                 </span>
                 {% endif %}
                 {% if v.has_gps %}
-                <span class="gps-icon" tabindex="0"
+                <span class="gps-icon" tabindex="0" role="button"
                       data-bs-toggle="popover" data-bs-trigger="click" data-bs-placement="top"
                       data-vehicle-ts="{{ v.vehicle_timestamp or '' }}"
-                      title="GPS position"
+                      aria-label="GPS position"
                       style="cursor:pointer; display:inline-flex; align-items:center;">
-                  <span class="material-symbols-outlined" style="font-size:.95rem; line-height:1; color:#0d6efd;">my_location</span>
+                  <span class="material-symbols-outlined" aria-hidden="true" style="font-size:.95rem; line-height:1; color:#0d6efd;">my_location</span>
                 </span>
                 {% endif %}
               </span>
@@ -163,6 +163,7 @@
     el.querySelector('.material-symbols-outlined').style.color = color;
     var pop = new bootstrap.Popover(el, { content: label, trigger: 'manual', placement: 'top' });
     el.addEventListener('click', function (e) { e.stopPropagation(); showOne(pop); });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); showOne(pop); } });
   });
 
   var gpsNow = Math.round(now / 1000);
@@ -179,6 +180,7 @@
     el.querySelector('.material-symbols-outlined').style.color = color;
     var pop = new bootstrap.Popover(el, { content: label, trigger: 'manual', placement: 'top' });
     el.addEventListener('click', function (e) { e.stopPropagation(); showOne(pop); });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); showOne(pop); } });
   });
 }());
 window._diagRoute = {

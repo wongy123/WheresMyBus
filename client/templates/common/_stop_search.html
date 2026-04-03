@@ -166,7 +166,9 @@
         refreshNearby(lat, lng, !!forceNearby);
       },
       function (err) {
-        statusEl.textContent = 'Could not get location: ' + err.message;
+        if (err.code === 1) statusEl.textContent = 'Location access denied — enable in browser settings.';
+        else if (err.code === 2) statusEl.textContent = 'Location unavailable, please try again.';
+        else statusEl.textContent = 'Location request timed out, please try again.';
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
     );

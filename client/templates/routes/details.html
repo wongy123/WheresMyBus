@@ -107,13 +107,13 @@
       <div class="modal-footer py-2 px-3 gap-2" style="flex-wrap:nowrap;">
         <div class="d-flex gap-2 align-items-center">
           <a id="diagram-stop-link" href="#" class="btn btn-primary btn-sm">View Stop Details</a>
-          <span id="diagram-follow-badge" class="small text-body" style="display:none;"></span>
-          <button id="diagram-recenter-btn" type="button" class="btn btn-outline-primary btn-sm" style="display:none;" onclick="_diagResumeFollow()">
-            <span class="material-symbols-outlined align-middle" style="font-size:.9rem;line-height:1.5;">my_location</span> Re-center
+          <span id="diagram-follow-badge" class="small text-body" style="display:none;" aria-live="polite"></span>
+          <button id="diagram-recenter-btn" type="button" class="btn btn-outline-primary btn-sm" style="display:none;" onclick="_diagResumeFollow()" aria-label="Re-centre on vehicle">
+            <span class="material-symbols-outlined align-middle" aria-hidden="true" style="font-size:.9rem;line-height:1.5;">my_location</span> Re-center
           </button>
         </div>
         <div class="d-flex gap-2 ms-auto">
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="_diagFitRoute()">Fit Route</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="_diagFitRoute()" aria-label="Fit route on map">Fit Route</button>
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
         </div>
       </div>

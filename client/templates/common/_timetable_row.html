@@ -36,22 +36,22 @@
     {% endif %}
     <td>
       <div class="d-flex align-items-center w-100">
-        <span class="badge {{ info.cls }} status-badge" tabindex="0"
+        <span class="badge {{ info.cls }} status-badge" tabindex="0" role="button"
               data-bs-toggle="popover" data-bs-placement="top"
               data-bs-content="{{ badge_popup }}"
               style="cursor:pointer;">{{ info.label }}</span>
         <span class="rt-icons">
-          <span class="{{ '' if it.has_rt else 'invisible' }} rt-icon" tabindex="0"
+          <span class="{{ '' if it.has_rt else 'invisible' }} rt-icon" tabindex="0" role="button"
                 data-bs-toggle="popover" data-bs-placement="top"
                 data-updated-at="{{ it.realtime_updated_at or '' }}"
-                title="Trip update">
-            <span class="material-symbols-outlined">sensors</span>
+                aria-label="Trip update">
+            <span class="material-symbols-outlined" aria-hidden="true">sensors</span>
           </span>
-          <span class="{{ '' if it.has_gps else 'invisible' }} gps-icon" tabindex="0"
+          <span class="{{ '' if it.has_gps else 'invisible' }} gps-icon" tabindex="0" role="button"
                 data-bs-toggle="popover" data-bs-placement="top"
                 data-vehicle-ts="{{ it.vehicle_timestamp or '' }}"
-                title="GPS position">
-            <span class="material-symbols-outlined">my_location</span>
+                aria-label="GPS position">
+            <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
           </span>
         </span>
       </div>
@@ -83,22 +83,22 @@
     <td class="text-nowrap tt-seq-cell d-none d-sm-table-cell">{% if totstops %}{{ seq }} / {{ totstops }}{% else %}#{{ seq }}{% endif %}</td>
     <td>
       <div class="d-flex align-items-center w-100">
-        <span class="badge {{ info.cls }} status-badge" tabindex="0"
+        <span class="badge {{ info.cls }} status-badge" tabindex="0" role="button"
               data-bs-toggle="popover" data-bs-placement="top"
               data-bs-content="{{ badge_popup }}"
               style="cursor:pointer;">{{ info.label }}</span>
         <span class="rt-icons ms-2">
-          <span class="{{ '' if it.has_rt else 'invisible' }} rt-icon" tabindex="0"
+          <span class="{{ '' if it.has_rt else 'invisible' }} rt-icon" tabindex="0" role="button"
                 data-bs-toggle="popover" data-bs-placement="top"
                 data-updated-at="{{ it.realtime_updated_at or '' }}"
-                title="Trip update">
-            <span class="material-symbols-outlined">sensors</span>
+                aria-label="Trip update">
+            <span class="material-symbols-outlined" aria-hidden="true">sensors</span>
           </span>
-          <span class="{{ '' if it.has_gps else 'invisible' }} gps-icon" tabindex="0"
+          <span class="{{ '' if it.has_gps else 'invisible' }} gps-icon" tabindex="0" role="button"
                 data-bs-toggle="popover" data-bs-placement="top"
                 data-vehicle-ts="{{ it.vehicle_timestamp or '' }}"
-                title="GPS position">
-            <span class="material-symbols-outlined">my_location</span>
+                aria-label="GPS position">
+            <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
           </span>
         </span>
       </div>

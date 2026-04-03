@@ -46,7 +46,15 @@
 
   {# ── Right: map (hidden until first search/location) ── #}
   <div id="home-map-col" class="col-lg-7 order-1 order-lg-2 d-none" style="position:relative; z-index:1;">
-    <div id="home-map" class="map-container" style="height: 350px;"></div>
+    <div id="home-map" class="map-container" style="height: 350px; position:relative;">
+      <div id="home-map-error" class="alert alert-warning alert-dismissible d-none py-2 px-3 small"
+        style="position:absolute;bottom:8px;left:8px;right:8px;z-index:1000;" role="alert">
+        <span class="material-symbols-outlined align-middle me-1" style="font-size:1rem;vertical-align:text-bottom;">signal_disconnected</span>
+        Could not load route data.
+        <a href="#" id="home-map-retry" class="alert-link ms-1">Tap to retry.</a>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -291,9 +299,13 @@
       var color = routeColor ? '#' + routeColor : window.TRANSIT.vehicleColor(routeType || 3);
       var iconName = window.TRANSIT.vehicleIcon(routeType || 3);
 
+      var errEl = document.getElementById('home-map-error');
+      if (errEl) errEl.classList.add('d-none');
+
       // Fetch both direction shapes
       var allCoords = [];
       var pending = 2;
+      var shapeFailed = 0;
       function fetchShape(dir) {
         fetch(window.API_BASE_URL + '/routes/' + encodeURIComponent(routeId) + '/shape?direction=' + dir)
           .then(function (r) { return r.json(); })
@@ -305,11 +317,20 @@
               pts.forEach(function (p) { allCoords.push(p); });
             }
           })
-          .catch(function () {})
+          .catch(function () { shapeFailed++; })
           .finally(function () {
             pending--;
-            if (pending === 0 && allCoords.length) {
-              map.fitBounds(L.latLngBounds(allCoords), { padding: [30, 30] });
+            if (pending === 0) {
+              if (allCoords.length) {
+                map.fitBounds(L.latLngBounds(allCoords), { padding: [30, 30] });
+              } else if (shapeFailed === 2 && errEl) {
+                errEl.classList.remove('d-none');
+                document.getElementById('home-map-retry').onclick = function (e) {
+                  e.preventDefault();
+                  errEl.classList.add('d-none');
+                  window.homeShowRoute(routeId, routeColor, shortName, routeType, longName);
+                };
+              }
             }
           });
       }
@@ -458,7 +479,11 @@
           }
           refreshNearby(lat, lng, !!forceNearby);
         },
-        function (err) { statusEl.textContent = 'Could not get location: ' + err.message; },
+        function (err) {
+          if (err.code === 1) statusEl.textContent = 'Location access denied — enable in browser settings.';
+          else if (err.code === 2) statusEl.textContent = 'Location unavailable, please try again.';
+          else statusEl.textContent = 'Location request timed out, please try again.';
+        },
         { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
       );
     }

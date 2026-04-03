@@ -242,7 +242,13 @@ function _diagFollowVehicle(tripId) {
       // Also refresh vehicle markers
       _diagDrawVehicles();
     })
-    .catch(function () {});
+    .catch(function () {
+      var badge = document.getElementById('diagram-follow-badge');
+      if (badge && _diagFollowTripId) {
+        badge.innerHTML = '<span class="badge bg-secondary me-1">&#8212;</span>' +
+          '<span class="d-none d-sm-inline text-muted small">Connection lost</span>';
+      }
+    });
 }
 
 function showVehicleMap(ds) {
