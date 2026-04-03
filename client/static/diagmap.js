@@ -173,9 +173,20 @@ function _diagInitModal(lat, lon, onReady) {
     onReady();
   }, { once: true });
 
-  // Stop following when modal closes
+  // Tear down the map entirely when the modal closes so Leaflet tile connections
+  // and all marker objects are freed rather than accumulating across sessions.
   modalEl.addEventListener('hidden.bs.modal', function () {
     _diagStopFollow();
+    if (_diagMoveTimer) { clearTimeout(_diagMoveTimer); _diagMoveTimer = null; }
+    if (_diagFocusMarker) { _diagFocusMarker = null; }
+    Object.keys(_diagNearbyMarkers).forEach(function (k) { _diagMap && _diagMap.removeLayer(_diagNearbyMarkers[k]); });
+    _diagNearbyMarkers = {};
+    Object.keys(_diagRouteMarkers).forEach(function (k) { _diagMap && _diagMap.removeLayer(_diagRouteMarkers[k]); });
+    _diagRouteMarkers = {};
+    Object.keys(_diagVehicleMarkers).forEach(function (k) { _diagMap && _diagMap.removeLayer(_diagVehicleMarkers[k]); });
+    _diagVehicleMarkers = {};
+    if (_diagPolyline) { _diagPolyline = null; }
+    if (_diagMap) { _diagMap.remove(); _diagMap = null; }
   }, { once: true });
 
   bootstrap.Modal.getOrCreateInstance(modalEl).show();

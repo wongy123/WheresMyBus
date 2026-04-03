@@ -80,15 +80,19 @@
   {% endif %}
   {% endif %}
 
-  // Re-sort table rows by computed arrival time so display order matches shown time.
+  // Re-sort rows by computed arrival time so display order matches shown time.
+  // Rows are collected into a DocumentFragment first (removing them from the live
+  // DOM in a single pass) then re-inserted as one operation, keeping mutations to 1.
   var tbody = document.querySelector('#stop-timetable table tbody, #tt-stop-results table tbody');
   if (tbody) {
+    var frag = document.createDocumentFragment();
     Array.from(tbody.querySelectorAll('tr')).sort(function (a, b) {
       var aEl = a.querySelector('.tt-time');
       var bEl = b.querySelector('.tt-time');
       return (aEl ? window.minsFromNow(aEl.dataset.time) : Infinity) -
              (bEl ? window.minsFromNow(bEl.dataset.time) : Infinity);
-    }).forEach(function (tr) { tbody.appendChild(tr); });
+    }).forEach(function (tr) { frag.appendChild(tr); });
+    tbody.appendChild(frag);
   }
 }());
 </script>

@@ -467,8 +467,12 @@
 
     function startLiveLocationTracking(statusEl, forceNearby) {
       if (userWatchId != null) return;
+      var lastGpsUpdate = 0;
       userWatchId = navigator.geolocation.watchPosition(
         function (pos) {
+          var now = Date.now();
+          if (now - lastGpsUpdate < 1000) return;
+          lastGpsUpdate = now;
           statusEl.textContent = '';
           var lat = pos.coords.latitude;
           var lng = pos.coords.longitude;

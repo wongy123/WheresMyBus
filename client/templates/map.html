@@ -1219,7 +1219,11 @@
 
   function startLiveLocationTracking() {
     if (!navigator.geolocation || userWatchId != null) return;
+    var lastGpsUpdate = 0;
     userWatchId = navigator.geolocation.watchPosition(function (pos) {
+      var now = Date.now();
+      if (now - lastGpsUpdate < 1000) return;
+      lastGpsUpdate = now;
       var lat = pos.coords.latitude;
       var lon = pos.coords.longitude;
       if (!_gpsAutoFocusDone) {
