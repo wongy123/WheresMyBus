@@ -16,8 +16,9 @@
 <div class="row g-3 align-items-start">
   {# ── Left: search ── #}
   <div class="col-lg-5 order-2 order-lg-1" style="position:relative; z-index:2;">
-    <div class="position-relative">
-      <input id="route-typeahead" name="q" type="search" class="form-control form-control-sm"
+    <div class="position-relative search-input-wrap">
+      <span class="search-input-icon material-symbols-outlined">search</span>
+      <input id="route-typeahead" name="q" type="search" class="form-control form-control-lg search-input-with-icon"
         placeholder="Search route # or name…" autocomplete="off"
         aria-label="Search routes"
         hx-get="{{ BASE_PATH }}/hx/routes/suggest-map"

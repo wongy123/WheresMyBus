@@ -138,6 +138,31 @@
   overflow-x: hidden;
 }
 
+/* Search input with leading icon */
+.search-input-wrap {
+  display: block;
+}
+
+.search-input-icon {
+  position: absolute;
+  left: .75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.25rem;
+  color: #6c757d;
+  pointer-events: none;
+  z-index: 4;
+  line-height: 1;
+}
+
+.search-input-with-icon {
+  padding-left: 2.5rem;
+}
+
+.form-control-lg.search-input-with-icon {
+  padding-left: 2.9rem;
+}
+
 /* Flex children inside search result items must not expand beyond container */
 .typeahead-list .list-group-item,
 .list-group.shadow-sm .list-group-item {
@@ -220,6 +245,10 @@
 .gps-icon.invisible {
   pointer-events: none;
   cursor: default;
+}
+
+.tt-stop-row {
+  cursor: pointer;
 }
 
 .tt-time {
