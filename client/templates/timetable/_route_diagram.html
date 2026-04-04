@@ -22,7 +22,7 @@
   {% set vehicle_cls = 'transit-bus-color' %}
 {% endif %}
 
-{% if available_variants %}
+{% if available_variants and is_train %}
 <div class="d-flex flex-wrap align-items-center gap-1 mb-3" id="diagram-variant-badges">
   <span class="text-muted small me-1" style="font-size:.75rem;">Variant:</span>
   {% for v in available_variants %}
@@ -209,5 +209,6 @@ window._diagRoute = {
   variants: {{ available_variants | tojson }},
   selectedVariant: {{ selected_variant | tojson }},
   variantColors: {{ variant_colors | tojson }},
+  isTrain: {{ 'true' if is_train else 'false' }},
 };
 </script>

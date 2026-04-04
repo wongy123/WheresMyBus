@@ -9,7 +9,7 @@ import { cacheGet } from './src/services/cache.service.js';
 
 import { openDb } from 'gtfs';
 
-import { startGtfsRealtimeLoop, stopGtfsRealtimeLoop, getLatestVehiclePositions, getLatestTripUpdateCount } from './src/services/gtfsRealtime.service.js';
+import { startGtfsRealtimeLoop, stopGtfsRealtimeLoop } from './src/services/gtfsRealtime.service.js';
 
 import indexRouter from './src/routes/index.js';
 
@@ -63,26 +63,6 @@ app.get('/_debug/rt/:tripId', async (req, res) => {
 app.get('/_debug/rt-heartbeat', async (_req, res) => {
   const hb = await cacheGet('rt:feed:ts');
   res.json({ hb });
-});
-
-app.get('/api/_debug/stats', async (_req, res) => {
-  try {
-    const vposMap = getLatestVehiclePositions();
-    const now = Date.now();
-    const feedTs = await cacheGet('rt:feed:ts');
-    const lastUpdate = feedTs ? feedTs.ts : null;
-    const secondsAgo = lastUpdate ? Math.round((now - lastUpdate) / 1000) : null;
-
-    res.json({
-      liveTrips: getLatestTripUpdateCount(),
-      liveVehicles: vposMap.size,
-      lastUpdateSecondsAgo: secondsAgo,
-      status: secondsAgo !== null && secondsAgo < 60 ? 'live' : 'stale',
-    });
-  } catch (e) {
-    console.error('stats error:', e);
-    res.status(500).json({ error: e.message });
-  }
 });
 
 app.use('/api', indexRouter);
