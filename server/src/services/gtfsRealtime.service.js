@@ -147,6 +147,7 @@ async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl, alertsUr
   const alerts = alFeed ? buildAlertsArray(alFeed)   : [];
   // Only replace in-memory positions when the feed succeeds — don't wipe on failure
   if (vpFeed) latestVposMap = vpMap;
+  if (tuFeed) latestTripUpdateMap = tuMap;
 
   console.log(`[gtfsrt] tripUpdates=${tuMap.size} vehiclePositions=${vpMap.size} alerts=${alerts.length}`);
 
@@ -195,9 +196,14 @@ function vposKey(tripId) {
 
 let timer = null;
 let latestVposMap = new Map();
+let latestTripUpdateMap = new Map();
 
 export function getLatestVehiclePositions() {
   return latestVposMap;
+}
+
+export function getLatestTripUpdateCount() {
+  return latestTripUpdateMap.size;
 }
 
 export function startGtfsRealtimeLoop() {

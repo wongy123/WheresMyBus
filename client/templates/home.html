@@ -39,9 +39,11 @@
           <span id="home-nearby-status" class="text-muted small"></span>
         </div>
       </div>
+      
     </div>
 
     <div id="home-nearby-results" style="max-height: 320px; overflow-y: auto;"></div>
+    <div id="home-stats-container" class="text-center mt-3" style="min-height: 24px;"></div>
   </div>
 
   {# ── Right: map (hidden until first search/location) ── #}
@@ -519,6 +521,28 @@
       hasCenteredOnUser = false;
       startLiveLocationTracking(statusEl, true);
     });
+
+    // ── Live Stats Fetch ──
+    function fetchHomeStats() {
+      fetch(window.API_BASE_URL + '/_debug/stats')
+        .then(r => r.json())
+        .then(data => {
+          var container = document.getElementById('home-stats-container');
+          if (!container) return;
+          if (data.error || data.status === 'stale') {
+            container.innerHTML = '<span class="text-muted small">Real-time data unavailable</span>';
+            return;
+          }
+          container.innerHTML = '<div class="stats-pill">' +
+            '<span class="pulse-dot"></span> ' +
+            '<strong>' + data.liveTrips + '</strong> trips &bull; ' +
+            '<strong>' + data.liveVehicles + '</strong> vehicles live' +
+            '</div>';
+        })
+        .catch(() => {});
+    }
+    fetchHomeStats();
+    setInterval(fetchHomeStats, 60000);
 
     window.addEventListener('pagehide', function () {
       if (userWatchId != null && navigator.geolocation) {
