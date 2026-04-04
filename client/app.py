@@ -40,17 +40,20 @@ def create_app():
         """
         try:
             if seconds is None:
-                return {"status": "scheduled", "label": "Scheduled", "cls": "text-bg-secondary"}
+                return {"status": "scheduled", "label": "Scheduled", "cls": "delay-scheduled"}
             s = int(seconds)
             if abs(s) < 60:
-                return {"status": "ontime", "label": "On time", "cls": "text-bg-success"}
+                return {"status": "ontime", "label": "On time", "cls": "delay-on-time"}
             mins = abs(s) // 60
             if s > 0:
-                return {"status": "late", "label": f"{mins}m late", "cls": "text-bg-warning"}
+                if mins < 5:
+                    return {"status": "minor", "label": f"{mins}m late", "cls": "delay-minor"}
+                else:
+                    return {"status": "major", "label": f"{mins}m late", "cls": "delay-major"}
             else:
-                return {"status": "early", "label": f"{mins}m early", "cls": "text-bg-info"}
+                return {"status": "early", "label": f"{mins}m early", "cls": "delay-early"}
         except Exception:
-            return {"status": "scheduled", "label": "Scheduled", "cls": "text-bg-secondary"}
+            return {"status": "scheduled", "label": "Scheduled", "cls": "delay-scheduled"}
 
     # -------- Template globals --------
     @app.context_processor

@@ -72,9 +72,14 @@
 <div id="tt-route-results" class="d-none"
   hx-get="{{ BASE_PATH }}/hx/timetable/route/{{ route.route_id }}/upcoming?direction={{ direction }}&duration={{ duration }}&page={{ page }}&limit={{ limit }}"
   hx-trigger="refresh" hx-target="this" hx-swap="innerHTML" aria-live="polite">
-  <div class="text-muted small d-flex align-items-center gap-2">
-    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-    <span>Loading timetable...</span>
+  <div class="tt-skeleton">
+    {% for i in range(5) %}
+    <div class="tt-skeleton-row">
+      <div class="skel skel-time"></div>
+      <div class="skel skel-headsign"></div>
+      <div class="skel skel-status"></div>
+    </div>
+    {% endfor %}
   </div>
 </div>
 
@@ -92,6 +97,16 @@
   var diagramInterval = setInterval(function () {
     htmx.trigger(document.getElementById('tt-route-diagram'), 'refresh');
   }, 5000);
+  var _historyNav = false;
+
+  history.replaceState({ wmbRouteView: 'diagram' }, '');
+
+  window.addEventListener('popstate', function (e) {
+    if (!e.state || !e.state.wmbRouteView) return;
+    _historyNav = true;
+    showView(e.state.wmbRouteView);
+    _historyNav = false;
+  });
 
   function showView(view) {
     var tableDiv = document.getElementById('tt-route-results');
@@ -129,6 +144,7 @@
 
     document.getElementById('view-table-btn').classList.toggle('active', view === 'table');
     document.getElementById('view-diagram-btn').classList.toggle('active', view === 'diagram');
+    if (!_historyNav) history.pushState({ wmbRouteView: view }, '');
   }
 </script>
 

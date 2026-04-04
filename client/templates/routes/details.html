@@ -155,6 +155,17 @@
   var currentDate = {{ _initial_date | tojson }};
   var todayDate   = {{ _today_date | tojson }};
   var routeKey    = {{ _route_key | tojson }};
+  var _historyNav = false;
+
+  history.replaceState({ wmbRoute: true, direction: currentDirection, view: currentView }, '');
+
+  window.addEventListener('popstate', function (e) {
+    if (!e.state || !e.state.wmbRoute) return;
+    _historyNav = true;
+    if (e.state.direction !== currentDirection) setDirection(e.state.direction);
+    if (e.state.view !== currentView) setView(e.state.view);
+    _historyNav = false;
+  });
 
   var _loadingHTML = '<div class="text-muted small d-flex align-items-center gap-2"><div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div><span>Loading...</span></div>';
 
@@ -252,6 +263,7 @@
       scheduleLoadedForDirection = dir;
       _refreshSchedule(dir);
     }
+    if (!_historyNav) history.pushState({ wmbRoute: true, direction: dir, view: currentView }, '');
   }
 
   var diagramLoaded = false;
@@ -417,6 +429,7 @@
       _pageMap.invalidateSize();
       _renderMapVariantBadges();
     }
+    if (!_historyNav) history.pushState({ wmbRoute: true, direction: currentDirection, view: view }, '');
   }
 
   // On page load: sync button/visibility state.
