@@ -13,7 +13,7 @@
   {% set sch = it.scheduled_departure_time or it.scheduled_arrival_time %}
   {% set main_time = est or sch %}
   {% set badge_popup = ('est ' ~ est[:5] ~ ' · sched ' ~ sch[:5]) if (est and sch and est[:5] != sch[:5]) else (sch[:5] if sch else '') %}
-  <tr class="tt-stop-row" data-route="{{ it.route_short_name }}" data-trip-id="{{ it.trip_id or '' }}" title="Click to track on map">
+  <tr class="tt-stop-row" data-route="{{ it.route_short_name }}" data-route-type="{{ it.route_type }}" data-trip-id="{{ it.trip_id or '' }}" title="Click to track on map">
     <td class="text-nowrap">
       <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle time display">
         <span class="tt-min fw-semibold"></span>
@@ -70,7 +70,7 @@
   {% set badge_popup = ('est ' ~ est[:5] ~ ' · sched ' ~ sch[:5]) if (est and sch and est[:5] != sch[:5]) else (sch[:5] if sch else '') %}
   {% set seq = it.stop_sequence %}
   {% set totstops = it.total_stops or it.stop_count or it.last_stop_sequence %}
-  <tr>
+  <tr data-route-type="{{ it.route_type if it.route_type is defined else '' }}">
     <td class="text-nowrap">
       <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle time display">
         <span class="tt-min fw-semibold"></span>
