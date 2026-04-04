@@ -12,6 +12,49 @@
     return 0.299 * r + 0.587 * g + 0.114 * b;
   }
 
+  /* WCAG contrast auto-fix for route badges with inline background-color */
+  function _ensureBadgeContrast() {
+    document.querySelectorAll('.badge[style*="background-color"]').forEach(function(el) {
+      var bg = el.style.backgroundColor;
+      var m = bg.match(/\d+/g);
+      if (!m) return;
+      var r = +m[0], g = +m[1], b = +m[2];
+      var lum = function(c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+      var L = 0.2126 * lum(r) + 0.7152 * lum(g) + 0.0722 * lum(b);
+      var contrastWhite = (1.05) / (L + 0.05);
+      var contrastBlack = (L + 0.05) / 0.05;
+      el.style.color = contrastBlack > contrastWhite ? '#000000' : '#ffffff';
+    });
+  }
+  document.addEventListener('htmx:afterSwap', _ensureBadgeContrast);
+  document.addEventListener('DOMContentLoaded', _ensureBadgeContrast);
+
+  /* Back-button interception for Bootstrap modals */
+  var _modalPushed = false;
+  var _modalClosedByBack = false;
+
+  window.addEventListener('popstate', function(e) {
+    if (e.state && e.state.wmbModal) {
+      _modalPushed = false;
+      _modalClosedByBack = true;
+      var open = document.querySelector('.modal.show');
+      if (open) bootstrap.Modal.getInstance(open).hide();
+    }
+  });
+
+  document.addEventListener('shown.bs.modal', function() {
+    if (!_modalPushed) {
+      history.pushState({ wmbModal: true }, '');
+      _modalPushed = true;
+      _modalClosedByBack = false;
+    }
+  });
+
+  document.addEventListener('hidden.bs.modal', function() {
+    if (_modalClosedByBack) { _modalClosedByBack = false; return; }
+    if (_modalPushed) { _modalPushed = false; history.back(); }
+  });
+
   window.TRANSIT = {
     /* Background colour for stop/station map markers */
     color: function (rt, isStation) {

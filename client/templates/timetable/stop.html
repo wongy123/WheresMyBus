@@ -62,9 +62,15 @@
      hx-swap="innerHTML"
      hx-vals='js:{"page": document.querySelector("#tt-stop-results [data-tt-page]")?.dataset.ttPage || "1"}'
      aria-live="polite">
-  <div class="text-muted small d-flex align-items-center gap-2 htmx-indicator">
-    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-    <span>Loading timetable…</span>
+  <div class="tt-skeleton htmx-indicator">
+    {% for i in range(5) %}
+    <div class="tt-skeleton-row">
+      <div class="skel skel-time"></div>
+      <div class="skel skel-badge"></div>
+      <div class="skel skel-headsign"></div>
+      <div class="skel skel-status"></div>
+    </div>
+    {% endfor %}
   </div>
 </div>
 {% endblock %}

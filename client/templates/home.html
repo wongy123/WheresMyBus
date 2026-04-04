@@ -120,12 +120,18 @@
     var lastSearchAt = 0;
     var selectedStopId = null;
     var mapRevealed = false;
+    var _mapHistoryPushed = false;
     var isLg = function () { return window.innerWidth >= 992; };
 
     // ── Reveal map with slide animation ──
     window.homeRevealMap = function () {
       if (mapRevealed) return;
       mapRevealed = true;
+
+      if (!_mapHistoryPushed) {
+        history.pushState({ wmbHomeMap: true }, '');
+        _mapHistoryPushed = true;
+      }
 
       var mapCol = document.getElementById('home-map-col');
       var searchCol = document.getElementById('home-search-col');
@@ -198,6 +204,7 @@
     window.homeHideMap = function () {
       if (!mapRevealed) return;
       mapRevealed = false;
+      _mapHistoryPushed = false;
 
       var mapCol = document.getElementById('home-map-col');
       var searchCol = document.getElementById('home-search-col');
@@ -548,6 +555,15 @@
       if (userWatchId != null && navigator.geolocation) {
         navigator.geolocation.clearWatch(userWatchId);
         userWatchId = null;
+      }
+    });
+
+    window.addEventListener('popstate', function (e) {
+      if (e.state && e.state.wmbHomeMap) {
+        _mapHistoryPushed = false;
+        var inp = document.getElementById('home-search');
+        if (inp) { inp.value = ''; inp.dispatchEvent(new Event('input')); }
+        window.homeHideMap();
       }
     });
   }());
