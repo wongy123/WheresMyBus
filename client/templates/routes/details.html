@@ -94,6 +94,7 @@
   </div>
 </div>
 
+<div id="map-variant-bar-wrap" class="d-none mb-2"></div>
 <div id="route-page-map" class="map-container d-none mb-4"></div>
 
 <div id="route-diagram" class="{{ 'd-none' if _is_non_today else '' }}" style="overflow-anchor:none;"
@@ -263,6 +264,13 @@
   var _pageRouteColor = {{ ('#' + route.route_color) | tojson if route.route_color else 'window.TRANSIT.vehicleColor(' + route.route_type | string + ')' }};
   var _pageVehicleIcon = window.TRANSIT.vehicleIcon({{ route.route_type }});
 
+  // Resolve the active variant's color, falling back to the line color.
+  function _pageVariantColor() {
+    var vc = window._diagRoute && window._diagRoute.variantColors;
+    var sel = currentDiagramVariant;
+    return (vc && sel && vc[sel] && vc[sel].bg) ? vc[sel].bg : _pageRouteColor;
+  }
+
   (function () {
     _pageMap = L.map('route-page-map').setView([-27.47, 153.02], 11);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -274,11 +282,7 @@
   function _pageMapLoad(direction) {
     // Use selected variant route ID for shape/stops so only that variant is shown.
     var mapRouteId = currentDiagramVariant || _pageRouteId;
-
-    // Use the selected variant's own color if available, else fall back to the line color.
-    var variantColors = (window._diagRoute && window._diagRoute.variantColors) || {};
-    var vc = currentDiagramVariant && variantColors[currentDiagramVariant];
-    var polylineColor = (vc && vc.bg) ? vc.bg : _pageRouteColor;
+    var color = _pageVariantColor();
 
     // Shape
     fetch(window.API_BASE_URL + '/routes/' + mapRouteId + '/shape?direction=' + direction)
@@ -287,7 +291,7 @@
         if (_pagePolyline) { _pageMap.removeLayer(_pagePolyline); _pagePolyline = null; }
         var coords = (data.data || []).map(function (p) { return [p.lat, p.lon]; });
         if (coords.length >= 2) {
-          _pagePolyline = L.polyline(coords, { color: polylineColor, weight: 4, opacity: 0.8, lineJoin: 'round' }).addTo(_pageMap);
+          _pagePolyline = L.polyline(coords, { color: color, weight: 4, opacity: 0.8, lineJoin: 'round' }).addTo(_pageMap);
           _pageMap.fitBounds(_pagePolyline.getBounds(), { padding: [30, 30] });
         }
       }).catch(function () { });
@@ -300,7 +304,7 @@
         _pageStopMarkers = {};
         (data.data || []).forEach(function (s) {
           if (!s.stop_lat || !s.stop_lon) return;
-          _pageStopMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeRouteDot(_pageRouteColor) })
+          _pageStopMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeRouteDot(color) })
             .addTo(_pageMap)
             .bindPopup(window.TRANSIT.makeStopPopup(s, _diagBasePath));
         });
@@ -308,13 +312,14 @@
   }
 
   function _renderMapVariantBadges() {
-    var existing = document.getElementById('map-variant-bar');
-    if (existing) existing.remove();
+    var wrap = document.getElementById('map-variant-bar-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '';
     var route = window._diagRoute;
-    if (!route || !route.variants || route.variants.length <= 1) return;
+    if (!route || !route.variants || route.variants.length === 0) return;
+    var isMulti = route.variants.length > 1;
     var bar = document.createElement('div');
-    bar.id = 'map-variant-bar';
-    bar.className = 'd-flex flex-wrap align-items-center gap-1 mb-2';
+    bar.className = 'd-flex flex-wrap align-items-center gap-1';
     var label = document.createElement('span');
     label.className = 'text-muted small me-1';
     label.style.fontSize = '.75rem';
@@ -328,19 +333,22 @@
       btn.dataset.variant = v;
       var bg = (vc[v] && vc[v].bg) ? vc[v].bg : _pageRouteColor;
       var fg = (vc[v] && vc[v].fg) ? vc[v].fg : 'white';
-      btn.style.cssText = 'background-color:' + bg + ';color:' + fg + ';font-size:.75rem;cursor:pointer;opacity:' + (v === currentDiagramVariant ? '1' : '.4') + ';';
+      var isActive = v === currentDiagramVariant;
+      var opacity = (!isMulti || isActive) ? '1' : '.4';
+      btn.style.cssText = 'background-color:' + bg + ';color:' + fg + ';font-size:.75rem;opacity:' + opacity + ';'
+        + (isMulti ? 'cursor:pointer;' : '');
       btn.textContent = v;
-      btn.onclick = function() { window.setDiagramVariant(v); };
+      if (isMulti) btn.onclick = function() { window.setDiagramVariant(v); };
       bar.appendChild(btn);
     });
-    var mapEl = document.getElementById('route-page-map');
-    mapEl.parentNode.insertBefore(bar, mapEl);
+    wrap.appendChild(bar);
   }
 
   function _pageMapDrawVehicles() {
     if (!_pageMap) return;
     var route = window._diagRoute;
     if (!route || !route.vehicles) return;
+    var color = _pageVariantColor();
     window.TRANSIT.updateVehicleMarkers(_pageMap, _pageVehicleMarkers, route.vehicles, {
       makePopup: function (v) {
         return window.TRANSIT.routeVehiclePopup({
@@ -350,16 +358,27 @@
           etaStr: v.minutes_away != null ? window.fmtMins(v.minutes_away) : ''
         });
       },
-      getColor: function () { return _pageRouteColor; },
+      getColor: function () { return color; },
       getIconName: function () { return _pageVehicleIcon; }
     });
   }
 
   document.addEventListener('htmx:afterSettle', function (e) {
     if (e.detail.target && e.detail.target.id === 'route-diagram') {
+      // Sync JS variant state from the server-chosen default if the user hasn't
+      // picked one yet (currentDiagramVariant is null on first diagram load).
+      if (!currentDiagramVariant && window._diagRoute && window._diagRoute.selectedVariant) {
+        currentDiagramVariant = window._diagRoute.selectedVariant;
+      }
       _diagDrawVehicles();
-      _pageMapDrawVehicles();
-      if (mapLoaded) _renderMapVariantBadges();
+      if (mapLoaded) {
+        // Redraw map with correct variant color now that _diagRoute is populated.
+        _pageMapLoad(currentDirection);
+        _pageMapDrawVehicles();
+        _renderMapVariantBadges();
+      } else {
+        _pageMapDrawVehicles();
+      }
     }
   });
 
@@ -370,6 +389,7 @@
     document.getElementById('route-diagram').classList.toggle('d-none', view !== 'diagram');
     document.getElementById('route-schedule').classList.toggle('d-none', view !== 'schedule');
     document.getElementById('route-page-map').classList.toggle('d-none', view !== 'map');
+    document.getElementById('map-variant-bar-wrap').classList.toggle('d-none', view !== 'map');
     document.getElementById('view-diagram-btn').classList.toggle('active', view === 'diagram');
     document.getElementById('view-schedule-btn').classList.toggle('active', view === 'schedule');
     document.getElementById('view-map-btn').classList.toggle('active', view === 'map');
@@ -381,6 +401,9 @@
     if (view === 'schedule' && scheduleLoadedForDirection !== currentDirection) {
       scheduleLoadedForDirection = currentDirection;
       _refreshSchedule(currentDirection);
+    } else if (view === 'schedule' && typeof window.scheduleScrollToNow === 'function') {
+      // Schedule already loaded and just being revealed — scroll to upcoming column.
+      setTimeout(window.scheduleScrollToNow, 120);
     }
     if (view === 'map') {
       if (!mapLoaded) {

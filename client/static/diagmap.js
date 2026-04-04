@@ -14,6 +14,14 @@ var _diagFollowTripId  = null;
 var _diagFollowTimer   = null;
 var _diagUserPaused    = false;
 
+// Resolve the active variant's color from _diagRoute, falling back to route.color.
+function _diagVariantColor() {
+  var route = window._diagRoute;
+  if (!route) return '#6c757d';
+  var vc = route.variantColors && route.selectedVariant && route.variantColors[route.selectedVariant];
+  return (vc && vc.bg) ? vc.bg : (route.color || '#6c757d');
+}
+
 function _diagDrawRoute() {
   if (_diagPolyline) { _diagMap.removeLayer(_diagPolyline); _diagPolyline = null; }
   Object.values(_diagRouteMarkers).forEach(function (m) { _diagMap.removeLayer(m); });
@@ -21,10 +29,11 @@ function _diagDrawRoute() {
   var route = window._diagRoute;
   if (!route || !route.stops) return;
   var valid = route.stops.filter(function (s) { return s.stop_lat && s.stop_lon; });
+  var color = _diagVariantColor();
 
   // Draw stop dot markers
   valid.forEach(function (s) {
-    _diagRouteMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeRouteDot(route.color), zIndexOffset: s.location_type === 1 ? 200 : 100 })
+    _diagRouteMarkers[s.stop_id] = L.marker([s.stop_lat, s.stop_lon], { icon: window.TRANSIT.makeRouteDot(color), zIndexOffset: s.location_type === 1 ? 200 : 100 })
       .addTo(_diagMap)
       .bindPopup(window.TRANSIT.makeStopPopup(s, _diagBasePath));
   });
@@ -36,14 +45,14 @@ function _diagDrawRoute() {
       var coords = (data.data || []).map(function (p) { return [p.lat, p.lon]; });
       if (coords.length < 2) coords = valid.map(function (s) { return [s.stop_lat, s.stop_lon]; });
       if (_diagPolyline) _diagMap.removeLayer(_diagPolyline);
-      _diagPolyline = L.polyline(coords, { color: route.color, weight: 4, opacity: 0.75, lineJoin: 'round' }).addTo(_diagMap);
+      _diagPolyline = L.polyline(coords, { color: color, weight: 4, opacity: 0.75, lineJoin: 'round' }).addTo(_diagMap);
     })
     .catch(function () {
       // Fall back to stop-to-stop straight lines on error
       if (valid.length >= 2 && !_diagPolyline)
         _diagPolyline = L.polyline(
           valid.map(function (s) { return [s.stop_lat, s.stop_lon]; }),
-          { color: route.color, weight: 4, opacity: 0.75, lineJoin: 'round' }
+          { color: color, weight: 4, opacity: 0.75, lineJoin: 'round' }
         ).addTo(_diagMap);
     });
 }
@@ -83,6 +92,7 @@ function _diagDrawVehicles() {
   if (!_diagMap) return;
   var route = window._diagRoute;
   if (!route || !route.vehicles) return;
+  var color = _diagVariantColor();
   window.TRANSIT.updateVehicleMarkers(_diagMap, _diagVehicleMarkers, route.vehicles, {
     makePopup: function (v) {
       return window.TRANSIT.routeVehiclePopup({
@@ -92,7 +102,7 @@ function _diagDrawVehicles() {
         etaStr: v.minutes_away != null ? window.fmtMins(v.minutes_away) : ''
       });
     },
-    getColor:    function () { return route.color; },
+    getColor:    function () { return color; },
     getIconName: function () { return route.vehicleIcon; }
   });
 }
@@ -198,7 +208,7 @@ function _diagSetVehicleFocus(label, headsign, lat, lon, minutesAway, stopName) 
   if (_diagFocusMarker) _diagMap.removeLayer(_diagFocusMarker);
 
   var route = window._diagRoute || {};
-  var color = route.color || '#6c757d';
+  var color = _diagVariantColor();
   var iconName = route.vehicleIcon || 'directions_bus';
   var focusIcon = L.divIcon({
     className: '',
