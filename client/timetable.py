@@ -162,6 +162,16 @@ def hx_timetable_route_diagram(route_id: str):
             t.get("route_short_name") for t in all_trips if t.get("route_short_name")
         ))
 
+    # Build per-variant color map for badge styling (same logic as schedule handler)
+    variant_colors = {}
+    for t in schedule_trips or all_trips:
+        sn = t.get("route_short_name")
+        if sn and sn not in variant_colors and t.get("route_color"):
+            variant_colors[sn] = {
+                "bg": "#" + t["route_color"],
+                "fg": "#" + (t.get("route_text_color") or "000000"),
+            }
+
     # If selected variant not in available, fall back to first available
     if selected_variant and selected_variant not in available_variants:
         selected_variant = None
@@ -224,5 +234,5 @@ def hx_timetable_route_diagram(route_id: str):
         route_id=route_id, direction=direction, updated_at=updated_at,
         route_type=route_type, route_color=route_color, vehicle_positions=vehicle_positions,
         available_variants=available_variants, selected_variant=selected_variant,
-        is_multi_variant=is_multi_variant,
+        is_multi_variant=is_multi_variant, variant_colors=variant_colors,
     )

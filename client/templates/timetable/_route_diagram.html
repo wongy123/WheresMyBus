@@ -26,10 +26,11 @@
 <div class="d-flex flex-wrap align-items-center gap-1 mb-3" id="diagram-variant-badges">
   <span class="text-muted small me-1" style="font-size:.75rem;">Variant:</span>
   {% for v in available_variants %}
+    {% set vc = variant_colors.get(v, {}) %}
     <button type="button"
       class="badge rounded-pill border-0 diagram-variant-btn {% if v == selected_variant %}active{% endif %}"
       data-variant="{{ v }}"
-      style="background-color:{{ '#' + route_color if route_color else '#6c757d' }};color:white;font-size:.75rem;cursor:pointer;opacity:{% if v == selected_variant %}1{% else %}.4{% endif %};"
+      style="background-color:{{ vc.bg if vc.bg else ('#' + route_color if route_color else '#6c757d') }};color:{{ vc.fg if vc.fg else 'white' }};font-size:.75rem;cursor:pointer;opacity:{% if v == selected_variant %}1{% else %}.4{% endif %};"
       onclick="typeof window.setDiagramVariant === 'function' && window.setDiagramVariant('{{ v }}')">{{ v }}</button>
   {% endfor %}
 </div>
@@ -205,5 +206,6 @@ window._diagRoute = {
   vehicles: {{ vehicle_positions | tojson }},
   variants: {{ available_variants | tojson }},
   selectedVariant: {{ selected_variant | tojson }},
+  variantColors: {{ variant_colors | tojson }},
 };
 </script>

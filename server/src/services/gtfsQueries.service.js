@@ -487,17 +487,17 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
       let rank;
       if (sn === q) rank = 0;
       else if (sn.startsWith(q)) rank = 1;
-      else if (ln.startsWith(q)) rank = 2;
-      else if (lineName.startsWith(q)) rank = 3;
-      else if (sn.includes(q)) rank = 4;
-      else if (ln.includes(q)) rank = 5;
-      else if (lineName.includes(q)) rank = 6;
-      else rank = 7;
+      else if (ln.startsWith(q) || lineName.startsWith(q)) rank = 2;
+      else if (sn.includes(q)) rank = 3;
+      else if (ln.includes(q) || lineName.includes(q)) rank = 4;
+      else rank = 5;
 
       return { ...r, sort_rank: rank };
     })
     .filter(Boolean)
-    .sort((a, b) => a.sort_rank - b.sort_rank || a.route_short_name.localeCompare(b.route_short_name))
+    .sort((a, b) => a.sort_rank - b.sort_rank
+      || (b.is_line ? 1 : 0) - (a.is_line ? 1 : 0)
+      || a.route_short_name.localeCompare(b.route_short_name))
     .map(({ sort_rank, trips_today_cnt, ...rest }) => rest);
 
   return scored;
@@ -520,6 +520,13 @@ export async function getOneRoute(identifier, configPath = defaultConfigPath) {
       ...Object.fromEntries(terminalCodes.map((c, i) => [`tc${i}`, c])),
       ...Object.fromEntries(shortNameOverrides.map((sn, i) => [`sno${i}`, sn])),
     };
+    // Build an IN-list for exclusivity check: routes where BOTH terminal codes belong
+    // to this line (e.g. BNBN for Beenleigh Line) are preferred over shared routes
+    // (e.g. BNVL/VLBN which also belong to Gold Coast Line) so the color is correct.
+    const tcInList = terminalCodes.map((_, i) => `$tc${i}`).join(', ');
+    const exclusiveExpr = tcInList
+      ? `CASE WHEN substr(r.route_short_name,1,2) IN (${tcInList}) AND substr(r.route_short_name,3,2) IN (${tcInList}) THEN 0 ELSE 1 END`
+      : '1';
     const sql = `
       SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_type, r.route_color, r.route_text_color,
         COALESCE(td.cnt, 0) AS trips_today_cnt
@@ -527,7 +534,7 @@ export async function getOneRoute(identifier, configPath = defaultConfigPath) {
       LEFT JOIN (SELECT route_id, COUNT(*) AS cnt  FROM trips_today GROUP BY route_id) td    ON td.route_id    = r.route_id
       LEFT JOIN (SELECT route_id, COUNT(*) AS total FROM trips       GROUP BY route_id) all_t ON all_t.route_id = r.route_id
       WHERE ${allConds.join(' OR ')}
-      ORDER BY COALESCE(td.cnt, 0) DESC, COALESCE(all_t.total, 0) DESC, r.route_id ASC
+      ORDER BY ${exclusiveExpr}, COALESCE(td.cnt, 0) DESC, COALESCE(all_t.total, 0) DESC, r.route_id ASC
       LIMIT 1
     `;
     const rep = await withDb(db => db.prepare(sql).get(params), configPath);
@@ -2162,15 +2169,20 @@ export async function getVehiclePositionsWithRoutes(vposMap, configPath = defaul
     // Filter ghost vehicles: completed trips where the schedule wraps to tomorrow
     if (minutesAway != null && minutesAway > MAX_MINUTES_AWAY) return null;
 
+    const sn = row.route_short_name || '';
+    const lineNames = getLineNames(sn);
+    const line_slug = lineNames.length > 0 ? slugifyLineName(lineNames[0]) : null;
+
     return {
       trip_id: row.trip_id,
       route_id: row.route_id,
       direction_id: row.direction_id,
       trip_headsign: row.trip_headsign || '',
-      route_short_name: row.route_short_name || '',
+      route_short_name: sn,
       route_color: row.route_color || null,
       route_text_color: row.route_text_color || null,
       route_type: row.route_type,
+      line_slug,
       lat: vpos.latitude,
       lon: vpos.longitude,
       vehicle_id: vpos.vehicleId || null,
