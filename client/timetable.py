@@ -80,7 +80,7 @@ def hx_timetable_route_schedule(route_id: str):
 
     # Forward an optional date param (YYYYMMDD) to the API.
     date_str = request.args.get("date", "").strip()
-    api_params = {"direction": direction}
+    api_params = {"direction": direction, "limit": 200}
     if date_str and len(date_str) == 8 and date_str.isdigit():
         api_params["date"] = date_str
 
