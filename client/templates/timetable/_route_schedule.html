@@ -60,11 +60,11 @@
 {% if not stops or not trips %}
   <div class="alert alert-light border">No scheduled services found{% if date %} for this date{% else %} for today{% endif %}.</div>
 {% else %}
-  {% if is_multi_variant and variant_short_names %}
+  {% if variant_short_names %}
     <div class="mb-2">
       <div class="fw-semibold small mb-1 text-muted text-uppercase d-flex align-items-center gap-2" style="letter-spacing:.04em;font-size:.75rem;">
         <span>Variant</span>
-        <span id="variant-filter-idle-hint" class="fw-normal text-lowercase" style="letter-spacing:0;font-size:.7rem;opacity:.6;">tap to filter</span>
+        {% if is_multi_variant %}<span id="variant-filter-idle-hint" class="fw-normal text-lowercase" style="letter-spacing:0;font-size:.7rem;opacity:.6;">tap to filter</span>{% endif %}
       </div>
       <div class="d-flex flex-wrap align-items-center gap-1" id="variant-filter-badges">
         {% for sn in variant_short_names %}
@@ -73,11 +73,13 @@
             data-variant="{{ sn }}"
             data-bg="{{ vc.bg or '#dee2e6' }}"
             data-fg="{{ vc.fg or '#000000' }}"
-            style="background-color:{{ vc.bg or '#dee2e6' }};color:{{ vc.fg or '#000000' }};">{{ sn }}</button>
+            style="background-color:{{ vc.bg or '#dee2e6' }};color:{{ vc.fg or '#000000' }};{% if not is_multi_variant %}cursor:default;{% endif %}">{{ sn }}</button>
         {% endfor %}
+        {% if is_multi_variant %}
         <button type="button" id="variant-filter-clear" class="btn btn-sm btn-outline-secondary d-none" style="font-size:.72rem;padding:.15rem .45rem;">
           <span class="material-symbols-outlined align-middle" style="font-size:.85rem;line-height:1;">filter_alt_off</span> Clear
         </button>
+        {% endif %}
       </div>
     </div>
   {% endif %}
@@ -90,8 +92,8 @@
         <tr>
           <th class="stop-col">Stop</th>
           {% for trip in trips %}
-            <th{% if is_multi_variant and trip.route_short_name %} data-variant="{{ trip.route_short_name }}"{% endif %}>
-              {% if is_multi_variant and trip.route_short_name %}
+            <th{% if trip.route_short_name %} data-variant="{{ trip.route_short_name }}"{% endif %}>
+              {% if trip.route_short_name %}
                 {% set vc = variant_colors.get(trip.route_short_name, {}) %}
                 <span class="badge rounded-pill d-block mb-1" style="font-size:.68rem;font-weight:600;background-color:{{ vc.bg or ('#' + trip.route_color) if trip.route_color else '#dee2e6' }};color:{{ vc.fg or ('#' + trip.route_text_color) if trip.route_text_color else '#000000' }};">{{ trip.route_short_name }}</span>
               {% endif %}
@@ -110,7 +112,7 @@
             </td>
             {% for trip in trips %}
               {% set t = trip.times.get(stop.stop_id, '') %}
-              <td class="time-cell {{ 'empty' if not t else '' }}"{% if is_multi_variant and trip.route_short_name %} data-variant="{{ trip.route_short_name }}"{% endif %}>{{ t or '—' }}</td>
+              <td class="time-cell {{ 'empty' if not t else '' }}"{% if trip.route_short_name %} data-variant="{{ trip.route_short_name }}"{% endif %}>{{ t or '—' }}</td>
             {% endfor %}
           </tr>
         {% endfor %}
@@ -244,10 +246,15 @@
       var cells = row.querySelectorAll('td');
       if (cells[nextIdx]) cells[nextIdx].classList.add('now-col');
     });
-    setTimeout(function() {
-      headers[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }, 120);
   }
+
+  // Expose scroll function so the host page can trigger it when revealing the tab.
+  window.scheduleScrollToNow = function() {
+    if (nextIdx >= 0) {
+      headers[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  };
+  setTimeout(window.scheduleScrollToNow, 120);
   {% endif %}
 }());
 </script>

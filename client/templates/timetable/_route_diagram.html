@@ -22,7 +22,7 @@
   {% set vehicle_cls = 'transit-bus-color' %}
 {% endif %}
 
-{% if is_multi_variant and available_variants %}
+{% if available_variants %}
 <div class="d-flex flex-wrap align-items-center gap-1 mb-3" id="diagram-variant-badges">
   <span class="text-muted small me-1" style="font-size:.75rem;">Variant:</span>
   {% for v in available_variants %}
@@ -30,8 +30,8 @@
     <button type="button"
       class="badge rounded-pill border-0 diagram-variant-btn {% if v == selected_variant %}active{% endif %}"
       data-variant="{{ v }}"
-      style="background-color:{{ vc.bg if vc.bg else ('#' + route_color if route_color else '#6c757d') }};color:{{ vc.fg if vc.fg else 'white' }};font-size:.75rem;cursor:pointer;opacity:{% if v == selected_variant %}1{% else %}.4{% endif %};"
-      onclick="typeof window.setDiagramVariant === 'function' && window.setDiagramVariant('{{ v }}')">{{ v }}</button>
+      style="background-color:{{ vc.bg if vc.bg else ('#' + route_color if route_color else '#6c757d') }};color:{{ vc.fg if vc.fg else 'white' }};font-size:.75rem;{% if is_multi_variant %}cursor:pointer;{% endif %}opacity:{% if not is_multi_variant or v == selected_variant %}1{% else %}.4{% endif %};"
+      {% if is_multi_variant %}onclick="typeof window.setDiagramVariant === 'function' && window.setDiagramVariant('{{ v }}')"{% endif %}>{{ v }}</button>
   {% endfor %}
 </div>
 {% endif %}
@@ -52,6 +52,8 @@
         {% set dly = v.departure_delay if v.departure_delay is not none else (v.arrival_delay if v.arrival_delay is not none else none) %}
         {% set info = dly | delay_info %}
         {% set eta = v.estimated_departure_time or v.scheduled_departure_time or v.estimated_arrival_time or v.scheduled_arrival_time %}
+        {% set vvc = variant_colors.get(v.route_short_name, {}) %}
+        {% set v_icon_color = vvc.bg if vvc.bg else ('#' + route_color if route_color else '#6c757d') %}
 
         <div class="d-flex align-items-center{% if v.vehicle_latitude and v.vehicle_longitude %} diagram-vehicle-row{% endif %}" style="min-height: 44px; position: relative; z-index: 1;{% if v.vehicle_latitude and v.vehicle_longitude %} cursor:pointer;{% endif %}"
           {% if v.vehicle_latitude and v.vehicle_longitude %}
@@ -66,7 +68,7 @@
             onclick="typeof showVehicleMap === 'function' && showVehicleMap(this.dataset)"
           {% endif %}>
           <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
-            <div style="width:28px;height:28px;background:{{ ('#' + route_color) if route_color else '#6c757d' }};border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;">
+            <div style="width:28px;height:28px;background:{{ v_icon_color }};border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;">
               <span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">{{ vehicle_icon }}</span>
             </div>
           </div>
