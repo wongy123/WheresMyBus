@@ -275,6 +275,11 @@
     // Use selected variant route ID for shape/stops so only that variant is shown.
     var mapRouteId = currentDiagramVariant || _pageRouteId;
 
+    // Use the selected variant's own color if available, else fall back to the line color.
+    var variantColors = (window._diagRoute && window._diagRoute.variantColors) || {};
+    var vc = currentDiagramVariant && variantColors[currentDiagramVariant];
+    var polylineColor = (vc && vc.bg) ? vc.bg : _pageRouteColor;
+
     // Shape
     fetch(window.API_BASE_URL + '/routes/' + mapRouteId + '/shape?direction=' + direction)
       .then(function (r) { return r.json(); })
@@ -282,7 +287,7 @@
         if (_pagePolyline) { _pageMap.removeLayer(_pagePolyline); _pagePolyline = null; }
         var coords = (data.data || []).map(function (p) { return [p.lat, p.lon]; });
         if (coords.length >= 2) {
-          _pagePolyline = L.polyline(coords, { color: _pageRouteColor, weight: 4, opacity: 0.8, lineJoin: 'round' }).addTo(_pageMap);
+          _pagePolyline = L.polyline(coords, { color: polylineColor, weight: 4, opacity: 0.8, lineJoin: 'round' }).addTo(_pageMap);
           _pageMap.fitBounds(_pagePolyline.getBounds(), { padding: [30, 30] });
         }
       }).catch(function () { });
@@ -315,12 +320,15 @@
     label.style.fontSize = '.75rem';
     label.textContent = 'Variant:';
     bar.appendChild(label);
+    var vc = route.variantColors || {};
     route.variants.forEach(function(v) {
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'badge rounded-pill border-0';
       btn.dataset.variant = v;
-      btn.style.cssText = 'background-color:' + _pageRouteColor + ';color:white;font-size:.75rem;cursor:pointer;opacity:' + (v === currentDiagramVariant ? '1' : '.4') + ';';
+      var bg = (vc[v] && vc[v].bg) ? vc[v].bg : _pageRouteColor;
+      var fg = (vc[v] && vc[v].fg) ? vc[v].fg : 'white';
+      btn.style.cssText = 'background-color:' + bg + ';color:' + fg + ';font-size:.75rem;cursor:pointer;opacity:' + (v === currentDiagramVariant ? '1' : '.4') + ';';
       btn.textContent = v;
       btn.onclick = function() { window.setDiagramVariant(v); };
       bar.appendChild(btn);

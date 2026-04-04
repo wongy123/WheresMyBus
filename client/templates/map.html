@@ -781,7 +781,7 @@
             label: row.vehicle_label ? escHtml(String(row.vehicle_label)) : '',
             headsign: row.trip_headsign ? escHtml(row.trip_headsign) : '',
             etaStr: vEtaStr,
-            routeId: escHtml(row.route_id),
+            routeId: escHtml(row.line_slug || row.route_id),
             basePath: BASE_PATH
           })
           : null;
@@ -831,7 +831,7 @@
             headsign: _ar.trip_headsign ? escHtml(_ar.trip_headsign) : '',
             stopName: _ar.stop_name ? escHtml(_ar.stop_name) : '',
             etaStr: _vRawTime ? window.fmtMins(window.minsFromNow(_vRawTime)) : '',
-            routeId: escHtml(_ar.route_id),
+            routeId: escHtml(_ar.line_slug || _ar.route_id),
             basePath: BASE_PATH
           });
           activeVehicleMarker.setPopupContent(_updatedPopup);
@@ -855,7 +855,7 @@
         vehicle_label: r.vehicle_label,
         trip_headsign: r.trip_headsign,
         _rawTime: window.gtfsTime(r),
-        _routeId: r.route_id,
+        _routeId: r.line_slug || r.route_id,
         _dirId: r.direction_id,
       });
     });
@@ -1003,7 +1003,7 @@
         headsign: v.trip_headsign ? escHtml(v.trip_headsign) : '',
         stopName: v.stop_name ? escHtml(v.stop_name) : '',
         etaStr: v.minutes_away != null ? window.fmtMins(v.minutes_away) : '',
-        routeId: escHtml(v.route_id),
+        routeId: escHtml(v.line_slug || v.route_id),
         basePath: BASE_PATH
       });
     },
@@ -1031,7 +1031,7 @@
           headsign: v.trip_headsign ? escHtml(v.trip_headsign) : '',
           stopName: v.stop_name ? escHtml(v.stop_name) : '',
           etaStr: v.minutes_away != null ? window.fmtMins(v.minutes_away) : '',
-          routeId: escHtml(v.route_id),
+          routeId: escHtml(v.line_slug || v.route_id),
           basePath: BASE_PATH
         });
         drawRouteShape(v.route_id, v.direction_id, v.route_color, v.route_type, v.lat, v.lon, popup, shapeKey);
@@ -1053,7 +1053,7 @@
             headsign: av.trip_headsign ? escHtml(av.trip_headsign) : '',
             stopName: av.stop_name ? escHtml(av.stop_name) : '',
             etaStr: av.minutes_away != null ? window.fmtMins(av.minutes_away) : '',
-            routeId: escHtml(av.route_id),
+            routeId: escHtml(av.line_slug || av.route_id),
             basePath: BASE_PATH
           });
           activeVehicleMarker.setPopupContent(updatedPopup);
