@@ -328,7 +328,7 @@
     if (!wrap) return;
     wrap.innerHTML = '';
     var route = window._diagRoute;
-    if (!route || !route.variants || route.variants.length === 0) return;
+    if (!route || !route.variants || route.variants.length === 0 || !route.isTrain) return;
     var isMulti = route.variants.length > 1;
     var bar = document.createElement('div');
     bar.className = 'd-flex flex-wrap align-items-center gap-1';

@@ -85,13 +85,17 @@ def hx_timetable_route_schedule(route_id: str):
         api_params["date"] = date_str
 
     data = api_get(f"routes/{route_id}/schedule", api_params) or {}
+    route_info = api_get(f"routes/{route_id}") or {}
     stops = data.get("stops", [])
     trips = data.get("trips", [])
+    route_type = route_info.get("route_type")
 
     # Determine if this is a multi-variant (train line) result
     variant_short_names = sorted(set(
         t.get("route_short_name", "") for t in trips if t.get("route_short_name")
     ))
+    # Only show variants for trains (route_type 2 or 12)
+    is_train = route_type in (2, 12)
     is_multi_variant = len(variant_short_names) > 1
 
     # Build per-variant color map for badge styling
@@ -112,6 +116,7 @@ def hx_timetable_route_schedule(route_id: str):
         variant_short_names=variant_short_names,
         is_multi_variant=is_multi_variant,
         variant_colors=variant_colors,
+        is_train=is_train,
     )
 
 @bp.get("/hx/timetable/route/<route_id>/diagram")
@@ -235,4 +240,5 @@ def hx_timetable_route_diagram(route_id: str):
         route_type=route_type, route_color=route_color, vehicle_positions=vehicle_positions,
         available_variants=available_variants, selected_variant=selected_variant,
         is_multi_variant=is_multi_variant, variant_colors=variant_colors,
+        is_train=route_type in (2, 12),
     )

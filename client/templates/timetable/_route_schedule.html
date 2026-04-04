@@ -60,7 +60,7 @@
 {% if not stops or not trips %}
   <div class="alert alert-light border">No scheduled services found{% if date %} for this date{% else %} for today{% endif %}.</div>
 {% else %}
-  {% if variant_short_names %}
+  {% if variant_short_names and is_train %}
     <div class="mb-2">
       <div class="fw-semibold small mb-1 text-muted text-uppercase d-flex align-items-center gap-2" style="letter-spacing:.04em;font-size:.75rem;">
         <span>Variant</span>
