@@ -8,6 +8,11 @@
     height: 100% !important;
   }
 
+  /* Hide footer on map page — bottom nav stays visible for navigation */
+  body > footer {
+    display: none !important;
+  }
+
   #map-wrap {
     position: relative;
     overflow: hidden;
@@ -17,6 +22,13 @@
     height: calc(100vh - 56px);
     height: calc(100dvh - 56px);
     width: 100%;
+  }
+
+  @media (max-width: 991.98px) {
+    #map {
+      height: calc(100vh - 56px - 60px);
+      height: calc(100dvh - 56px - 60px);
+    }
   }
 
   #map-search {
@@ -281,6 +293,7 @@
       transform: none;
     }
   }
+
   #map-filter {
     position: absolute;
     bottom: 2rem;
@@ -335,15 +348,15 @@
     }
 
     #map-filter {
-      bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+      bottom: calc(1rem + 60px + env(safe-area-inset-bottom, 0px));
     }
 
     #map-locate {
-      bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+      bottom: calc(4rem + 60px + env(safe-area-inset-bottom, 0px));
     }
 
     #map-settings-btn {
-      bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+      bottom: calc(6.5rem + 60px + env(safe-area-inset-bottom, 0px));
     }
 
     /* Split layout: map top, sidebar bottom */

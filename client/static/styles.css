@@ -36,6 +36,18 @@
   --rt-color-stale:   #dc3545;  /* updated >3 min ago */
 }
 
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: #111827;
+  background-color: #f5f7f9;
+}
+
+/* Table cells: transparent so they blend with body background */
+.tt-table-responsive .table td,
+.tt-table-responsive .table th {
+  background-color: transparent;
+}
+
 /* ─────────────────────────────────────────────
    Transit text colour helpers
    ───────────────────────────────────────────── */
@@ -49,6 +61,22 @@
    ───────────────────────────────────────────── */
 .navbar-wmb {
   background-color: var(--wmb-brand) !important;
+}
+
+@media (max-width: 991.98px) {
+  .navbar-wmb {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .navbar-wmb {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+  }
 }
 
 .navbar-wmb .navbar-brand {
@@ -73,6 +101,60 @@
   color: #fff !important;
   font-weight: 600;
   border-bottom: 2px solid rgba(255, 255, 255, .6);
+}
+
+/* ─────────────────────────────────────────────
+   Bottom navigation bar (mobile)
+   ───────────────────────────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1030;
+  background: #fff;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+}
+
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: .45rem .25rem .4rem;
+  font-size: .65rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-decoration: none;
+  gap: 2px;
+  letter-spacing: .01em;
+  transition: color .15s;
+}
+
+.bottom-nav-item .material-symbols-outlined {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.bottom-nav-item.active {
+  color: var(--wmb-brand);
+}
+
+.bottom-nav-item.active .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1;
+}
+
+/* Hide hamburger on mobile since bottom nav handles navigation, but keep brand visible */
+@media (max-width: 991.98px) {
+  .navbar-toggler { display: none !important; }
+  #navbarNav { display: none !important; }
+  main {
+    padding-bottom: 4.5rem !important;
+  }
 }
 
 /* ─────────────────────────────────────────────
@@ -253,6 +335,14 @@
 
 .tt-time {
   cursor: pointer;
+  background: transparent;
+  border-radius: 4px;
+  margin: -1px -3px;
+  transition: background-color .15s;
+}
+
+.tt-time:hover {
+  background-color: rgba(var(--wmb-brand-rgb), .08);
 }
 
 /* No horizontal scroll — fixed columns; headsign wraps. */
@@ -266,7 +356,7 @@
 }
 
 .tt-table-responsive .table th:nth-child(1),
-.tt-table-responsive .table td:nth-child(1) { width: 4.5rem; }
+.tt-table-responsive .table td:nth-child(1) { width: 6rem; }
 
 .tt-table-responsive .table th:nth-child(2),
 .tt-table-responsive .table td:nth-child(2) { width: 4rem; }
@@ -525,7 +615,9 @@
 
 /* Richer card + map shadows */
 .card {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .07) !important;
+  background: #fff;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .05) !important;
 }
 .map-container {
   border: none;
@@ -616,6 +708,7 @@
   font-size: .72em;
   line-height: 1.2;
   color: var(--bs-tertiary-color, #adb5bd);
+  margin-left: .35rem;
 }
 
 /* Timetable: last-updated indicator */
