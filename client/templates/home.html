@@ -146,6 +146,16 @@
       // Prepare map col invisible before unhiding
       mapCol.style.opacity = '0';
       mapCol.style.transform = large ? 'translateX(20px)' : 'translateY(-10px)';
+
+      if (large) {
+        // col-12 (100%) + col-lg-7 (58.3%) = 158.3% — Bootstrap would wrap the map
+        // column to the next row. Set nowrap + overflow:hidden first so it stays
+        // on the same line and slides in from the right as the search bar shrinks.
+        var revealRow = searchCol.parentElement;
+        revealRow.style.flexWrap = 'nowrap';
+        revealRow.style.overflow = 'hidden';
+      }
+
       mapCol.classList.remove('d-none');
 
       if (large) {
@@ -164,7 +174,7 @@
             searchCol.style.transition = 'flex-basis 0.7s cubic-bezier(0.4,0,0.2,1), max-width 0.7s cubic-bezier(0.4,0,0.2,1)';
             searchCol.style.flexBasis = '41.66667%';
             searchCol.style.maxWidth = '41.66667%';
-            mapCol.style.transition = 'opacity 0.7s cubic-bezier(0.4,0,0.2,1), transform 0.7s cubic-bezier(0.4,0,0.2,1)';
+            mapCol.style.transition = 'opacity 0.5s cubic-bezier(0.4,0,0.2,1) 0.25s, transform 0.5s cubic-bezier(0.4,0,0.2,1) 0.25s';
             mapCol.style.opacity = '1';
             mapCol.style.transform = 'none';
             if (nearbyInner) {
@@ -172,9 +182,13 @@
               nearbyInner.style.marginLeft = '0';
             }
             setTimeout(function () {
-              map.invalidateSize();
               if (nearbyInner) nearbyInner.style.transition = '';
+              revealRow.style.flexWrap = '';
+              revealRow.style.overflow = '';
             }, 720);
+            setTimeout(function () {
+              map.invalidateSize();
+            }, 800);
           });
         });
       } else {
@@ -224,6 +238,12 @@
       mapCol.style.transform = large ? 'translateX(20px)' : 'translateY(-10px)';
 
       if (large) {
+        // Same wrapping problem in reverse: as the search bar grows from 41.67%→100%
+        // the total exceeds 100%, so Bootstrap wraps the map below the search bar.
+        var hideRow = searchCol.parentElement;
+        hideRow.style.flexWrap = 'nowrap';
+        hideRow.style.overflow = 'hidden';
+
         var nearbyInner = document.getElementById('home-nearby-inner');
         if (nearbyInner) {
           var targetML = Math.max(0, (480 - nearbyInner.offsetWidth) / 2);
@@ -244,10 +264,16 @@
           searchCol.style.transition = '';
           searchCol.style.flexBasis = '';
           searchCol.style.maxWidth = '';
+          hideRow.style.flexWrap = '';
+          hideRow.style.overflow = '';
           if (nearbyInner) {
-            nearbyInner.style.marginLeft = '';
-            nearbyInner.style.marginRight = '';
+            // Use explicit 'auto' rather than '' — clearing a longhand doesn't
+            // restore the original margin:0 auto shorthand (it was replaced by
+            // longhands the moment any longhand was set via JS), so the element
+            // would snap to margin-left:0 (left edge) instead of centering.
             nearbyInner.style.transition = '';
+            nearbyInner.style.marginLeft = 'auto';
+            nearbyInner.style.marginRight = 'auto';
           }
         }, 720);
 
