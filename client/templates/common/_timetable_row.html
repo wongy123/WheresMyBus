@@ -16,7 +16,7 @@
   <tr class="tt-stop-row" data-route="{{ it.route_short_name }}" data-route-type="{{ it.route_type }}" data-trip-id="{{ it.trip_id or '' }}" title="Click to track on map">
     <td class="text-nowrap">
       <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle time display">
-        <span class="tt-min fw-semibold"></span>
+        <span class="tt-min"></span>
         <span class="tt-abs d-none text-body-secondary">{{ main_time[:5] }}</span>
         <span class="tt-abs-sub d-none d-md-inline text-body-tertiary" style="font-size:.72em;line-height:1.2;"></span>
       </span>
@@ -73,7 +73,7 @@
   <tr data-route-type="{{ it.route_type if it.route_type is defined else '' }}">
     <td class="text-nowrap">
       <span class="tt-time" data-time="{{ main_time[:5] }}"{% if it.minutes_away is not none %} data-mins-away="{{ it.minutes_away }}"{% endif %} title="Click to toggle time display">
-        <span class="tt-min fw-semibold"></span>
+        <span class="tt-min"></span>
         <span class="tt-abs d-none text-body-secondary">{{ main_time[:5] }}</span>
         <span class="tt-abs-sub d-none d-md-inline text-body-tertiary" style="font-size:.72em;line-height:1.2;"></span>
       </span>

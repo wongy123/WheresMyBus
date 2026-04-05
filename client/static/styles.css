@@ -183,6 +183,22 @@ body {
   color: #5c6a7a;
 }
 
+/* Homepage: prominent search input */
+#home-search.form-control-lg {
+  font-size: 1rem;
+  padding-top: .75rem;
+  padding-bottom: .75rem;
+  padding-right: 1rem;
+  border-radius: .75rem;
+  border: 2px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transition: border-color .15s, box-shadow .15s;
+}
+#home-search.form-control-lg:focus {
+  border-color: var(--wmb-brand);
+  box-shadow: 0 0 0 4px rgba(var(--wmb-brand-rgb),.12);
+}
+
 /* ─────────────────────────────────────────────
    Cards
    ───────────────────────────────────────────── */
@@ -217,6 +233,9 @@ body {
    ───────────────────────────────────────────── */
 .typeahead-list {
   display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, .125);
   border-radius: .5rem;
@@ -349,9 +368,29 @@ body {
   background-color: rgba(var(--wmb-brand-rgb), .08);
 }
 
+.tt-time .tt-min {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: #111827;
+}
+
 /* No horizontal scroll — fixed columns; headsign wraps. */
 .tt-table-responsive {
   width: 100%;
+}
+
+.tt-table-responsive tr[data-route-type="3"] { border-left: 3px solid var(--transit-bus-color); }
+.tt-table-responsive tr[data-route-type="2"] { border-left: 3px solid var(--transit-rail-color); }
+.tt-table-responsive tr[data-route-type="4"] { border-left: 3px solid var(--transit-ferry-color); }
+.tt-table-responsive tr[data-route-type="0"] { border-left: 3px solid var(--transit-tram-color); }
+
+/* Give the first cell enough left padding so the border doesn't crowd the countdown.
+   Scoped to ≥576px because mobile uses flex row ordering where the time is on the right. */
+@media (min-width: 576px) {
+  .tt-table-responsive tr[data-route-type] td:first-child {
+    padding-left: 0.75rem;
+  }
 }
 
 .tt-table-responsive .table {
@@ -770,6 +809,8 @@ body {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+    -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+    mask-image: linear-gradient(to right, black 80%, transparent 100%);
   }
   /* Status/RT icons */
   .tt-table-responsive .table tbody td:nth-child(4),

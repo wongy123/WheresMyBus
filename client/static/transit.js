@@ -21,9 +21,10 @@
       var r = +m[0], g = +m[1], b = +m[2];
       var lum = function(c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
       var L = 0.2126 * lum(r) + 0.7152 * lum(g) + 0.0722 * lum(b);
-      var contrastWhite = (1.05) / (L + 0.05);
-      var contrastBlack = (L + 0.05) / 0.05;
-      el.style.color = contrastBlack > contrastWhite ? '#000000' : '#ffffff';
+      // Use white text for anything darker than L=0.25 — the pure mathematical
+      // crossover (L≈0.179) is too low: dark greens like the Ipswich line land
+      // just above it and get black text at ~4.7:1, which is poor visually.
+      el.style.color = L > 0.25 ? '#000000' : '#ffffff';
     });
   }
   document.addEventListener('htmx:afterSwap', _ensureBadgeContrast);

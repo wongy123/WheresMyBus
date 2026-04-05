@@ -25,9 +25,10 @@
 </div>
 
 {% if not alerts %}
-<div class="alert alert-success d-flex align-items-center gap-2" role="alert">
-  <span class="material-symbols-outlined">check_circle</span>
-  <span>No active service alerts. All services are operating normally.</span>
+<div class="empty-state py-5">
+  <span class="material-symbols-outlined d-block mb-2" style="font-size:2.5rem;color:var(--wmb-brand);opacity:.4">check_circle</span>
+  <div class="fw-semibold mb-1">All clear</div>
+  <div class="text-muted small">No active service alerts for the SEQ network.</div>
 </div>
 {% else %}
 
