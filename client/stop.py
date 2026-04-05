@@ -3,6 +3,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, render_template, request, abort, jsonify, redirect
 from api import api_get
+from helpers import build_display_routes
 
 bp = Blueprint("stop", __name__)
 BASE_PATH = os.environ.get("BASE_PATH", "")
@@ -107,6 +108,7 @@ def stop_details(stop_id: str):
 
     routes_data = api_get(f"stops/{stop_id}/routes") or {}
     routes = routes_data.get("data", [])
+    display_routes = build_display_routes(routes)
 
     platforms = []
     parent_station = None
@@ -138,4 +140,4 @@ def stop_details(stop_id: str):
     else:
         parent_station_icon = "hub"
 
-    return render_template("stops/details.html", stop=details, nearby=nearby, routes=routes, platforms=platforms, parent_station=parent_station, parent_station_icon=parent_station_icon, BASE_PATH=BASE_PATH)
+    return render_template("stops/details.html", stop=details, nearby=nearby, routes=routes, display_routes=display_routes, platforms=platforms, parent_station=parent_station, parent_station_icon=parent_station_icon, BASE_PATH=BASE_PATH)
