@@ -80,7 +80,7 @@
    Used by stops/_suggest.html and routes/_suggest.html.
 #}
 {% macro suggest_pagination(page, page_count, limit, q, suggest_url, target_id, has_prev, has_next, total=0) %}
-  <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+  <div class="list-group-item suggest-pagination d-flex flex-wrap justify-content-between align-items-center gap-2">
     <div class="small text-muted">
       Page {{ page }} of {{ page_count }}{% if total %} • {{ total }} results{% endif %}
       <span class="htmx-indicator ms-2 align-middle">
@@ -119,7 +119,7 @@
         </li>
       </ul>
 
-      <div class="d-flex align-items-center gap-2">
+      <div class="d-none d-sm-flex align-items-center gap-2">
         <span class="small text-muted text-nowrap">Per page:</span>
         <select name="limit" class="form-select form-select-sm"
                 hx-get="{{ suggest_url }}?q={{ q|urlencode }}&page=1"

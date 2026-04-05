@@ -71,14 +71,6 @@ body {
   }
 }
 
-@media (max-width: 991.98px) {
-  .navbar-wmb {
-    position: sticky;
-    top: 0;
-    z-index: 1020;
-  }
-}
-
 .navbar-wmb .navbar-brand {
   font-weight: 700;
   letter-spacing: -.01em;
@@ -183,6 +175,22 @@ body {
   color: #5c6a7a;
 }
 
+/* Homepage: prominent search input */
+#home-search.form-control-lg {
+  font-size: 1rem;
+  padding-top: .75rem;
+  padding-bottom: .75rem;
+  padding-right: 1rem;
+  border-radius: .75rem;
+  border: 2px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transition: border-color .15s, box-shadow .15s;
+}
+#home-search.form-control-lg:focus {
+  border-color: var(--wmb-brand);
+  box-shadow: 0 0 0 4px rgba(var(--wmb-brand-rgb),.12);
+}
+
 /* ─────────────────────────────────────────────
    Cards
    ───────────────────────────────────────────── */
@@ -217,11 +225,16 @@ body {
    ───────────────────────────────────────────── */
 .typeahead-list {
   display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, .125);
   border-radius: .5rem;
   z-index: 1000;
   overflow-x: hidden;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 /* Search input with leading icon */
@@ -247,6 +260,15 @@ body {
 
 .form-control-lg.search-input-with-icon {
   padding-left: 2.9rem;
+}
+
+/* Pin pagination at bottom of typeahead dropdown so it's always visible */
+.typeahead-list .suggest-pagination {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  z-index: 1;
+  border-top: 1px solid rgba(0, 0, 0, .125);
 }
 
 /* Flex children inside search result items must not expand beyond container */
@@ -349,9 +371,29 @@ body {
   background-color: rgba(var(--wmb-brand-rgb), .08);
 }
 
+.tt-time .tt-min {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: #111827;
+}
+
 /* No horizontal scroll — fixed columns; headsign wraps. */
 .tt-table-responsive {
   width: 100%;
+}
+
+.tt-table-responsive tr[data-route-type="3"] { border-left: 3px solid var(--transit-bus-color); }
+.tt-table-responsive tr[data-route-type="2"] { border-left: 3px solid var(--transit-rail-color); }
+.tt-table-responsive tr[data-route-type="4"] { border-left: 3px solid var(--transit-ferry-color); }
+.tt-table-responsive tr[data-route-type="0"] { border-left: 3px solid var(--transit-tram-color); }
+
+/* Give the first cell enough left padding so the border doesn't crowd the countdown.
+   Scoped to ≥576px because mobile uses flex row ordering where the time is on the right. */
+@media (min-width: 576px) {
+  .tt-table-responsive tr[data-route-type] td:first-child {
+    padding-left: 0.75rem;
+  }
 }
 
 .tt-table-responsive .table {
@@ -486,6 +528,14 @@ body {
   min-height: 2rem;
   padding: .3rem .7rem;
   font-size: .85rem;
+}
+
+/* Route badge collapse — hide overflow badges when collapsed */
+.route-filter-wrap.collapsed .route-filter-overflow {
+  display: none;
+}
+.route-filter-wrap.collapsed .route-filter-overflow.active {
+  display: inline-flex;  /* keep active filter visible even when collapsed */
 }
 
 #route-filter-badges.has-filter .route-filter-btn:not(.active) {
@@ -770,6 +820,8 @@ body {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+    -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+    mask-image: linear-gradient(to right, black 80%, transparent 100%);
   }
   /* Status/RT icons */
   .tt-table-responsive .table tbody td:nth-child(4),
@@ -798,13 +850,16 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: #f8f9fa;
-  border: 1px solid #dee2e6;
+  background-color: rgba(var(--wmb-brand-rgb), .06);
+  border: 1px solid rgba(var(--wmb-brand-rgb), .18);
   border-radius: 50rem;
   padding: 0.35rem 1rem;
   font-size: 0.875rem;
-  color: #495057;
+  color: #374151;
   gap: 0.35rem;
+}
+.stats-pill strong {
+  color: var(--wmb-brand);
 }
 .pulse-dot {
   display: inline-block;

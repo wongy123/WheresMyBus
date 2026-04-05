@@ -14,9 +14,10 @@
   {# ── Left: search + nearby (starts full-width; shrinks when map appears) ── #}
   <div id="home-search-col" class="col-12 col-lg-12" style="position:relative; z-index:2;">
     <div class="mx-auto" style="max-width:480px;">
-      <div class="position-relative">
-        <input id="home-search" name="q" type="search" class="form-control form-control-sm"
-          placeholder="Search stops or routes…" autocomplete="off"
+      <div class="position-relative search-input-wrap">
+        <span class="search-input-icon material-symbols-outlined">search</span>
+        <input id="home-search" name="q" type="search" class="form-control form-control-lg search-input-with-icon"
+          placeholder="Stop name, code, or route…" autocomplete="off"
           aria-label="Search stops or routes"
           hx-get="{{ BASE_PATH }}/hx/search/combined"
           hx-trigger="input changed delay:250ms, search"
@@ -36,8 +37,13 @@
             </svg>
             Use my location
           </button>
-          <span id="home-nearby-status" class="text-muted small"></span>
+          <span id="home-nearby-status" class="text-muted small ms-2"></span>
         </div>
+      </div>
+
+      <div id="home-recent" class="mt-3" style="display:none;">
+        <div class="text-muted small mb-1" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;">Recent</div>
+        <div id="home-recent-list" class="d-flex flex-column gap-1"></div>
       </div>
       
     </div>
@@ -140,6 +146,16 @@
       // Prepare map col invisible before unhiding
       mapCol.style.opacity = '0';
       mapCol.style.transform = large ? 'translateX(20px)' : 'translateY(-10px)';
+
+      if (large) {
+        // col-12 (100%) + col-lg-7 (58.3%) = 158.3% — Bootstrap would wrap the map
+        // column to the next row. Set nowrap + overflow:hidden first so it stays
+        // on the same line and slides in from the right as the search bar shrinks.
+        var revealRow = searchCol.parentElement;
+        revealRow.style.flexWrap = 'nowrap';
+        revealRow.style.overflow = 'hidden';
+      }
+
       mapCol.classList.remove('d-none');
 
       if (large) {
@@ -158,7 +174,7 @@
             searchCol.style.transition = 'flex-basis 0.7s cubic-bezier(0.4,0,0.2,1), max-width 0.7s cubic-bezier(0.4,0,0.2,1)';
             searchCol.style.flexBasis = '41.66667%';
             searchCol.style.maxWidth = '41.66667%';
-            mapCol.style.transition = 'opacity 0.7s cubic-bezier(0.4,0,0.2,1), transform 0.7s cubic-bezier(0.4,0,0.2,1)';
+            mapCol.style.transition = 'opacity 0.5s cubic-bezier(0.4,0,0.2,1) 0.25s, transform 0.5s cubic-bezier(0.4,0,0.2,1) 0.25s';
             mapCol.style.opacity = '1';
             mapCol.style.transform = 'none';
             if (nearbyInner) {
@@ -166,9 +182,13 @@
               nearbyInner.style.marginLeft = '0';
             }
             setTimeout(function () {
-              map.invalidateSize();
               if (nearbyInner) nearbyInner.style.transition = '';
+              revealRow.style.flexWrap = '';
+              revealRow.style.overflow = '';
             }, 720);
+            setTimeout(function () {
+              map.invalidateSize();
+            }, 800);
           });
         });
       } else {
@@ -218,6 +238,12 @@
       mapCol.style.transform = large ? 'translateX(20px)' : 'translateY(-10px)';
 
       if (large) {
+        // Same wrapping problem in reverse: as the search bar grows from 41.67%→100%
+        // the total exceeds 100%, so Bootstrap wraps the map below the search bar.
+        var hideRow = searchCol.parentElement;
+        hideRow.style.flexWrap = 'nowrap';
+        hideRow.style.overflow = 'hidden';
+
         var nearbyInner = document.getElementById('home-nearby-inner');
         if (nearbyInner) {
           var targetML = Math.max(0, (480 - nearbyInner.offsetWidth) / 2);
@@ -238,10 +264,16 @@
           searchCol.style.transition = '';
           searchCol.style.flexBasis = '';
           searchCol.style.maxWidth = '';
+          hideRow.style.flexWrap = '';
+          hideRow.style.overflow = '';
           if (nearbyInner) {
-            nearbyInner.style.marginLeft = '';
-            nearbyInner.style.marginRight = '';
+            // Use explicit 'auto' rather than '' — clearing a longhand doesn't
+            // restore the original margin:0 auto shorthand (it was replaced by
+            // longhands the moment any longhand was set via JS), so the element
+            // would snap to margin-left:0 (left edge) instead of centering.
             nearbyInner.style.transition = '';
+            nearbyInner.style.marginLeft = 'auto';
+            nearbyInner.style.marginRight = 'auto';
           }
         }, 720);
 
@@ -550,6 +582,58 @@
     }
     fetchHomeStats();
     setInterval(fetchHomeStats, 60000);
+
+    // Recent stops
+    (function () {
+      var KEY = 'wmb_recent_stops';
+      var container = document.getElementById('home-recent');
+      var list = document.getElementById('home-recent-list');
+      if (!container || !list) return;
+
+      function read() {
+        try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+        catch (e) { return []; }
+      }
+
+      function save(arr) {
+        try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) {}
+      }
+
+      function render() {
+        var items = read();
+        if (!items.length) { container.style.display = 'none'; return; }
+        container.style.display = '';
+        list.innerHTML = '';
+        items.forEach(function (s) {
+          var row = document.createElement('div');
+          row.className = 'd-flex align-items-center gap-2';
+          var a = document.createElement('a');
+          a.href = basePath + '/stops/' + s.id;
+          a.className = 'list-group-item list-group-item-action py-1 px-2 rounded border-0 d-flex align-items-center gap-2 flex-grow-1';
+          a.style.cssText = 'font-size:.88rem;';
+          a.innerHTML = '<span class="material-symbols-outlined" style="font-size:1rem;color:#6c757d;">history</span>' +
+            '<span class="text-truncate">' + s.name + '</span>' +
+            (s.stopCode ? '<code class="ms-auto text-muted" style="font-size:.72rem;flex-shrink:0;">' + s.stopCode + '</code>' : '');
+          var removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'btn btn-sm border-0 p-0 text-muted';
+          removeBtn.style.cssText = 'font-size:.7rem;line-height:1;opacity:.5;';
+          removeBtn.setAttribute('aria-label', 'Remove ' + s.name);
+          removeBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:.9rem;">close</span>';
+          removeBtn.addEventListener('click', function () {
+            var arr = read().filter(function (x) { return x.id !== s.id; });
+            save(arr);
+            render();
+          });
+          row.appendChild(a);
+          row.appendChild(removeBtn);
+          list.appendChild(row);
+        });
+      }
+
+      render();
+      window._wmbRecentRender = render;
+    }());
 
     window.addEventListener('pagehide', function () {
       if (userWatchId != null && navigator.geolocation) {

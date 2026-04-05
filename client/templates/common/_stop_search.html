@@ -29,6 +29,11 @@
     <div id="{{ uid }}-nearby-results" style="max-height: 320px; overflow-y: auto;"></div>
 
     <p class="mt-3 text-muted small">Try "City Hall", "Garden City", or enter a stop code.</p>
+
+    <div class="d-none d-lg-block mt-4">
+      <div class="text-muted small mb-2" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;">Recent stops</div>
+      <div id="{{ uid }}-recent-stops"></div>
+    </div>
   </div>
 
   {# ── Right: map ── #}
@@ -224,6 +229,26 @@
       userWatchId = null;
     }
   });
+
+  // Recent stops (desktop left column)
+  (function () {
+    var el = document.getElementById({{ (uid ~ '-recent-stops') | tojson }});
+    if (!el) return;
+    try {
+      var items = JSON.parse(localStorage.getItem('wmb_recent_stops') || '[]');
+      if (!items.length) { el.innerHTML = '<span class="text-muted small" style="font-size:.8rem;">No recent stops yet.</span>'; return; }
+      var html = '<div class="list-group list-group-flush">';
+      items.forEach(function (s) {
+        html += '<a href="' + basePath + '/stops/' + s.id + '" class="list-group-item list-group-item-action py-2 px-0 border-0 border-bottom d-flex align-items-center gap-2" style="font-size:.85rem;">' +
+          '<span class="material-symbols-outlined" style="font-size:1rem;color:#6c757d;">history</span>' +
+          '<span class="text-truncate">' + s.name + '</span>' +
+          (s.stopCode ? '<code class="ms-auto text-muted" style="font-size:.72rem;flex-shrink:0;">' + s.stopCode + '</code>' : '') +
+          '</a>';
+      });
+      html += '</div>';
+      el.innerHTML = html;
+    } catch (e) {}
+  }());
 }());
 </script>
 {% endmacro %}

@@ -39,16 +39,21 @@
     <span>Routes serving this {{ 'station' if stop.location_type == 1 else 'stop' }}</span>
     <span id="route-filter-idle-hint" class="fw-normal text-lowercase" style="letter-spacing:0;font-size:.7rem;opacity:.6;">tap to filter</span>
   </div>
-  <div class="d-flex flex-wrap align-items-center gap-1" id="route-filter-badges">
+  <div class="d-flex flex-wrap align-items-center gap-1 route-filter-wrap{% if routes|length > 10 %} collapsed{% endif %}" id="route-filter-badges">
     {% for r in routes %}
     {% set bg = '#' + (r.route_color or 'CCCCCC') %}
     {% set fg = '#' + (r.route_text_color or '000000') %}
-    <button type="button" class="route-filter-btn badge rounded-pill border-0"
+    <button type="button" class="route-filter-btn badge rounded-pill border-0{% if loop.index > 10 %} route-filter-overflow{% endif %}"
       style="background-color: {{ bg }}; color: {{ fg }};" data-route="{{ r.route_short_name }}"
       title="Filter to {{ r.route_short_name }}">
       {{ r.route_short_name }}
     </button>
     {% endfor %}
+    {% if routes|length > 10 %}
+    <button type="button" id="route-filter-toggle" class="btn btn-sm btn-outline-secondary" style="font-size:.72rem;padding:.15rem .55rem;">
+      Show all {{ routes|length }} routes ↓
+    </button>
+    {% endif %}
     <button type="button" id="route-filter-clear" class="btn btn-sm btn-outline-secondary d-none" style="font-size:.72rem;padding:.15rem .45rem;">
       <span class="material-symbols-outlined align-middle" style="font-size:.85rem;line-height:1;">filter_alt_off</span> Clear filter
     </button>
@@ -59,6 +64,14 @@
     var badgesEl = document.getElementById('route-filter-badges');
     var clearBtn = document.getElementById('route-filter-clear');
     var idleHintEl = document.getElementById('route-filter-idle-hint');
+    var _storageKey = 'wmb_filter_' + {{ stop.stop_id | tojson }};
+
+    function _saveFilter(routes) {
+      try {
+        if (routes.length) sessionStorage.setItem(_storageKey, JSON.stringify(routes));
+        else sessionStorage.removeItem(_storageKey);
+      } catch (e) {}
+    }
 
     function applyFilterVisuals() {
       var ttEl = document.getElementById('stop-timetable');
@@ -76,6 +89,7 @@
       var ttEl = document.getElementById('stop-timetable');
       var activeRoutes = Array.from(badgesEl.querySelectorAll('.route-filter-btn.active'))
         .map(function (b) { return b.dataset.route; });
+      _saveFilter(activeRoutes);
       applyFilterVisuals();
       if (ttEl) {
         ttEl.dataset.ttRoutes = activeRoutes.join(',');
@@ -83,6 +97,29 @@
         if (pageEl) pageEl.dataset.ttPage = '1';
         htmx.trigger(ttEl, 'filterChange');
       }
+    }
+
+    // Restore persisted filter before the first HTMX load fires
+    try {
+      var saved = JSON.parse(sessionStorage.getItem(_storageKey) || '[]');
+      if (saved.length) {
+        saved.forEach(function (r) {
+          var btn = badgesEl.querySelector('.route-filter-btn[data-route="' + r + '"]');
+          if (btn) btn.classList.add('active');
+        });
+        var ttEl = document.getElementById('stop-timetable');
+        if (ttEl) ttEl.dataset.ttRoutes = saved.join(',');
+        applyFilterVisuals();
+      }
+    } catch (e) {}
+
+    var toggleBtn = document.getElementById('route-filter-toggle');
+    if (toggleBtn) {
+      var totalRoutes = badgesEl.querySelectorAll('.route-filter-btn').length;
+      toggleBtn.addEventListener('click', function () {
+        var isCollapsed = badgesEl.classList.toggle('collapsed');
+        toggleBtn.textContent = isCollapsed ? 'Show all ' + totalRoutes + ' routes ↓' : 'Show less ↑';
+      });
     }
 
     badgesEl.addEventListener('click', function (e) {
@@ -519,4 +556,17 @@
 <div id="stop-vehicle-poll" hx-get="{{ BASE_PATH }}/hx/stops/{{ stop.stop_id }}/vehicles?duration=3600"
   hx-trigger="load, every 5s" hx-target="this" hx-swap="innerHTML" style="display:none;" aria-hidden="true"></div>
 {% endif %}
+<script>
+(function () {
+  var KEY = 'wmb_recent_stops', MAX = 5;
+  var entry = { id: {{ stop.stop_id | tojson }}, name: {{ stop.stop_name | tojson }}, stopCode: {{ (stop.stop_code or '') | tojson }} };
+  try {
+    var arr = JSON.parse(localStorage.getItem(KEY) || '[]');
+    arr = arr.filter(function (s) { return s.id !== entry.id; });
+    arr.unshift(entry);
+    if (arr.length > MAX) arr = arr.slice(0, MAX);
+    localStorage.setItem(KEY, JSON.stringify(arr));
+  } catch (e) {}
+}());
+</script>
 {% endblock %}
