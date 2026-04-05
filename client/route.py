@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from flask import Blueprint, render_template, request, abort
 from api import api_get
-from helpers import get_route_directions, validate_direction
+from helpers import get_route_directions, validate_direction, get_line_color, get_line_names
 
 bp = Blueprint("route", __name__)
 BASE_PATH = os.environ.get("BASE_PATH", "")  # for subpath setups
@@ -73,6 +73,16 @@ def route_details(route_id: str):
     details = api_get(f"routes/{route_id}")
     if details is None:
         abort(404)
+
+    # Override with official line color for train routes
+    if details.get("route_type") in (2, 12):
+        line_names = get_line_names(details.get("route_short_name", ""))
+        if line_names:
+            line_color, line_text_color = get_line_color(line_names[0])
+            if line_color:
+                details["route_color"] = line_color
+                details["route_text_color"] = line_text_color
+
     available_directions, default_direction = get_route_directions(route_id)
 
     # For line slugs (is_line=True), use the slug for all HTMX/API sub-calls.

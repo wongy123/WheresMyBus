@@ -1,6 +1,7 @@
 // Shared helpers for timetable fragments.
 // Loaded in <head> so they are available when HTMX swaps in partials.
 (function (w) {
+  var _showTimeTrips = [];
   // Return the best departure-time string from a row object.
   // Prefers estimated over scheduled, departure over arrival (for last-stop fallback).
   w.gtfsTime = function (row) {
@@ -124,16 +125,27 @@
     document.querySelectorAll('.tt-time').forEach(function (el) {
       var minEl  = el.querySelector('.tt-min');
       var absEl  = el.querySelector('.tt-abs');
-      var subEl  = el.querySelector('.tt-abs-sub');
+      var row = el.closest('tr[data-trip-id]');
+      var tripId = row ? row.dataset.tripId : '';
       var minsAway = el.dataset.minsAway !== undefined && el.dataset.minsAway !== ''
         ? parseInt(el.dataset.minsAway, 10)
         : w.minsFromNow(el.dataset.time);
       minEl.textContent = w.fmtMins(minsAway);
-      if (subEl) subEl.textContent = el.dataset.time;
+      if (tripId && _showTimeTrips.indexOf(tripId) >= 0) {
+        minEl.classList.add('d-none');
+        absEl.classList.remove('d-none');
+      }
       el.addEventListener('click', function () {
+        var showingTime = minEl.classList.contains('d-none');
         minEl.classList.toggle('d-none');
         absEl.classList.toggle('d-none');
-        if (subEl) subEl.classList.toggle('d-none');
+        if (!tripId) return;
+        var idx = _showTimeTrips.indexOf(tripId);
+        if (showingTime) {
+          if (idx >= 0) _showTimeTrips.splice(idx, 1);
+        } else {
+          if (idx < 0) _showTimeTrips.push(tripId);
+        }
       });
     });
   };
