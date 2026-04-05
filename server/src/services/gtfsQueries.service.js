@@ -437,7 +437,8 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
 
   // Deduplicate train lines: one search result per individual line name.
   // Among all variants sharing a line, prefer the one with trips today.
-  const lineMap = new Map(); // individual line_name → best representative row
+  // Also collect all variant short_names for each line to enable searching by variant code.
+  const lineMap = new Map(); // individual line_name → { row, variants: Set }
   const nonTrainRoutes = [];
   for (const r of enriched) {
     if (!r._lineNames.length) {
@@ -446,21 +447,23 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
     }
     for (const lName of r._lineNames) {
       if (!lineMap.has(lName)) {
-        lineMap.set(lName, r);
+        lineMap.set(lName, { row: r, variants: new Set([r.route_short_name]) });
       } else {
         const existing = lineMap.get(lName);
-        if (r.trips_today_cnt > 0 && existing.trips_today_cnt === 0) {
-          lineMap.set(lName, r);
+        existing.variants.add(r.route_short_name);
+        if (r.trips_today_cnt > 0 && existing.row.trips_today_cnt === 0) {
+          existing.row = r;
         }
       }
     }
   }
-  const lineRoutes = [...lineMap.entries()].map(([lName, r]) => ({
-    ...r,
+  const lineRoutes = [...lineMap.entries()].map(([lName, { row, variants }]) => ({
+    ...row,
     _lineNames: undefined,
     line_name: lName,
     line_slug: slugifyLineName(lName),
     line_tag: lName.replace(/\s+(Line|Link|Rail)$/i, '').trim(),
+    line_variants: [...variants].sort(),
     is_line: true,
   }));
   const routes = [
@@ -480,8 +483,11 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
       const sn = (r.route_short_name || '').toLowerCase();
       const ln = (r.route_long_name || '').toLowerCase();
       const lineName = (r.line_name || '').toLowerCase();
+      const lineVariants = (r.line_variants || []).join(' ').toLowerCase();
 
-      const allTokensMatch = tokens.every(t => sn.includes(t) || ln.includes(t) || lineName.includes(t));
+      const allTokensMatch = tokens.every(t =>
+        sn.includes(t) || ln.includes(t) || lineName.includes(t) || lineVariants.includes(t)
+      );
       if (!allTokensMatch) return null;
 
       let rank;
@@ -490,7 +496,8 @@ export async function getAllRoutes(searchTerm = '', configPath = defaultConfigPa
       else if (ln.startsWith(q) || lineName.startsWith(q)) rank = 2;
       else if (sn.includes(q)) rank = 3;
       else if (ln.includes(q) || lineName.includes(q)) rank = 4;
-      else rank = 5;
+      else if (lineVariants.includes(q)) rank = 5;
+      else rank = 6;
 
       return { ...r, sort_rank: rank };
     })
