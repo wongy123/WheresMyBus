@@ -71,14 +71,6 @@ body {
   }
 }
 
-@media (max-width: 991.98px) {
-  .navbar-wmb {
-    position: sticky;
-    top: 0;
-    z-index: 1020;
-  }
-}
-
 .navbar-wmb .navbar-brand {
   font-weight: 700;
   letter-spacing: -.01em;
@@ -241,6 +233,8 @@ body {
   border-radius: .5rem;
   z-index: 1000;
   overflow-x: hidden;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 /* Search input with leading icon */
@@ -266,6 +260,15 @@ body {
 
 .form-control-lg.search-input-with-icon {
   padding-left: 2.9rem;
+}
+
+/* Pin pagination at bottom of typeahead dropdown so it's always visible */
+.typeahead-list .suggest-pagination {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  z-index: 1;
+  border-top: 1px solid rgba(0, 0, 0, .125);
 }
 
 /* Flex children inside search result items must not expand beyond container */
@@ -525,6 +528,14 @@ body {
   min-height: 2rem;
   padding: .3rem .7rem;
   font-size: .85rem;
+}
+
+/* Route badge collapse — hide overflow badges when collapsed */
+.route-filter-wrap.collapsed .route-filter-overflow {
+  display: none;
+}
+.route-filter-wrap.collapsed .route-filter-overflow.active {
+  display: inline-flex;  /* keep active filter visible even when collapsed */
 }
 
 #route-filter-badges.has-filter .route-filter-btn:not(.active) {
@@ -839,13 +850,16 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: #f8f9fa;
-  border: 1px solid #dee2e6;
+  background-color: rgba(var(--wmb-brand-rgb), .06);
+  border: 1px solid rgba(var(--wmb-brand-rgb), .18);
   border-radius: 50rem;
   padding: 0.35rem 1rem;
   font-size: 0.875rem;
-  color: #495057;
+  color: #374151;
   gap: 0.35rem;
+}
+.stats-pill strong {
+  color: var(--wmb-brand);
 }
 .pulse-dot {
   display: inline-block;

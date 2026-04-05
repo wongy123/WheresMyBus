@@ -122,6 +122,37 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
     crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.6/dist/htmx.min.js" crossorigin="anonymous"></script>
+  <script>
+  (function () {
+    var activeTA = null;
+    function capTypeahead(el) {
+      if (!el || window.innerWidth >= 992) { if (el) el.style.maxHeight = ''; return; }
+      var nav = document.querySelector('.bottom-nav');
+      if (!nav) return;
+      var navTop = nav.getBoundingClientRect().top;
+      var top = el.getBoundingClientRect().top;
+      if (top === 0 && el.offsetHeight === 0) return;
+      var available = navTop - top - 8;
+      if (available < 80) { el.style.maxHeight = ''; return; }
+      el.style.maxHeight = available + 'px';
+    }
+    function onScroll() { if (activeTA) capTypeahead(activeTA); }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    document.addEventListener('htmx:afterSwap', function (e) {
+      var ta = e.detail.target.classList.contains('typeahead-list') ? e.detail.target : e.detail.target.closest('.typeahead-list');
+      if (!ta) return;
+      activeTA = ta;
+      requestAnimationFrame(function () { requestAnimationFrame(function () { capTypeahead(ta); }); });
+      setTimeout(function () { capTypeahead(ta); }, 800);
+    });
+    /* Clear activeTA when typeahead is hidden so scroll listener stops processing */
+    document.addEventListener('input', function (e) {
+      if (!e.target.matches('[hx-target]')) return;
+      if (!e.target.value.trim()) activeTA = null;
+    });
+  }());
+  </script>
 </body>
 
 </html>

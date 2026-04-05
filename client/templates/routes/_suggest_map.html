@@ -10,8 +10,8 @@
 {% set has_next = pg.get('hasNext', page < page_count) %}
 {% set suggest_url = suggest_url or (BASE_PATH ~ '/hx/routes/suggest-map') %}
 
-<div id="route-suggest-list" class="list-group position-absolute w-100 mt-1 z-10"
-  role="listbox" aria-label="Route suggestions" style="max-height:420px;overflow-y:auto;">
+<div id="route-suggest-list" class="list-group w-100"
+  role="listbox" aria-label="Route suggestions">
   {% if has_items %}
     {% for r in items %}
     {% set bg = '#' + (r.route_color or 'CCCCCC') %}

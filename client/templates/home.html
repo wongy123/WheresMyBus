@@ -37,8 +37,13 @@
             </svg>
             Use my location
           </button>
-          <span id="home-nearby-status" class="text-muted small"></span>
+          <span id="home-nearby-status" class="text-muted small ms-2"></span>
         </div>
+      </div>
+
+      <div id="home-recent" class="mt-3" style="display:none;">
+        <div class="text-muted small mb-1" style="font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;">Recent</div>
+        <div id="home-recent-list" class="d-flex flex-column gap-1"></div>
       </div>
       
     </div>
@@ -551,6 +556,58 @@
     }
     fetchHomeStats();
     setInterval(fetchHomeStats, 60000);
+
+    // Recent stops
+    (function () {
+      var KEY = 'wmb_recent_stops';
+      var container = document.getElementById('home-recent');
+      var list = document.getElementById('home-recent-list');
+      if (!container || !list) return;
+
+      function read() {
+        try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+        catch (e) { return []; }
+      }
+
+      function save(arr) {
+        try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) {}
+      }
+
+      function render() {
+        var items = read();
+        if (!items.length) { container.style.display = 'none'; return; }
+        container.style.display = '';
+        list.innerHTML = '';
+        items.forEach(function (s) {
+          var row = document.createElement('div');
+          row.className = 'd-flex align-items-center gap-2';
+          var a = document.createElement('a');
+          a.href = basePath + '/stops/' + s.id;
+          a.className = 'list-group-item list-group-item-action py-1 px-2 rounded border-0 d-flex align-items-center gap-2 flex-grow-1';
+          a.style.cssText = 'font-size:.88rem;';
+          a.innerHTML = '<span class="material-symbols-outlined" style="font-size:1rem;color:#6c757d;">history</span>' +
+            '<span class="text-truncate">' + s.name + '</span>' +
+            (s.stopCode ? '<code class="ms-auto text-muted" style="font-size:.72rem;flex-shrink:0;">' + s.stopCode + '</code>' : '');
+          var removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'btn btn-sm border-0 p-0 text-muted';
+          removeBtn.style.cssText = 'font-size:.7rem;line-height:1;opacity:.5;';
+          removeBtn.setAttribute('aria-label', 'Remove ' + s.name);
+          removeBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:.9rem;">close</span>';
+          removeBtn.addEventListener('click', function () {
+            var arr = read().filter(function (x) { return x.id !== s.id; });
+            save(arr);
+            render();
+          });
+          row.appendChild(a);
+          row.appendChild(removeBtn);
+          list.appendChild(row);
+        });
+      }
+
+      render();
+      window._wmbRecentRender = render;
+    }());
 
     window.addEventListener('pagehide', function () {
       if (userWatchId != null && navigator.geolocation) {
