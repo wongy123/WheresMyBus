@@ -38,8 +38,10 @@ jobs:
           done
 
       - name: Commit and push if anything changed
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           git diff --staged --quiet && echo "Nothing to sync" || (
-            git commit -m "Sync from main: ${{ github.event.head_commit.message }}"
+            git commit -m "Sync from main: $COMMIT_MSG"
             git push origin local
           )

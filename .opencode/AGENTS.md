@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to OpenCode agents when working with code in this repository.
 
 ## Quick Facts
 
@@ -177,7 +177,7 @@ BASE_PATH=                                        # e.g. "/wheresmybus" or ""
 
 ## Git Practice
 
-- Never commit with Claude as co-author
+- Never commit with AI as co-author
 - Never push code to remote
 - Keep commits atomic and focused
 - Don't commit `sqlite/translink.db`, `.env` files, or `node_modules/`
