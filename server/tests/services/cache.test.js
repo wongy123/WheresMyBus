@@ -1,28 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// vi.hoisted lets us reference these fns inside the vi.mock factory below,
-// which is hoisted before any import statements execute.
-const { mockGet, mockSet, mockMGet } = vi.hoisted(() => ({
-  mockGet:  vi.fn(),
-  mockSet:  vi.fn(),
-  mockMGet: vi.fn(),
-}));
+// Use vi.hoisted to create the mock functions with explicit implementations
+const mockGet = vi.hoisted(() => vi.fn(() => Promise.resolve(null)));
+const mockSet = vi.hoisted(() => vi.fn(() => Promise.resolve('OK')));
+const mockMGet = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 
-vi.mock('ioredis', () => {
-  const Redis = vi.fn(() => ({
-    get:  mockGet,
-    set:  mockSet,
-    mget: mockMGet,
-    on:   vi.fn(),
-  }));
-  return { default: Redis };
-});
+vi.mock('ioredis', () => ({
+  default: vi.fn(function Redis() {
+    this.get = mockGet;
+    this.set = mockSet;
+    this.mget = mockMGet;
+    this.on = vi.fn();
+  }),
+}));
 
 import { cacheGet, cacheSet, cacheMGet } from '../../src/services/cache.service.js';
 
-// Reset mock implementations (not just call counts) between tests.
 beforeEach(() => {
-  vi.resetAllMocks();
+  vi.clearAllMocks();
 });
 
 // ---------------------------------------------------------------------------
