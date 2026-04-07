@@ -54,6 +54,7 @@
         {% set eta = v.estimated_departure_time or v.scheduled_departure_time or v.estimated_arrival_time or v.scheduled_arrival_time %}
         {% set vvc = variant_colors.get(v.route_short_name, {}) %}
         {% set v_icon_color = vvc.bg if vvc.bg else ('#' + route_color if route_color else '#6c757d') %}
+        {% set is_scheduled = v.is_scheduled | default(false) %}
 
         <div class="d-flex align-items-center{% if v.vehicle_latitude and v.vehicle_longitude %} diagram-vehicle-row{% endif %}" style="min-height: 44px; position: relative; z-index: 1;{% if v.vehicle_latitude and v.vehicle_longitude %} cursor:pointer;{% endif %}"
           {% if v.vehicle_latitude and v.vehicle_longitude %}
@@ -68,19 +69,19 @@
             onclick="typeof showVehicleMap === 'function' && showVehicleMap(this.dataset)"
           {% endif %}>
           <div class="flex-shrink-0 d-flex justify-content-center align-items-center" style="width: 40px;">
-            <div style="width:28px;height:28px;background:{{ v_icon_color }};border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;">
-              <span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">{{ vehicle_icon }}</span>
+            <div style="width:28px;height:28px;background:{{ v_icon_color }};border-radius:50%;border:3px solid {% if is_scheduled %}#adb5bd{% else %}white{% endif %};box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;{% if is_scheduled %}opacity:0.7;{% endif %}">
+              <span class="material-symbols-outlined" style="font-size:.95rem;color:white;line-height:1;">{{ 'schedule' if is_scheduled else vehicle_icon }}</span>
             </div>
           </div>
-          <div class="ms-1 d-flex align-items-center gap-2 py-1 px-2 rounded border bg-white shadow-sm" style="font-size: .82rem;">
-            <span class="badge {{ info.cls }}">{{ info.label }}</span>
-            <span class="fw-semibold">
+          <div class="ms-1 d-flex align-items-center gap-2 py-1 px-2 rounded border bg-white shadow-sm" style="font-size: .82rem;{% if is_scheduled %}border-style:dashed!important;{% endif %}">
+            <span class="badge {{ 'bg-secondary' if is_scheduled else info.cls }}">{{ 'Scheduled' if is_scheduled else info.label }}</span>
+            <span class="fw-semibold{% if is_scheduled %} text-secondary{% endif %}">
               {% if v.minutes_away is not none %}
                 {% if v.minutes_away == 0 %}now{% else %}{{ v.minutes_away }} min{% endif %}
               {% elif eta %}{{ eta[:5] }}{% endif %}
             </span>
             {% if eta and v.minutes_away is not none and v.minutes_away > 0 %}<span class="text-muted" title="Scheduled departure at this stop">@ {{ eta[:5] }}</span>{% endif %}
-            {% if v.realtime_updated_at or v.has_gps %}
+            {% if not is_scheduled and (v.realtime_updated_at or v.has_gps) %}
               <span style="display:inline-flex; align-items:center; gap:2px;">
                 {% if v.has_rt %}
                 <span class="rt-icon" tabindex="0" role="button"

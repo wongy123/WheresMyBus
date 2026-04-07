@@ -583,7 +583,7 @@ export async function getOneRoute(identifier, configPath = defaultConfigPath) {
   return { ...routeData, line_name: getLineNames(route.route_short_name).join(' / ') || null, has_service_today: trips_today_cnt > 0 };
 }
 
-async function resolveRouteFamily(identifier, configPath = defaultConfigPath) {
+async function resolveRouteFamily(identifier, direction = null, configPath = defaultConfigPath) {
   // If identifier is a line slug, resolve to the best representative variant.
   const lineName = getLineNameFromSlug(identifier);
   if (lineName) {
@@ -600,13 +600,26 @@ async function resolveRouteFamily(identifier, configPath = defaultConfigPath) {
       ...Object.fromEntries(terminalCodes.map((c, i) => [`tc${i}`, c])),
       ...Object.fromEntries(shortNameOverrides.map((sn, i) => [`sno${i}`, sn])),
     };
+    
+    // For train lines with direction, prefer variants that have trips for that direction.
+    // This handles cases like Beenleigh Line where BNVL and VLBN are shared with Gold Coast Line.
+    let orderBy = 'COALESCE(td.cnt, 0) DESC, COALESCE(all_t.total, 0) DESC, r.route_id ASC';
+    if (direction !== null) {
+      // Order by number of trips for this direction
+      orderBy = `(
+        SELECT COUNT(*) FROM trips_today t2
+        WHERE t2.route_id = r.route_id AND t2.direction_id = $direction
+      ) DESC, ${orderBy}`;
+      params.direction = direction;
+    }
+    
     const route = await withDb(db => db.prepare(`
       SELECT r.route_id, r.route_short_name
       FROM routes r
       LEFT JOIN (SELECT route_id, COUNT(*) AS cnt  FROM trips_today GROUP BY route_id) td    ON td.route_id    = r.route_id
       LEFT JOIN (SELECT route_id, COUNT(*) AS total FROM trips       GROUP BY route_id) all_t ON all_t.route_id = r.route_id
       WHERE ${allConds.join(' OR ')}
-      ORDER BY COALESCE(td.cnt, 0) DESC, COALESCE(all_t.total, 0) DESC, r.route_id ASC
+      ORDER BY ${orderBy}
       LIMIT 1
     `).get(params), configPath);
     if (!route) return { routeId: identifier, routeShortName: identifier };
@@ -860,7 +873,7 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
   if (cached) return cached;
 
   // For individual routes (and line slugs resolved via resolveRouteFamily), pick the single most-representative trip.
-  const family = await resolveRouteFamily(routeId, configPath);
+  const family = await resolveRouteFamily(routeId, direction, configPath);
   const resolvedId = family.routeShortName;
 
   const sql = `
@@ -889,7 +902,7 @@ export async function getStopsByRoute(routeId, direction = 0, configPath = defau
 }
 
 export async function getRouteShape(routeId, direction = 0, configPath = defaultConfigPath) {
-  const family = await resolveRouteFamily(routeId, configPath);
+  const family = await resolveRouteFamily(routeId, direction, configPath);
   const resolvedId = family.routeShortName;
 
   const sql = `
@@ -971,7 +984,7 @@ export async function getRouteSchedule(routeId, direction = 0, date = null, conf
       ...Object.fromEntries(shortNameOverrides.map((sn, i) => [`sno${i}`, sn])),
     };
   } else {
-    const family = await resolveRouteFamily(routeId, configPath);
+    const family = await resolveRouteFamily(routeId, direction, configPath);
     routeWhere = `(t.route_id = $routeId OR r.route_short_name = $routeShortName)`;
     routeParams = { routeId: family.routeId, routeShortName: family.routeShortName };
   }
@@ -1195,7 +1208,7 @@ export async function getUpcomingByRoute(
   duration = 7200,                           // 2 hours
   configPath = defaultConfigPath
 ) {
-  const family = await resolveRouteFamily(routeId, configPath);
+  const family = await resolveRouteFamily(routeId, direction, configPath);
   // Convert startTime (epoch seconds) to seconds since local midnight
   const date = new Date(startTime * 1000);
   const midnight = new Date(date);
@@ -1234,6 +1247,10 @@ export async function getUpcomingByRoute(
       const eSec = effectiveRowSec(r);
       r.minutes_away = (eSec != null) ? Math.max(0, Math.round((eSec - secNow) / 60)) : null;
       r.canonical_stop_sequence = stopIdToCanonicalSeq.get(String(r.stop_id)) ?? r.stop_sequence ?? null;
+      
+      // Mark as scheduled if no real-time data available.
+      // Used by route diagram to distinguish scheduled services from live vehicles.
+      r.is_scheduled = !r.real_time_data && !r.vehicle_latitude;
 
       // If the TripUpdate predicts the bus is still far away but GPS shows it's
       // already at (or past) this stop, override minutes_away to 0.
@@ -1322,9 +1339,6 @@ ORDER BY f.win_sec ASC;
   enriched.sort((a, b) =>
     (a.win_sec + (a.arrival_delay || 0)) - (b.win_sec + (b.arrival_delay || 0))
   );
-  const tripIds = [...new Set(enriched.map(r => r.trip_id).filter(Boolean))];
-  const rtTripLookups = await cacheMGet(tripIds.map(tripKey));
-  const rtTripMap = new Map(tripIds.map((id, i) => [id, rtTripLookups[i]]));
 
   // Find trips where the vehicle position disagrees with the time-window result.
   //
@@ -1341,7 +1355,8 @@ ORDER BY f.win_sec ASC;
   // rtAheadByTrip (rt_seq > seq, no GPS): GTFS-RT stop updates are incremental,
   //   so the first stopUpdate sequence marks the current or next stop even when
   //   there is no vehicle position. Advance to that stop sequence.
-  const MAX_OVERDUE_SEC = 480; // 8 minutes
+  // Use 60-minute window for scheduled trips (matching stop timetable behavior).
+  const MAX_OVERDUE_SEC = 3600; // 60 minutes
   const staleByTrip = new Map();
   const behindByTrip = new Map();
   const rtAheadByTrip = new Map();
@@ -1394,13 +1409,38 @@ ORDER BY f.win_sec ASC;
     // current position onwards, so the minimum stopSequence in the update marks
     // the current or next stop. However, some feeds include ALL stops (full
     // schedule), so only trust this if min_seq > 1.
-    const rt = rtTripMap.get(r.trip_id);
-    const _rtSeqs = Array.isArray(rt?.stopUpdates)
-      ? rt.stopUpdates.map(u => Number(u?.stopSequence)).filter(seq => Number.isFinite(seq) && seq > 0)
-      : [];
-    const rtSeq = _rtSeqs.length > 0 ? Math.min(..._rtSeqs) : null;
+    // Use rt_min_stop_sequence from enrichment (already set on row) instead of
+    // re-fetching from rtTripMap to avoid race conditions with cache expiration.
+    const rtSeq = r.rt_min_stop_sequence != null ? Number(r.rt_min_stop_sequence) : null;
     if (rtSeq != null && rtSeq > 1 && Number.isFinite(rowSeq) && rtSeq > rowSeq) {
       rtAheadByTrip.set(r.trip_id, rtSeq);
+    }
+  }
+
+  // Find scheduled trips (no RT data) that need repositioning.
+  // For scheduled trips, the initial query returns stop 1 (minimum win_sec),
+  // but we want to show them at the stop closest to current time.
+  // This matches the stop timetable behavior where scheduled services appear
+  // at their scheduled position, not just at the first stop.
+  const scheduledByTrip = new Map();
+  for (const r of enriched) {
+    // Skip trips with RT data - they're already positioned correctly
+    if (r.real_time_data || r.vehicle_latitude) continue;
+    
+    // Skip trips already marked for replacement by RT logic
+    if (staleByTrip.has(r.trip_id) || behindByTrip.has(r.trip_id) || rtAheadByTrip.has(r.trip_id)) continue;
+    
+    // For scheduled trips, find the stop closest to current time.
+    // The query returns stop 1 (min win_sec), but if the scheduled time
+    // for stop 1 has passed, we should show the stop closest to now.
+    const rowWinSec = Number(r.win_sec);
+    const rowSeq = Number(r.stop_sequence);
+    
+    // Only reposition if the returned stop is in the past (overdue)
+    // and the trip is within the 60-minute overdue window
+    if (rowWinSec < secNow && rowWinSec >= (secNow - MAX_OVERDUE_SEC)) {
+      // This scheduled trip is overdue - find its correct position
+      scheduledByTrip.set(r.trip_id, { currentSeq: rowSeq, winSec: rowWinSec });
     }
   }
 
@@ -1417,7 +1457,7 @@ ORDER BY f.win_sec ASC;
     FROM stop_events_3day
   `;
 
-  const needsReplacement = staleByTrip.size > 0 || behindByTrip.size > 0 || rtAheadByTrip.size > 0;
+  const needsReplacement = staleByTrip.size > 0 || behindByTrip.size > 0 || rtAheadByTrip.size > 0 || scheduledByTrip.size > 0;
   if (!needsReplacement) {
     let visible = _filterActiveVehicles(enriched, secNow);
     visible = await injectUnplannedRailRows(visible, {
@@ -1521,11 +1561,27 @@ ORDER BY f.win_sec ASC;
       if (next) out.push(next);
     }
 
+    // Scheduled trips: find the next upcoming stop.
+    // This positions the trip at its next scheduled stop, not the closest stop
+    // (which would incorrectly show completed trips at the last stop).
+    // For scheduled trips without real-time data, the next upcoming stop is
+    // the most informative position we can show.
+    for (const [tripId, { currentSeq, winSec }] of scheduledByTrip) {
+      const next = db.prepare(stopSelectSql + `
+        WHERE trip_id = $tripId
+          AND win_sec >= $secNow
+          AND win_sec BETWEEN $startSec AND $endSec
+        ORDER BY win_sec ASC, stop_sequence ASC
+        LIMIT 1
+      `).get({ tripId, secNow, startSec: secNow - MAX_OVERDUE_SEC, endSec: secEnd });
+      if (next) out.push(next);
+    }
+
     return out;
   }, configPath);
 
   const replacementsEnriched = await enrichRowsWithRealtime(replacements);
-  const replacedTrips = new Set([...staleByTrip.keys(), ...behindByTrip.keys(), ...rtAheadByTrip.keys()]);
+  const replacedTrips = new Set([...staleByTrip.keys(), ...behindByTrip.keys(), ...rtAheadByTrip.keys(), ...scheduledByTrip.keys()]);
   const result = [
     ...enriched.filter(r => !replacedTrips.has(r.trip_id)),
     ...replacementsEnriched,
@@ -1551,11 +1607,24 @@ ORDER BY f.win_sec ASC;
 
 // Keep a row if it's in the normal future window, or if GPS confirms the
 // vehicle hasn't yet passed this stop (late-running, no trip-update delay).
-// Drops overdue rows with no GPS evidence of being still active.
+// For scheduled-only trips (no RT data), allow 60-minute overdue window
+// to match stop timetable behavior and show all active services.
 function _filterActiveVehicles(rows, secNow) {
   const epochNow = Math.floor(Date.now() / 1000);
+  const MAX_OVERDUE_SEC = 3600; // 60 minutes - consistent with stop timetable
   return rows.filter(r => {
+    // Always show future events
     if (r.win_sec >= secNow) return true;
+    
+    // For scheduled-only trips (no RT data): use 60-minute overdue window.
+    // This ensures scheduled services appear in the route diagram even when
+    // slightly overdue, matching stop timetable behavior.
+    const isScheduledOnly = !r.real_time_data && !r.vehicle_latitude;
+    if (isScheduledOnly) {
+      return r.win_sec >= (secNow - MAX_OVERDUE_SEC);
+    }
+    
+    // For RT-enabled trips: use existing logic
     // First line of defense: trip updates show bus is at or beyond a stop
     // sequence that is already past ours — it has departed this stop.
     if (r.rt_min_stop_sequence != null && r.rt_min_stop_sequence > r.stop_sequence) {

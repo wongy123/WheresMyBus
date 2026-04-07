@@ -26,8 +26,10 @@ import {
   getAllStops,
   getOneStop,
   getUpcomingByStop,
+  getUpcomingByStation,
   getRoutesByStop,
   getStopPlatforms,
+  getNearbyStops,
 } from '../../src/services/gtfsQueries.service.js';
 import stopsRouter from '../../src/routes/stops.routes.js';
 
@@ -177,5 +179,116 @@ describe('GET /stops/nearby', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
+  });
+
+  it('returns 200 with nearby stops when lat/lng provided', async () => {
+    const nearbyStops = [
+      { stop_id: '600001', stop_name: 'Stop A', stop_lat: -27.466, stop_lon: 153.029, distance_m: 150 },
+      { stop_id: '600002', stop_name: 'Stop B', stop_lat: -27.468, stop_lon: 153.030, distance_m: 300 },
+    ];
+    getNearbyStops.mockResolvedValue(nearbyStops);
+
+    const res = await request(createApp()).get('/stops/nearby?lat=-27.467&lng=153.028');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data[0].stop_name).toBe('Stop A');
+    expect(getNearbyStops).toHaveBeenCalledWith(-27.467, 153.028, 5);
+  });
+
+  it('respects limit parameter', async () => {
+    getNearbyStops.mockResolvedValue([]);
+
+    await request(createApp()).get('/stops/nearby?lat=-27.467&lng=153.028&limit=10');
+
+    expect(getNearbyStops).toHaveBeenCalledWith(-27.467, 153.028, 10);
+  });
+
+  it('clamps limit to 50', async () => {
+    getNearbyStops.mockResolvedValue([]);
+
+    await request(createApp()).get('/stops/nearby?lat=-27.467&lng=153.028&limit=100');
+
+    expect(getNearbyStops).toHaveBeenCalledWith(-27.467, 153.028, 50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /stops/:stopId/platforms
+// ---------------------------------------------------------------------------
+describe('GET /stops/:stopId/platforms', () => {
+  it('returns 200 with platforms for a station', async () => {
+    const platforms = [
+      { stop_id: '600028_1', stop_name: 'Roma St Station Platform 1', location_type: 0, parent_station: '600028' },
+      { stop_id: '600028_2', stop_name: 'Roma St Station Platform 2', location_type: 0, parent_station: '600028' },
+    ];
+    getStopPlatforms.mockResolvedValue(platforms);
+
+    const res = await request(createApp()).get('/stops/600028/platforms');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data[0].parent_station).toBe('600028');
+  });
+
+  it('returns empty array for a regular stop with no platforms', async () => {
+    getStopPlatforms.mockResolvedValue([]);
+
+    const res = await request(createApp()).get('/stops/600001/platforms');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /stops/:stopId/timetable (station branch)
+// ---------------------------------------------------------------------------
+describe('GET /stops/:stopId/timetable for station', () => {
+  const STATION = {
+    stop_id: '600028',
+    stop_name: 'Roma St Station',
+    stop_lat: -27.465,
+    stop_lon: 153.028,
+    location_type: 1, // Station (parent)
+    parent_station: null,
+  };
+
+  it('calls getUpcomingByStation for a station (location_type=1)', async () => {
+    getOneStop.mockResolvedValue(STATION);
+    getUpcomingByStation.mockResolvedValue([
+      { trip_id: 'trip1', route_short_name: '66', departure_time: '08:00:00', platform: '1' },
+      { trip_id: 'trip2', route_short_name: '130', departure_time: '08:05:00', platform: '2' },
+    ]);
+
+    const res = await request(createApp()).get('/stops/600028/timetable');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(getUpcomingByStation).toHaveBeenCalledWith('600028', undefined, undefined);
+    expect(getUpcomingByStop).not.toHaveBeenCalled();
+  });
+
+  it('calls getUpcomingByStop for a regular stop (location_type=0)', async () => {
+    const REGULAR_STOP = { ...STOP, location_type: 0 };
+    getOneStop.mockResolvedValue(REGULAR_STOP);
+    getUpcomingByStop.mockResolvedValue([
+      { trip_id: 'trip1', route_short_name: '66', departure_time: '08:00:00' },
+    ]);
+
+    const res = await request(createApp()).get('/stops/600028/timetable');
+
+    expect(res.status).toBe(200);
+    expect(getUpcomingByStop).toHaveBeenCalledWith('600028', undefined, undefined);
+    expect(getUpcomingByStation).not.toHaveBeenCalled();
+  });
+
+  it('passes startTime and duration parameters to station query', async () => {
+    getOneStop.mockResolvedValue(STATION);
+    getUpcomingByStation.mockResolvedValue([]);
+
+    await request(createApp()).get('/stops/600028/timetable?startTime=3600&duration=7200');
+
+    expect(getUpcomingByStation).toHaveBeenCalledWith('600028', 3600, 7200);
   });
 });
