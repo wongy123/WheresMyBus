@@ -1,0 +1,59 @@
+{
+  "data": [
+    {
+      "stop_id": "place_rompl",
+      "stop_code": null,
+      "stop_name": "Roma Street busway station",
+      "stop_lat": -27.465891,
+      "stop_lon": 153.018921,
+      "location_type": 1
+    },
+    {
+      "stop_id": "place_romsta",
+      "stop_code": null,
+      "stop_name": "Roma Street station",
+      "stop_lat": -27.465617,
+      "stop_lon": 153.019385,
+      "location_type": 1
+    },
+    {
+      "stop_id": "10078",
+      "stop_code": "010078",
+      "stop_name": "Roma St at Upper Roma Street, stop 3",
+      "stop_lat": -27.466129,
+      "stop_lon": 153.015439,
+      "location_type": 0
+    },
+    {
+      "stop_id": "10794",
+      "stop_code": "010794",
+      "stop_name": "Roma Street busway station",
+      "stop_lat": -27.466097,
+      "stop_lon": 153.019445,
+      "location_type": 0
+    },
+    {
+      "stop_id": "10793",
+      "stop_code": "010793",
+      "stop_name": "Roma Street busway, platform 1",
+      "stop_lat": -27.466083,
+      "stop_lon": 153.019374,
+      "location_type": 0
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 5,
+    "total": 27,
+    "pageCount": 6,
+    "hasNext": true,
+    "hasPrev": false
+  },
+  "links": {
+    "self": "/api/stops/search?q=Roma&limit=5&page=1",
+    "next": "/api/stops/search?q=Roma&limit=5&page=2",
+    "prev": null,
+    "first": "/api/stops/search?q=Roma&limit=5&page=1",
+    "last": "/api/stops/search?q=Roma&limit=5&page=6"
+  }
+}
