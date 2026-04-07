@@ -35,7 +35,7 @@ async function fetchProto(url) {
   return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buf);
 }
 
-function buildTripUpdateMap(feed) {
+export function buildTripUpdateMap(feed) {
   const map = new Map();
   const now = Date.now();
 
@@ -60,7 +60,7 @@ function buildTripUpdateMap(feed) {
   return map;
 }
 
-function buildVehiclePosMap(feed) {
+export function buildVehiclePosMap(feed) {
   const map = new Map();
   for (const e of feed.entity || []) {
     const vp = e.vehicle;
@@ -131,7 +131,7 @@ function buildAlertsArray(feed) {
   return alerts;
 }
 
-async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl, alertsUrl }) {
+export async function populateCacheOnce({ tripUpdatesUrl, vehiclePositionsUrl, alertsUrl }) {
   let tuFeed = null;
   let vpFeed = null;
   let alFeed = null;

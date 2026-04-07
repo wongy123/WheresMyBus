@@ -55,6 +55,28 @@ npm run fetchrealtime   # Manual trigger of GTFS-RT polling
 npm run buildviews      # Rebuild SQLite materialized views
 ```
 
+### Running Tests
+
+Tests require no live database, Redis, or API server — all external dependencies are mocked.
+
+**Server (Vitest)**:
+```bash
+cd server
+npm test                 # run once
+npm run test:watch       # watch mode
+npm run test:coverage    # with V8 coverage report
+```
+
+**Client (pytest)**:
+```bash
+cd client
+source .venv/bin/activate
+python -m pytest tests/ -v
+python -m pytest tests/ --cov=. --cov-report=term-missing
+```
+
+See `TESTING.md` for a description of what each test file covers.
+
 ## Architecture Overview
 
 ### Data Flow

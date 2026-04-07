@@ -24,7 +24,7 @@ const MAX_MINUTES_AWAY = 90;
 /* ----------------------------- helpers: RT merge ---------------------------- */
 
 // time helpers
-function hmsToSec(hms) {
+export function hmsToSec(hms) {
   if (!hms || typeof hms !== 'string') return null;
   const m = hms.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
   if (!m) return null;
@@ -39,7 +39,7 @@ function normalizeHms(hms) {
   return (s != null && s >= 86400) ? secToHms(s) : hms;
 }
 
-function secToHms(sec) {
+export function secToHms(sec) {
   if (sec == null || !Number.isFinite(sec)) return null;
   // keep within 0..86399 for display; GTFS can roll over past midnight, clamp for UI
   const n = ((Math.floor(sec) % 86400) + 86400) % 86400;
@@ -57,7 +57,7 @@ function epochToHms(epochSeconds, tzOffsetHours = 10) {
   return secToHms(local.getUTCHours() * 3600 + local.getUTCMinutes() * 60 + local.getUTCSeconds());
 }
 
-function epochToLocalHms(epochSeconds, tzOffsetHours = 10) {
+export function epochToLocalHms(epochSeconds, tzOffsetHours = 10) {
   if (epochSeconds == null) return null;
   const d = new Date(epochSeconds * 1000); // input is seconds
   // adjust to GMT+10
@@ -83,7 +83,7 @@ function epochMsToLocalHms(epochMs, tzOffsetHours = 10) {
 
 
 // Haversine distance in meters between two lat/lon pairs.
-function haversineM(lat1, lon1, lat2, lon2) {
+export function haversineM(lat1, lon1, lat2, lon2) {
   const R = 6_371_000;
   const toRad = Math.PI / 180;
   const dLat = (lat2 - lat1) * toRad;
@@ -198,7 +198,7 @@ async function applyGpsCorrectedDelays(rows, secNow, configPath) {
   }
 }
 
-function applyRealtimeToRow(row, rt, vpos) {
+export function applyRealtimeToRow(row, rt, vpos) {
   if (!rt && !vpos) return row;
 
   const enriched = { ...row };
@@ -389,7 +389,7 @@ function vposKey(tripId) {
   return `rt:vpos:${enc}`;
 }
 
-function effectiveRowSec(row) {
+export function effectiveRowSec(row) {
   const t = row?.estimated_departure_time || row?.estimated_arrival_time ||
     row?.scheduled_departure_time || row?.scheduled_arrival_time;
   if (!t) return row?.win_sec ?? null;

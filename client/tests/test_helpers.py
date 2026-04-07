@@ -1,14 +1,3 @@
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-# Stub out api_get so helpers.py can be imported without a running API server
-import unittest.mock as mock
-import importlib, types
-
-api_mod = types.ModuleType("api")
-api_mod.api_get = mock.Mock(return_value=None)
-sys.modules["api"] = api_mod
-
 from helpers import get_line_names, build_display_routes
 
 

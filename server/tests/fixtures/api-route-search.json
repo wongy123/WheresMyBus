@@ -1,0 +1,64 @@
+{
+  "data": [
+    {
+      "route_id": "660-4677",
+      "route_short_name": "660",
+      "route_long_name": "Caboolture Station - Redcliffe via Kippa-Ring",
+      "route_type": 3,
+      "route_color": "E463A4",
+      "route_text_color": "000000",
+      "line_name": null
+    },
+    {
+      "route_id": "662-4677",
+      "route_short_name": "662",
+      "route_long_name": "Moreton Downs - Rothwell Station",
+      "route_type": 3,
+      "route_color": "E463A4",
+      "route_text_color": "000000",
+      "line_name": null
+    },
+    {
+      "route_id": "663-4677",
+      "route_short_name": "663",
+      "route_long_name": "Narangba Local Service (Loop)",
+      "route_type": 3,
+      "route_color": "E463A4",
+      "route_text_color": "000000",
+      "line_name": null
+    },
+    {
+      "route_id": "664-4677",
+      "route_short_name": "664",
+      "route_long_name": "Burpengary Local Service (Loop)",
+      "route_type": 3,
+      "route_color": "E463A4",
+      "route_text_color": "000000",
+      "line_name": null
+    },
+    {
+      "route_id": "665-4677",
+      "route_short_name": "665",
+      "route_long_name": "Deception Bay - Rothwell Station",
+      "route_type": 3,
+      "route_color": "E463A4",
+      "route_text_color": "000000",
+      "line_name": null
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 5,
+    "total": 10,
+    "pageCount": 2,
+    "hasNext": true,
+    "hasPrev": false
+  },
+  "links": {
+    "self": "/api/routes/search?q=66&limit=5&page=1",
+    "next": "/api/routes/search?q=66&limit=5&page=2",
+    "prev": null,
+    "first": "/api/routes/search?q=66&limit=5&page=1",
+    "last": "/api/routes/search?q=66&limit=5&page=2"
+  }
+}
